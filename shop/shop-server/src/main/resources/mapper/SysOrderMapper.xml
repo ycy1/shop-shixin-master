@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.SysOrderMapper">
+    <!-- 可以在这里添加自定义的复杂SQL查询 -->
+
+    <!-- 通用查询列：与 sys_user 同名的列必须带表前缀，否则 join 后报 ambiguous -->
+    <sql id="Base_Column_List">
+        sys_order.id, order_no, order_type, user_id,
+        biz_id, biz_type, total_amount, pay_amount, discount_amount,
+        currency, sys_order.status, pay_type, pay_time, expire_time, sys_order.create_time
+    </sql>
+
+    <!-- 分页查询：由 Wrapper 动态拼接条件，XML 只负责 SELECT 和列 -->
+    <select id="selectOrderPage" parameterType="com.shop.entity.SysOrder" resultType="com.shop.entity.SysOrder">
+        SELECT
+        <include refid="Base_Column_List"/>
+        <!-- 冗余列优先，为空时回退到 sys_user（历史数据、以及绕过后台写入的订单没有快照） -->
+        , COALESCE(sys_order.user_name, u.nickname) AS user_name
+        , COALESCE(sys_order.mobile, u.mobile) AS mobile
+        FROM sys_order
+        LEFT JOIN sys_user u ON u.id = sys_order.user_id
+        <where>
+            <!-- 逻辑删除条件不会自动注入自定义SQL，需手写 -->
+            AND sys_order.is_deleted = 0
+            <if test="query.orderNo != null and query.orderNo != ''">
+                AND order_no LIKE CONCAT('%', #{query.orderNo}, '%')
+            </if>
+            <if test="query.orderType != null">
+                AND order_type = #{query.orderType}
+            </if>
+            <if test="query.userId != null">
+                AND user_id = #{query.userId}
+            </if>
+
+            <if test="query.userName != null and query.userName != ''">
+                AND COALESCE(sys_order.user_name, u.nickname) LIKE CONCAT('%', #{query.userName}, '%')
+            </if>
+            <if test="query.mobile != null and query.mobile != ''">
+                AND COALESCE(sys_order.mobile, u.mobile) LIKE CONCAT('%', #{query.mobile}, '%')
+            </if>
+
+            <if test="query.bizId != null and query.bizId != ''">
+                AND biz_id = #{query.bizId}
+            </if>
+            <if test="query.bizType != null">
+                AND biz_type = #{query.bizType}
+            </if>
+
+            <if test="query.status != null">
+                AND sys_order.status = #{query.status}
+            </if>
+
+            <!-- 选单场景（关联订单）：只允许挑已付款的，排除待支付/已取消/已关闭/已退款 -->
+            <if test="query.paidOnly != null and query.paidOnly">
+                AND sys_order.status IN (1, 2)
+            </if>
+
+            <if test="query.payType != null">
+                AND pay_type = #{query.payType}
+            </if>
+
+            <if test="query.beginTime != null and query.beginTime != ''">
+                AND pay_time &gt;= #{query.beginTime}
+            </if>
+            <if test="query.endTime != null and query.endTime != ''">
+                AND pay_time &lt;= #{query.endTime}
+            </if>
+
+            <if test="query.ids != null and query.ids.size() > 0">
+                AND sys_order.id IN
+                <foreach item="id" collection="query.ids" open="(" separator="," close=")">
+                    #{id}
+                </foreach>
+            </if>
+        </where>
+        ORDER BY sys_order.create_time DESC
+    </select>
+
+
+</mapper>

@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.SysRefundMapper">
+    <!-- 可以在这里添加自定义的复杂SQL查询 -->
+
+    <!-- 通用查询列：与 sys_user 同名的列必须带表前缀，否则 join 后报 ambiguous -->
+    <sql id="Base_Column_List">
+        r.id, r.refund_no, r.order_id, r.order_no, r.user_id, r.refund_type,
+        r.refund_reason, r.refund_amount, r.actual_refund_amount, r.currency, r.status, r.refund_channel,
+        r.third_refund_no, r.apply_time, r.audit_time, r.auditor_id, r.audit_remark, r.refund_time,
+        r.fail_reason, r.remark, r.create_time, r.update_time, r.is_deleted
+    </sql>
+
+    <select id="selectRefundPage" parameterType="com.shop.entity.SysRefund" resultType="com.shop.entity.SysRefund">
+        SELECT
+        <include refid="Base_Column_List"/>
+        <!-- 冗余列优先，为空时回退到 sys_user（历史数据、以及绕过后台写入的退款单没有快照） -->
+        , COALESCE(r.user_name, u.nickname) AS user_name
+        , COALESCE(r.mobile, u.mobile) AS mobile
+        , au.nickname AS auditorName
+        FROM sys_refund r
+        LEFT JOIN sys_user u ON u.id = r.user_id
+        LEFT JOIN sys_user au ON au.id = r.auditor_id
+        <where>
+            <!-- 逻辑删除条件不会自动注入自定义SQL，需手写 -->
+            AND r.is_deleted = 0
+            <if test="query.refundNo != null and query.refundNo != ''">
+                AND r.refund_no LIKE CONCAT('%', #{query.refundNo}, '%')
+            </if>
+            <if test="query.orderId != null">
+                AND r.order_id = #{query.orderId}
+            </if>
+            <if test="query.orderNo != null and query.orderNo != ''">
+                AND r.order_no LIKE CONCAT('%', #{query.orderNo}, '%')
+            </if>
+            <if test="query.userId != null">
+                AND r.user_id = #{query.userId}
+            </if>
+
+            <if test="query.userName != null and query.userName != ''">
+                AND COALESCE(r.user_name, u.nickname) LIKE CONCAT('%', #{query.userName}, '%')
+            </if>
+            <if test="query.mobile != null and query.mobile != ''">
+                AND COALESCE(r.mobile, u.mobile) LIKE CONCAT('%', #{query.mobile}, '%')
+            </if>
+
+            <if test="query.refundType != null">
+                AND r.refund_type = #{query.refundType}
+            </if>
+            <if test="query.status != null">
+                AND r.status = #{query.status}
+            </if>
+            <if test="query.refundChannel != null">
+                AND r.refund_channel = #{query.refundChannel}
+            </if>
+            <if test="query.thirdRefundNo != null and query.thirdRefundNo != ''">
+                AND r.third_refund_no = #{query.thirdRefundNo}
+            </if>
+
+            <if test="query.beginTime != null and query.beginTime != ''">
+                AND r.apply_time &gt;= #{query.beginTime}
+            </if>
+            <if test="query.endTime != null and query.endTime != ''">
+                AND r.apply_time &lt;= #{query.endTime}
+            </if>
+
+            <if test="query.ids != null and query.ids.size() > 0">
+                AND r.id IN
+                <foreach item="id" collection="query.ids" open="(" separator="," close=")">
+                    #{id}
+                </foreach>
+            </if>
+        </where>
+        ORDER BY r.create_time DESC, r.id DESC
+    </select>
+</mapper>

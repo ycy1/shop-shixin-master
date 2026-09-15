@@ -1,0 +1,270 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.SysNotificationsMapper">
+
+    <!-- 推送对象可见性判定：当前用户是否命中 notice_push（user/dept/role） -->
+    <!-- notice_push 为 NULL 或 user/dept/role 三个数组全空 = 全员可见（如公告） -->
+    <!-- 使用 EXISTS 子查询而非 JOIN 主表，天然去重。引用 #{userId}，包含它的语句必须绑定该参数 -->
+    <sql id="pushVisible">
+        (
+            n.notice_push IS NULL
+            OR COALESCE(JSON_LENGTH(n.notice_push -&gt; '$.user'), 0)
+               + COALESCE(JSON_LENGTH(n.notice_push -&gt; '$.dept'), 0)
+               + COALESCE(JSON_LENGTH(n.notice_push -&gt; '$.role'), 0) = 0
+            OR JSON_CONTAINS(n.notice_push, CAST(#{userId} AS JSON), '$.user')
+            OR EXISTS (
+                SELECT 1 FROM sys_dept_user du
+                WHERE du.user_id = #{userId}
+                  AND JSON_CONTAINS(n.notice_push, CAST(du.dept_id AS JSON), '$.dept')
+            )
+            OR EXISTS (
+                SELECT 1 FROM sys_user_role sur
+                WHERE sur.user_id = #{userId}
+                  AND JSON_CONTAINS(n.notice_push, CAST(sur.role_id AS JSON), '$.role')
+            )
+        )
+    </sql>
+
+    <!-- 门户/App 端 to_nickname 展示用的代表接收人（推送对象的第一个用户）；管理端已读/编辑已读改用当前登录人 #{userId} -->
+    <sql id="pushFirstUser">
+        CAST(JSON_UNQUOTE(JSON_EXTRACT(n.notice_push, '$.user[0]')) AS UNSIGNED)
+    </sql>
+
+    <!-- 当前用户的未读判定：无当前发送批次（send_code 与主表一致）的已读记录 -->
+    <sql id="pushNotRead">
+        NOT EXISTS (
+            SELECT 1 FROM sys_notifications_receiver r
+            WHERE r.notification_id = n.id AND r.user_id = #{userId}
+              AND (r.send_code = n.send_code OR r.send_code IS NULL)
+              AND r.is_read = 1 AND r.is_deleted = 0
+        )
+    </sql>
+
+    <!-- 当前用户已删除消息的排除判定（限定当前发送批次 send_code） -->
+    <sql id="pushNotDeleted">
+        NOT EXISTS (
+            SELECT 1 FROM sys_notifications_receiver r
+            WHERE r.notification_id = n.id AND r.user_id = #{userId}
+              AND (r.send_code = n.send_code OR r.send_code IS NULL)
+              AND r.is_deleted = 1
+        )
+    </sql>
+
+    <!-- App / 门户端：当前用户可见的消息列表（notice_push 判定 + receiver 已读计算） -->
+    <select id="selectNotificationsPage" resultType="com.shop.vo.notifications.NotificationsListVo">
+        select
+            n.id,
+            n.from_user_id,
+            n.business_id,
+            n.business_type,
+            n.title,
+            n.message,
+            n.link,
+            n.create_time,
+            u.nickname as to_nickname,
+            u1.nickname as from_nickname,
+            COALESCE(e.title, '') as business_title,
+            CASE WHEN EXISTS (
+                SELECT 1 FROM sys_notifications_receiver r
+                WHERE r.notification_id = n.id AND r.user_id = #{userId}
+                  AND (r.send_code = n.send_code OR r.send_code IS NULL)
+                  AND r.is_read = 1 AND r.is_deleted = 0
+            ) THEN 1 ELSE 0 END AS is_read
+        from sys_notifications n
+        left join sys_user u on u.id = <include refid="pushFirstUser"/>
+        left join sys_user u1 on n.from_user_id = u1.id
+        left join sys_notice e on n.business_id = e.id and n.business_type = 'notice'
+        <where>
+            n.del_flag = 0
+            and <include refid="pushVisible"/>
+            and <include refid="pushNotDeleted"/>
+            <if test="notifications.businessType != null and notifications.businessType != ''">
+                and n.business_type = #{notifications.businessType}
+            </if>
+            <if test="notifications.businessTypes != null and notifications.businessTypes != ''">
+                and n.business_type IN
+                <foreach item="item" index="index" collection="notifications.businessTypes.split(',')" open="(" separator="," close=")">
+                    #{item}
+                </foreach>
+            </if>
+        </where>
+        order by is_read asc, n.create_time desc
+    </select>
+
+    <!-- 管理端：可查看全部消息；直接透出 notice_push 供前端展示接收对象，不计算已读 -->
+    <select id="selectNotificationAdminPage" resultType="com.shop.vo.notifications.NotificationsListVo">
+        select
+            n.id,
+            n.from_user_id,
+            n.business_id,
+            n.business_type,
+            n.title,
+            n.message,
+            n.link,
+            n.notice_push,
+            (select count(1) from sys_notifications_receiver r
+             where r.notification_id = n.id
+               and (r.send_code = n.send_code or r.send_code is null)) as read_count,
+            n.del_flag,
+            n.create_time,
+            u1.nickname as from_nickname,
+            COALESCE(e.title, '') as business_title
+        from sys_notifications n
+        left join sys_user u1 on n.from_user_id = u1.id
+        left join sys_notice e on n.business_id = e.id and n.business_type = 'notice'
+        <where>
+            <if test="notifications.businessType != null and notifications.businessType != ''">
+                and n.business_type = #{notifications.businessType}
+            </if>
+            <if test="notifications.businessTypes != null and notifications.businessTypes != ''">
+                and n.business_type IN
+                <foreach item="item" index="index" collection="notifications.businessTypes.split(',')" open="(" separator="," close=")">
+                    #{item}
+                </foreach>
+            </if>
+            <if test="notifications.delFlag != null">
+                and n.del_flag = #{notifications.delFlag}
+            </if>
+            <if test="notifications.title != null and notifications.title != ''">
+                and n.title like concat('%', #{notifications.title}, '%')
+            </if>
+            <if test="notifications.fromNickname != null and notifications.fromNickname != ''">
+                and u1.nickname like concat('%', #{notifications.fromNickname}, '%')
+            </if>
+        </where>
+        order by n.del_flag asc, n.create_time desc
+    </select>
+
+    <!-- 消息详情（按当前用户计算已读状态） -->
+    <select id="selectNotificationsById" resultType="com.shop.vo.notifications.NotificationsListVo">
+        select
+            n.id,
+            n.from_user_id,
+            n.business_id,
+            n.business_type,
+            n.title,
+            n.message,
+            n.link,
+            n.create_time,
+            u.nickname as to_nickname,
+            u1.nickname as from_nickname,
+            COALESCE(e.title, '') as business_title,
+            COALESCE(e.content, '') as business_message,
+            CASE WHEN EXISTS (
+                SELECT 1 FROM sys_notifications_receiver r
+                WHERE r.notification_id = n.id AND r.user_id = #{userId}
+                  AND (r.send_code = n.send_code OR r.send_code IS NULL)
+                  AND r.is_read = 1 AND r.is_deleted = 0
+            ) THEN 1 ELSE 0 END AS is_read
+        from sys_notifications n
+        left join sys_user u on u.id = <include refid="pushFirstUser"/>
+        left join sys_user u1 on n.from_user_id = u1.id
+        left join sys_notice e on n.business_id = e.id and n.business_type = 'notice'
+        where n.id = #{id} and n.del_flag = 0
+    </select>
+
+    <!-- 各业务类型未读数（保持 @MapKey("type") 返回 Map<type,{type,num}>） -->
+    <select id="getUnReadNum" resultType="java.util.Map">
+        select n.business_type as type, count(distinct n.id) as num
+        from sys_notifications n
+        where n.del_flag = 0
+          and <include refid="pushVisible"/>
+          and <include refid="pushNotDeleted"/>
+          and <include refid="pushNotRead"/>
+        group by n.business_type
+    </select>
+
+    <!-- 当前用户是否存在未读消息 -->
+    <select id="countMyUnread" resultType="long">
+        select count(distinct n.id)
+        from sys_notifications n
+        where n.del_flag = 0
+          and <include refid="pushVisible"/>
+          and <include refid="pushNotDeleted"/>
+          and <include refid="pushNotRead"/>
+    </select>
+
+    <!-- 标记已读：存在已读记录则修改 is_read=1，否则插入（幂等 upsert）；携带主表当前 send_code 标记所属发送批次 -->
+    <insert id="doRead">
+        insert into sys_notifications_receiver (notification_id, user_id, send_code, is_read, read_time, is_deleted, create_time)
+        select n.id, #{userId}, n.send_code, 1, now(), 0, now()
+        from sys_notifications n
+        where n.id = #{notificationId} and n.del_flag = 0
+        on duplicate key update send_code = values(send_code), is_read = 1, read_time = now(), is_deleted = 0
+    </insert>
+
+    <!-- 全部标记已读：把当前用户可见的未读消息批量插入已读记录（带 ODKU，避免管理端设置过 is_read=0 的记录撞唯一键） -->
+    <insert id="allRead">
+        insert into sys_notifications_receiver (notification_id, user_id, send_code, is_read, read_time, is_deleted, create_time)
+        select n.id, #{userId}, n.send_code, 1, now(), 0, now()
+        from sys_notifications n
+        where n.del_flag = 0
+          and <include refid="pushVisible"/>
+          and <include refid="pushNotDeleted"/>
+          and <include refid="pushNotRead"/>
+        on duplicate key update send_code = values(send_code), is_read = 1, read_time = now(), is_deleted = 0
+    </insert>
+
+    <!-- 接收人删除消息：upsert 该用户 receiver 记录 is_deleted=1（仅对该用户隐藏；只能删对自己可见的消息） -->
+    <insert id="deleteByUser">
+        insert into sys_notifications_receiver (notification_id, user_id, send_code, is_read, read_time, is_deleted, create_time)
+        select n.id, #{userId}, n.send_code, 0, null, 1, now()
+        from sys_notifications n
+        where n.id = #{notificationId} and n.del_flag = 0
+          and <include refid="pushVisible"/>
+        on duplicate key update send_code = values(send_code), is_deleted = 1
+    </insert>
+
+    <!-- 管理端：分页查询某消息的阅读记录（关联表 + 阅读人信息）；只展示主表当前发送批次（send_code）对应的记录，可按阅读人搜索 -->
+    <select id="selectReceiverList" resultType="com.shop.vo.notifications.NotificationsReceiverVo">
+        select
+            r.id,
+            r.notification_id,
+            r.user_id,
+            r.send_code,
+            r.is_read,
+            r.read_time,
+            r.is_deleted,
+            u.nickname,
+            u.username
+        from sys_notifications_receiver r
+        left join sys_user u on u.id = r.user_id
+        <where>
+            r.notification_id = #{notificationId}
+            and (
+                r.send_code = (select n.send_code from sys_notifications n where n.id = #{notificationId})
+                or r.send_code is null
+            )
+            <if test="keyword != null and keyword != ''">
+                and (u.nickname like concat('%', #{keyword}, '%') or u.username like concat('%', #{keyword}, '%'))
+            </if>
+        </where>
+        order by r.is_read asc, r.create_time desc
+    </select>
+
+    <!-- 管理端：重新发送前清空该消息的所有接收记录（新一轮发送从零开始） -->
+    <delete id="deleteReceiverByNotificationId">
+        delete from sys_notifications_receiver where notification_id = #{notificationId}
+    </delete>
+
+    <!-- 管理端：按记录 id 批量标记已读（is_read=1、read_time=now、is_deleted=0） -->
+    <update id="updateReceiverReadByIds">
+        update sys_notifications_receiver
+        set is_read = 1, read_time = now(), is_deleted = 0
+        where id in
+        <foreach item="id" collection="ids" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </update>
+
+    <!-- 管理端：按记录 id 批量删除（is_deleted=1，该接收人隐藏消息） -->
+    <update id="updateReceiverDeletedByIds">
+        update sys_notifications_receiver
+        set is_deleted = 1
+        where id in
+        <foreach item="id" collection="ids" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </update>
+
+</mapper>

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.SysDeptMapper">
+
+    <!-- 查询全部部门（含负责人、人数），递归筛选由 Service 层完成（兼容 MySQL 5.7） -->
+    <select id="selectDeptTree" resultType="com.shop.entity.SysDept">
+        SELECT
+            d.id,
+            d.parent_id,
+            d.name,
+            d.code,
+            d.leader_id,
+            d.status,
+            d.sort_order,
+            d.create_time,
+            d.update_time,
+            lu.nickname AS leader_name,
+            (SELECT COUNT(*) FROM sys_dept_user sdu WHERE sdu.dept_id = d.id) AS user_count
+        FROM sys_dept d
+        LEFT JOIN sys_user lu ON lu.id = d.leader_id
+        <where>
+            <if test="query.status != null">
+                AND d.status = #{query.status}
+            </if>
+        </where>
+        ORDER BY d.sort_order, d.id
+    </select>
+
+    <!-- 分页查询部门下的人员 -->
+    <select id="selectDeptUserPage" resultType="com.shop.vo.user.SysUserVo">
+        select
+            u.id,
+            u.username,
+            u.nickname,
+            u.avatar,
+            u.mobile,
+            u.email,
+            u.sex,
+            u.status,
+            u.last_login_time,
+            u.create_time
+        from sys_user u
+            inner join sys_dept_user sdu on u.id = sdu.user_id
+        where sdu.dept_id = #{deptId}
+        order by u.create_time desc
+    </select>
+</mapper>

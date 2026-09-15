@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.MemoryMapper">
+
+    <resultMap id="MemoryVoMap" type="com.shop.vo.ai.MemoryVo">
+        <id property="id" column="id"/>
+        <result property="conversationId" column="conversation_id"/>
+        <result property="role" column="role"/>
+        <result property="content" column="content"/>
+        <result property="messageType" column="message_type"/>
+        <result property="attachments" column="attachments"/>
+        <result property="parentMessageId" column="parent_message_id"/>
+        <result property="turnNumber" column="turn_number"/>
+        <result property="tokensUsed" column="tokens_used"/>
+        <result property="importanceScore" column="importance_score"/>
+        <result property="isSummarized" column="is_summarized"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <select id="selectMemoryVoPage" resultMap="MemoryVoMap">
+        select
+            id, conversation_id, role, content, message_type, attachments,
+            parent_message_id, turn_number, tokens_used, importance_score,
+            is_summarized, create_time
+        from ai_memories
+        <where>
+            deleted_at is null
+            <if test="conversationId != null">
+                and conversation_id = #{conversationId}
+            </if>
+        </where>
+        order by create_time desc
+    </select>
+
+    <select id="selectMemoryByConversationId" resultMap="MemoryVoMap">
+        select
+            id, conversation_id, role, content, message_type, attachments,
+            parent_message_id, turn_number, tokens_used, importance_score,
+            is_summarized, create_time
+        from ai_memories
+        where conversation_id = #{conversationId} and deleted_at is null
+        order by turn_number asc, create_time asc
+    </select>
+
+</mapper>

@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.SysCommentMapper">
+
+    <select id="getComments" resultType="com.shop.vo.comment.CommentListVo">
+        SELECT
+        c.*,
+        u.nickname,
+        u.avatar,
+        (SELECT COUNT(scl.id) > 0 FROM sys_comment_like scl WHERE scl.comment_id = c.id AND scl.user_id = #{userId}) AS is_like
+        FROM sys_comment c
+        LEFT JOIN sys_user u ON c.user_id = u.id
+        WHERE c.business_id = #{businessId} and c.parent_id is null
+        <if test="commentType != null">
+            and c.comment_type = #{commentType}
+        </if>
+        <choose>
+            <when test="sortType == 'like'">
+                ORDER BY c.like_count DESC
+            </when>
+            <otherwise>
+                ORDER BY c.create_time DESC
+            </otherwise>
+        </choose>
+    </select>
+
+    <select id="getChildrenComment" resultType="com.shop.vo.comment.CommentListVo">
+        SELECT
+            c.*,
+            u.nickname,
+            u.avatar,
+            ru.nickname as replyNickname,
+            (SELECT COUNT(scl.id) > 0 FROM sys_comment_like scl WHERE scl.comment_id = c.id AND scl.user_id = #{userId}) AS is_like
+        FROM sys_comment c
+        LEFT JOIN sys_user u ON c.user_id = u.id
+        LEFT JOIN sys_user ru ON c.reply_user_id = ru.id
+        WHERE c.parent_id = #{id}
+        ORDER BY c.create_time DESC
+    </select>
+
+    <select id="selectPage" resultType="com.shop.vo.comment.SysCommentVO">
+        SELECT
+            c.id,
+            c.comment_type,
+            u.avatar,
+            u.nickname,
+            IF(ru.nickname is null,'无',ru.nickname) as replyNickname,
+            c.content,
+            c.parent_id,
+            c.like_count,
+            c.create_time,
+            c.update_time
+        FROM
+        sys_comment c
+        LEFT JOIN sys_user u ON c.user_id = u.id
+        LEFT JOIN sys_user ru ON c.reply_user_id = ru.id
+        <where>
+            <if test="query.businessId != null">
+                and c.business_id = #{query.businessId}
+            </if>
+            <if test="query.commentType != null">
+                and c.comment_type = #{query.commentType}
+            </if>
+            <if test="query.nickname != null and query.nickname != ''">
+                and u.nickname like concat('%', #{query.nickname}, '%')
+            </if>
+            <if test="query.content != null and query.content != ''">
+                and c.content like concat('%', #{query.content}, '%')
+            </if>
+        </where>
+        order by c.create_time desc
+    </select>
+
+    <select id="selectMyComment" resultType="com.shop.vo.comment.CommentListVo">
+        SELECT
+            c.id,
+            c.content,
+            c.like_count,
+            c.create_time,
+            c.update_time
+        FROM
+            sys_comment c
+        WHERE
+            c.user_id = #{userId}
+        order by c.create_time desc
+    </select>
+
+    <select id="getMyReply" resultType="com.shop.vo.comment.CommentListVo">
+        SELECT
+            c.id,
+            u.nickname as replyNickname,
+            c.content,
+            c.like_count,
+            c.create_time,
+            c.update_time
+        FROM
+            sys_comment c
+            left join sys_user u on c.reply_user_id = u.id
+        WHERE
+            c.user_id = #{userId} and c.reply_user_id is not null
+        order by c.create_time desc
+    </select>
+
+    <!-- 评论点赞 -->
+    <insert id="likeComment">
+        INSERT INTO sys_comment_like(comment_id, user_id, comment_type) VALUES (#{commentId}, #{userId}, #{commentType})
+    </insert>
+
+    <delete id="unLikeComment">
+        DELETE FROM sys_comment_like WHERE user_id = #{userId} AND comment_id = #{commentId}
+    </delete>
+
+    <select id="getUserIsLikeComment" resultType="java.lang.Boolean">
+        SELECT COUNT(id) > 0 FROM sys_comment_like WHERE user_id = #{userId} AND comment_id = #{commentId}
+    </select>
+
+    <update id="updateLikeCount">
+        UPDATE sys_comment SET like_count = GREATEST(IFNULL(like_count, 0) + #{delta}, 0) WHERE id = #{commentId}
+    </update>
+</mapper>

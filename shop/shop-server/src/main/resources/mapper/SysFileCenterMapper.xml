@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.SysFileCenterMapper">
+
+    <resultMap type="com.shop.vo.file.SysFileCenterVo" id="SysFileCenterVoMap">
+        <id property="id" column="id" />
+        <result property="fileId" column="file_id" />
+        <result property="userId" column="user_id" />
+        <result property="businessType" column="business_type" />
+        <result property="fileName" column="file_name" />
+        <result property="fileUrl" column="file_url" />
+        <result property="fileSize" column="file_size" />
+        <result property="fileSource" column="file_source" />
+        <result property="originalSource" column="original_source" />
+        <result property="fileStatus" column="file_status" />
+        <result property="failReason" column="fail_reason" />
+        <result property="createTime" column="create_time" />
+        <result property="updateTime" column="update_time" />
+        <result property="expireTime" column="expire_time" />
+        <result property="downloadCount" column="download_count" />
+        <result property="ownerNickname" column="owner_nickname" />
+        <result property="ownerUsername" column="owner_username" />
+    </resultMap>
+
+    <!-- 分页查询（含所属用户信息与各Tab作用域） -->
+    <select id="selectFileCenterPage" resultMap="SysFileCenterVoMap">
+        select
+            fc.*,
+            su.nickname as owner_nickname,
+            su.username as owner_username
+        from sys_file_center fc
+            left join sys_user su on fc.user_id = su.id
+        <where>
+            <if test="q.fileName != null and q.fileName != ''">
+                and fc.file_name like concat('%', #{q.fileName}, '%')
+            </if>
+            <if test="q.businessType != null and q.businessType != ''">
+                and fc.business_type = #{q.businessType}
+            </if>
+            <if test="q.fileStatus != null">
+                and fc.file_status = #{q.fileStatus}
+            </if>
+            <if test="q.startTime != null and q.startTime != ''">
+                and fc.create_time &gt;= #{q.startTime}
+            </if>
+            <if test="q.endTime != null and q.endTime != ''">
+                and fc.create_time &lt;= #{q.endTime}
+            </if>
+            <!-- 普通 Tab 不展示已过期/已清理记录 -->
+            <if test="q.source != 4">
+                and fc.file_status != 4
+            </if>
+            <!-- 各 Tab 作用域 -->
+            <choose>
+                <!-- 包含user上传的其他tab类型的文件  -->
+                <when test="q.source == 1">
+                    and fc.user_id = #{q.userId}
+                    and fc.file_source != 4
+                </when>
+                <when test="q.source == 2">
+                    and fc.file_source = 2
+                    <if test="!q.admin">
+                        and exists (
+                            select 1 from sys_dept_user d1
+                            inner join sys_dept_user d2 on d1.dept_id = d2.dept_id
+                            where d1.user_id = fc.user_id and d2.user_id = #{q.userId}
+                        )
+                    </if>
+                </when>
+                <when test="q.source == 3">
+                    and fc.file_source = 3
+                    <if test="!q.admin">
+                        and exists (
+                            select 1 from sys_user_role r1
+                            inner join sys_user_role r2 on r1.role_id = r2.role_id
+                            where r1.user_id = fc.user_id and r2.user_id = #{q.userId}
+                        )
+                    </if>
+                </when>
+                <otherwise>
+                    and fc.file_source = 4
+                    <if test="!q.admin">
+                        and (
+                            fc.user_id = #{q.userId}
+                            or exists (
+                                select 1 from sys_dept_user d1
+                                inner join sys_dept_user d2 on d1.dept_id = d2.dept_id
+                                where d1.user_id = fc.user_id and d2.user_id = #{q.userId}
+                            )
+                            or exists (
+                                select 1 from sys_user_role r1
+                                inner join sys_user_role r2 on r1.role_id = r2.role_id
+                                where r1.user_id = fc.user_id and r2.user_id = #{q.userId}
+                            )
+                        )
+                    </if>
+                </otherwise>
+            </choose>
+        </where>
+        order by fc.create_time desc
+    </select>
+
+    <!-- 判断文件属主与当前用户是否有共同部门 -->
+    <select id="countSharedDept" resultType="int">
+        select count(1) from sys_dept_user d1
+        inner join sys_dept_user d2 on d1.dept_id = d2.dept_id
+        where d1.user_id = #{fileOwnerId} and d2.user_id = #{userId}
+    </select>
+
+    <!-- 判断文件属主与当前用户是否有共同角色 -->
+    <select id="countSharedRole" resultType="int">
+        select count(1) from sys_user_role r1
+        inner join sys_user_role r2 on r1.role_id = r2.role_id
+        where r1.user_id = #{fileOwnerId} and r2.user_id = #{userId}
+    </select>
+</mapper>

@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.shop</groupId>
+        <artifactId>shop-base</artifactId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>shop-wx</artifactId>
+    <name>shop-wx</name>
+    <description>微信模块</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.shop</groupId>
+            <artifactId>shop-commom</artifactId>
+            <version>${package.version}</version>
+        </dependency>
+
+        <!-- 文件上传  -->
+        <dependency>
+            <groupId>com.shop</groupId>
+            <artifactId>shop-file</artifactId>
+            <version>${package.version}</version>
+            <scope>compile</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.shop</groupId>
+            <artifactId>shop-api</artifactId>
+            <version>${package.version}</version>
+            <scope>compile</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.github.binarywang</groupId>
+            <artifactId>weixin-java-mp</artifactId>
+            <version>4.7.7-20250725.114118</version>
+        </dependency>
+
+        <!--微信sdk-->
+        <dependency>
+            <groupId>com.github.wechatpay-apiv3</groupId>
+            <artifactId>wechatpay-apache-httpclient</artifactId>
+            <version>0.4.5</version>
+        </dependency>
+        <!--支付宝sdk-->
+        <dependency>
+            <groupId>com.alipay.sdk</groupId>
+            <artifactId>alipay-sdk-java</artifactId>
+            <version>4.34.0.ALL</version>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <classifier>exec</classifier>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

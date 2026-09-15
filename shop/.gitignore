@@ -1,0 +1,33 @@
+*/target/
+!.mvn/wrapper/maven-wrapper.jar
+/logs
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+*.log
+
+### IntelliJ IDEA ###
+/.idea
+.idea
+*.iws
+*.iml
+*.ipr
+workspace.xml
+
+# 应用程序生成的文件
+*.properties
+*.yml
+*.pem
+
+### NetBeans ###
+/nbproject/private/
+/build/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/

@@ -1,0 +1,79 @@
+# build output
+dist/
+# generated types
+.astro/
+
+# dependencies
+node_modules/
+drizzle/
+package-lock.json
+pnpm-lock.yaml
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+
+# environment variables
+.env
+.env.production
+
+# macOS-specific files
+.DS_Store
+
+.vscode
+.tar
+
+
+# 编译输出目录
+target/
+classes/
+out/
+build/
+
+# IDE 配置文件
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.settings/
+.project
+.classpath
+*.prefs
+
+# Maven 本地仓库（通常不建议忽略，但如果你有特殊需求可以放开）
+# ~/.m2/repository/
+
+# Gradle 相关
+.gradle/
+gradle-app.setting
+!gradle-wrapper.jar
+
+# 日志文件
+*.log
+
+# 操作系统生成文件
+.DS_Store
+Thumbs.db
+
+# 临时文件
+*.tmp
+*.temp
+*.swp
+*.~*
+
+# 应用程序生成的文件
+application-*.properties
+application-*.yml
+!application-example.properties
+!application-example.yml
+
+# 敏感配置文件（包含密码、密钥等）
+secrets.properties
+config/secret/
+*.p12
+*.jks
+*.keystore

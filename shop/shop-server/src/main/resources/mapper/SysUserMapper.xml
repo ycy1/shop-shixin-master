@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.SysUserMapper">
+
+    <resultMap type="com.shop.vo.user.SysUserVo" id="SysUserPageResultVoMap">
+        <id property="id" column="id" />
+        <result property="username" column="username" />
+        <result property="openid" column="openid" />
+        <result property="status" column="status" />
+        <result property="lastLoginTime" column="last_login_time" />
+        <result property="ip" column="ip" />
+        <result property="ipLocation" column="ip_location" />
+        <result property="nickname" column="nickname" />
+        <result property="avatar" column="avatar" />
+        <result property="mobile" column="mobile" />
+        <result property="email" column="email" />
+        <result property="sex" column="sex" />
+        <result property="userTags" column="user_tags" />
+        <result property="areaCode" column="area_code"/>
+        <result property="areaZh" column="area_zh"/>
+        <result property="qrImg" column="qr_img"/>
+        <result property="loginType" column="login_type" />
+        <result property="createTime" column="create_time" />
+
+        <!-- 部门信息：SQL 层用 GROUP_CONCAT 聚合，再经 TypeHandler 反序列化为 List<T> -->
+        <result property="deptIds"
+                column="dept_ids"
+                javaType="java.util.List"
+                jdbcType="VARCHAR"
+                typeHandler="com.shop.config.mybatisplus.handler.CommaSeparatedToListHandler$LongList"/>
+
+        <collection property="deptNames" ofType="String">
+            <result column="dept_names"/>
+        </collection>
+        <collection property="roles" ofType="Object">
+            <result column="role"/>
+        </collection>
+<!--        <collection property="permissions" ofType="string">-->
+<!--            <result column="permission"/>-->
+<!--        </collection>-->
+    </resultMap>
+
+    <!-- 通用查询结果列 -->
+    <sql id="Base_Column_List">
+        id, username,sex, password,openid, create_time, update_time, status,
+        ip, ip_location, os, last_login_time, browser,user_tags, area_code,
+        nickname, avatar, mobile, qr_img, area_code, area_zh
+    </sql>
+
+    <!-- 根据用户名查询用户信息 -->
+    <select id="selectByUsername" resultType="com.shop.entity.SysUser">
+        select
+        <include refid="Base_Column_List"/>
+        from sys_user
+        where username = #{username} or email = #{username} or mobile = #{username}
+    </select>
+
+    <select id="selectUserPage" resultMap="SysUserPageResultVoMap">
+        select
+            u.id,
+            u.username,
+            u.openid,
+            u.create_time,
+            u.status,
+            u.last_login_time,
+            u.ip,
+            u.ip_location,
+            u.nickname,
+            u.avatar,
+            u.mobile,
+            u.email,
+            u.qr_img,
+            u.sex,
+            u.area_code,
+            u.area_zh,
+            u.user_tags,
+            u.login_type,
+            -- 部门信息在 SQL 层聚合：JSON_ARRAYAGG(DISTINCT) 去重，映射回 deptIds/deptNames
+            (SELECT GROUP_CONCAT(DISTINCT du.dept_id) FROM sys_dept_user du WHERE du.user_id = u.id) AS dept_ids,
+            (SELECT GROUP_CONCAT(DISTINCT d.name) FROM sys_dept_user du INNER JOIN sys_dept d ON du.dept_id = d.id WHERE du.user_id = u.id) AS dept_names,
+            GROUP_CONCAT(r.`id` ) AS role
+        from sys_user u
+            left join sys_user_role sur on u.id = sur.user_id
+            left join sys_role r ON sur.role_id = r.id
+        <where>
+            <!-- 关键字：匹配用户名/账号/昵称 -->
+            <if test="sysUser.keyword != null and sysUser.keyword != ''">
+                and (u.username like concat('%', #{sysUser.keyword}, '%') or u.nickname like concat('%', #{sysUser.keyword}, '%'))
+            </if>
+            <if test="sysUser.nickname != null and sysUser.nickname != ''">
+                and u.nickname like concat('%', #{sysUser.nickname}, '%')
+            </if>
+            <if test="sysUser.status != null">
+                and u.status = #{sysUser.status}
+            </if>
+            <if test="sysUser.loginType != null and sysUser.loginType != ''">
+                and u.login_type = #{sysUser.loginType}
+            </if>
+            <if test="sysUser.deptIds != null and sysUser.deptIds.size() > 0">
+                and exists (
+                    select 1 from sys_dept_user du
+                    where du.user_id = u.id
+                    and du.dept_id in
+                    <foreach collection="sysUser.deptIds" item="deptId" open="(" separator="," close=")">
+                        #{deptId}
+                    </foreach>
+                )
+            </if>
+            <!-- 添加部门人员时，过滤掉已在该部门下的人员 -->
+            <if test="sysUser.excludeDeptId != null">
+                and not exists (
+                    select 1 from sys_dept_user exdu
+                    where exdu.user_id = u.id
+                    and exdu.dept_id = #{sysUser.excludeDeptId}
+                )
+            </if>
+            <!-- 按 ID 列表过滤（导出勾选用户时传入） -->
+            <if test="sysUser.ids != null and sysUser.ids.size() > 0">
+                and u.id in
+                <foreach collection="sysUser.ids" item="id" open="(" separator="," close=")">
+                    #{id}
+                </foreach>
+            </if>
+        </where>
+        GROUP BY u.id
+    </select>
+</mapper>

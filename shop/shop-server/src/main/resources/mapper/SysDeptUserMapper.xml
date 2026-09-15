@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.SysDeptUserMapper">
+
+    <!-- 批量插入用户部门关联 -->
+    <insert id="insertDeptUser">
+        insert into sys_dept_user(user_id, dept_id) values
+        <foreach collection="deptIds" item="deptId" separator=",">
+            (#{userId},#{deptId})
+        </foreach>
+    </insert>
+
+    <!-- 批量插入部门人员（同一部门，多个用户） -->
+    <insert id="insertDeptUsers">
+        insert into sys_dept_user(user_id, dept_id) values
+        <foreach collection="userIds" item="userId" separator=",">
+            (#{userId},#{deptId})
+        </foreach>
+    </insert>
+
+    <!-- 根据用户ID删除关联 -->
+    <delete id="deleteByUserIds">
+        delete from sys_dept_user where user_id in
+        <foreach collection="userIds" item="userId" open="(" separator="," close=")">
+            #{userId}
+        </foreach>
+    </delete>
+
+    <!-- 根据部门ID删除关联 -->
+    <delete id="deleteByDeptIds">
+        delete from sys_dept_user where dept_id in
+        <foreach collection="deptIds" item="deptId" open="(" separator="," close=")">
+            #{deptId}
+        </foreach>
+    </delete>
+</mapper>
