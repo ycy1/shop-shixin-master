@@ -156,6 +156,23 @@ html.dark[data-astro-route-loading] body::after {
   margin-bottom: 1.5rem;
 }
 
+/* 筛选那一排吸在页头下面。页头是 sticky + z-40 + 实心底，所以钉在它下面的这一排要
+   - 停在它的下沿：--plaza-pin-top 由列表岛现量页头实高写成内联变量递进来（窄屏菜单展开会撑成两行，写死的数对不上）；
+   - 自己也得铺底：不然卡片从底下穿过时和这一排叠在一起，看着像花屏。底色就是 body 那一档灰。
+   底下多铺 8 又把它从外边距扣回来：留白的 8px 不铺底就会漏出正在滚动的卡片，而这一排和主列表之间照常留 16。 */
+.plaza-pin {
+  position: sticky;
+  top: var(--plaza-pin-top, 4rem);
+  z-index: 30;
+  padding-bottom: 1.5rem;
+  margin-bottom: -0.5rem;
+  background: rgb(247 248 250);
+}
+
+.dark .plaza-pin {
+  background: rgb(17 24 39);
+}
+
 /* 并排那一档。断点用 48rem 不用 64rem：笔记本接了系统缩放之后，1366 那一档屏给到页面的宽度只有 900 出头，
    卡在 lg 门槛下，推荐块就落到主列表上面，看着像混进了中间那串。 */
 @media (width >= 48rem) {
@@ -169,7 +186,9 @@ html.dark[data-astro-route-loading] body::after {
   .plaza-rec {
     order: 2;
     position: sticky;
-    top: 1rem;
+    /* 停在页头 + 筛选排的下沿：只避开页头的话，往下滚一段这一整块会钻到筛选排底下去，
+       --plaza-filter-h 同样是列表岛现量的（chip 换行会改它的高度） */
+    top: calc(var(--plaza-pin-top, 4rem) + var(--plaza-filter-h, 0px));
     flex-shrink: 0;
     /* 轨道在 768 那一档先给窄的，到 lg 再放宽一档，免得左边主列表被挤得太窄 */
     width: 16rem;

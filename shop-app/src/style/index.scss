@@ -1,0 +1,125 @@
+// 测试用的 iconfont，可生效
+// @import './iconfont.css';
+
+.test {
+  // 可以通过 @apply 多个样式封装整体样式
+  @apply mt-4 ml-4;
+
+  padding-top: 4px;
+  color: red;
+}
+
+:root,
+page {
+  // 修改按主题色
+  // --wot-color-theme: #37c2bc;
+
+  // 修改按钮背景色
+  // --wot-button-primary-bg-color: green;
+}
+
+/*
+ * 点击反馈。模板里每个带 @click/@tap 的原生标签都挂了两样东西：
+ *   hover-class="fx-tap" —— view / button 这类原生支持按压态的标签，按下时由 uni-app 运行时把 fx-tap 套上去；
+ *   class 里的 fx-press —— text 这一档不认 hover-class（实测 uni-h5 只给 view 套类），只能靠 CSS :active 兜底，
+ *                          顺带给上面那一档加过渡。
+ * 两个名字必须分开：fx-tap 平时不能挂在元素上，挂着一辈子都是暗的。
+ * 卡片整块可点、里面又有一格单独可点时，两处会一起暗（opacity 相乘），这是按压态的正常表现。
+ */
+.fx-tap {
+  opacity: 0.7;
+  transform: scale(0.98);
+}
+
+.fx-press {
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
+}
+
+.fx-press:active {
+  opacity: 0.7;
+  transform: scale(0.98);
+}
+
+/*
+ * 底部操作栏（商品详情页加购、结算页提交、修改资料/地址那两页的保存）共用这一层。
+ * 它只管三件事：白底铺到屏幕最下沿、补上 border-top 那条分隔线、让出底部安全区。
+ * 里面那一排的高度、左右间距还是各页自己的 px-32rpx py-24rpx（所以那两个内边距要挪到栏子里面那一层上）。
+ *
+ * 安全区这段只能用 padding-bottom 让，不能和页面的 py-24rpx 挂在同一个元素上（后写的会把前者整条盖掉），
+ * 也不能写成 calc(24rpx + env(...)) —— H5 那一档里 rpx 进了 calc 就不参与换算了。
+ * border-style 要自己补：uno.config.ts 里 preflight 整段被注释掉了（本文件末尾也记着那个 BUG），
+ * `border-t` 只给宽度不给样式，默认 none，线根本画不出来。宽度、颜色仍交给工具类。
+ */
+.fx-bar {
+  box-sizing: border-box;
+  padding-bottom: env(safe-area-inset-bottom);
+  background-color: #fff;
+  border-top-style: solid;
+}
+
+/*
+ * 登录/注册两页共用的背景：一张实景照片铺满整页，上面压两条 ——
+ * 顶部一条品牌红（白标题站在它上面才读得清）、下半截一条灰白（照片淡出去，白卡落上去不花）。
+ * 三层都是绝对定位，所以页面内容那一层要带 position:relative（下面用的 relative 工具类）才浮得上来。
+ */
+.auth-page {
+  position: relative;
+  min-height: 100%;
+  overflow: hidden;
+  background-color: #f5f6f7;
+}
+
+.auth-photo {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.auth-band {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 460rpx;
+  background: linear-gradient(180deg, rgb(209 67 40 / 96%) 0%, rgb(209 67 40 / 76%) 46%, rgb(209 67 40 / 0%) 100%);
+}
+
+.auth-scrim {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 70%;
+  background: linear-gradient(180deg, rgb(245 246 247 / 0%) 0%, rgb(245 246 247 / 88%) 40%, #f5f6f7 100%);
+}
+
+.auth-card {
+  position: relative;
+  padding: 48rpx 32rpx;
+  background-color: #fff;
+  border-radius: 24rpx;
+  box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.06);
+}
+
+/*
+border-t-1
+由于uniapp中无法使用*选择器，使用魔法代替*，加上此规则可以简化border与divide的使用，并提升布局的兼容性
+1. 防止padding和border影响元素宽度。 (https://github.com/mozdevs/cssremedy/issues/4)
+2. 允许仅通过添加边框宽度来向元素添加边框。 (https://github.com/tailwindcss/tailwindcss/pull/116)
+3. [UnoCSS]: 允许使用css变量'--un-default-border-color'覆盖默认边框颜色
+*/
+// 这个样式有重大BUG，先去掉！！(2025-08-15)
+// :not(not),
+// ::before,
+// ::after {
+//   box-sizing: border-box; /* 1 */
+//   border-width: 0; /* 2 */
+//   border-style: solid; /* 2 */
+//   border-color: var(--un-default-border-color, #e5e7eb); /* 3 */
+// }

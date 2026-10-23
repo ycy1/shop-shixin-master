@@ -35,6 +35,8 @@ build/
 
 # IDE 配置文件
 .idea/
+.hbuilderx/
+.vscode/
 *.iml
 *.iws
 *.ipr
@@ -43,6 +45,7 @@ build/
 .project
 .classpath
 *.prefs
+
 
 # Maven 本地仓库（通常不建议忽略，但如果你有特殊需求可以放开）
 # ~/.m2/repository/
@@ -77,3 +80,11 @@ config/secret/
 *.p12
 *.jks
 *.keystore
+
+# AI编程缓存目录
+.agents/
+.changeset/
+.cursor/
+.husky/
+
+
