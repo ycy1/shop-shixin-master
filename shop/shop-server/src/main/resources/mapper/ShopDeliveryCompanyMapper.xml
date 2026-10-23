@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopDeliveryCompanyMapper">
+
+    <!-- 公共查询列：表加了列只改这一处（别名固定是 c，和下面的 FROM 对应） -->
+    <sql id="companyColumns">
+        c.id,
+        c.company_code,
+        c.company_name,
+        c.company_short,
+        c.company_type,
+        c.service_phone,
+        c.website,
+        c.logo,
+        c.description,
+        c.support_cod,
+        c.support_insurance,
+        c.support_fragile,
+        c.max_weight,
+        c.delivery_area,
+        c.sort,
+        c.status,
+        c.user_id,
+        c.create_by,
+        c.update_by,
+        c.create_time,
+        c.update_time
+    </sql>
+
+    <!-- 自定义 SQL 不走全局逻辑删除，is_deleted = 0 必须手写 -->
+    <select id="selectCompanyPage" resultType="com.shop.entity.ShopDeliveryCompany">
+        SELECT
+            <include refid="companyColumns"/>
+        FROM shop_delivery_company c
+        <where>
+            c.is_deleted = 0
+            <!-- 一个输入框搜名称、编码和简称，括号内 OR 不会串到上面的筛选 -->
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (c.company_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR c.company_code LIKE CONCAT('%', #{q.keyword}, '%')
+                OR c.company_short LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+            <if test="q.companyType != null">
+                AND c.company_type = #{q.companyType}
+            </if>
+            <if test="q.status != null">
+                AND c.status = #{q.status}
+            </if>
+            <!-- 支持服务：勾中几项就是"任一支持"，整块要包在括号里，否则 OR 会把类型/状态条件一起吞进去。
+                 串已由服务层清洗成只含 cod/insurance/fragile，所以这里不会出现空的 AND () -->
+            <if test="q.supportServices != null and q.supportServices != ''">
+                AND (
+                <trim prefixOverrides="OR">
+                    <if test="q.supportServices.contains('cod')">OR c.support_cod = 1</if>
+                    <if test="q.supportServices.contains('insurance')">OR c.support_insurance = 1</if>
+                    <if test="q.supportServices.contains('fragile')">OR c.support_fragile = 1</if>
+                </trim>
+                )
+            </if>
+        </where>
+        <!-- 启用在前（status：1启用 0禁用），同状态内仍按 sort、id -->
+        ORDER BY c.status DESC, c.sort ASC, c.id DESC
+    </select>
+
+</mapper>

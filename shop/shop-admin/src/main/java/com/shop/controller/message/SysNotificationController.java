@@ -31,8 +31,17 @@ public class SysNotificationController {
 
     @GetMapping("/list")
     @ApiOperation(value = "获取消息通知列表")
+    @SaCheckPermission("sys:notification:list")
     public Result<IPage<NotificationsListVo>> list(SysNotifications notifications) {
         return Result.success(sysNotificationService.selectPage(notifications));
+    }
+
+    @PostMapping("/add")
+    @ApiOperation(value = "新增消息通知")
+    @SaCheckPermission("sys:notification:add")
+    public Result<Void> add(@RequestBody SysNotifications notifications) {
+        sysNotificationService.insert(notifications);
+        return Result.success();
     }
 
     @PutMapping("/update")
@@ -53,6 +62,7 @@ public class SysNotificationController {
 
     @GetMapping("/receiver/list")
     @ApiOperation(value = "查询消息阅读记录（分页，可按阅读人搜索）")
+    @SaCheckPermission("sys:notification:receiver")
     public Result<IPage<NotificationsReceiverVo>> receiverList(@RequestParam Long notificationId,
                                                                @RequestParam(required = false) String keyword) {
         return Result.success(sysNotificationService.listReceivers(notificationId, keyword));

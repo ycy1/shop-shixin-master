@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopProductMapper">
+
+    <!--
+      注意：自定义 XML SQL 不会被 MyBatis-Plus 的全局逻辑删除自动接管，
+      所以下面每个查询都必须手写 is_deleted = 0，否则会把已删除数据查出来。
+
+      这一份是 SPU 粒度的：一行就是一件商品，不再 join 规格表（原来是 1:1 的 detail，可以 join；
+      现在是 1:N 的 shop_product_sku，join 上会把一件商品复制成 N 行、分页数量跟着错）。
+      所以后台这份（productColumns）只把价格区间写成子查询汇总（取 MIN/MAX）—— 列表总得有个价。
+      销量、可用库存、成本价不汇总到商品(SPU)这一层：它们是「一个 SKU（× 一个仓）」那一格的账，
+      摊成一件商品一个数只会骗人（多规格的商品里，缺货的往往正是挑中那一档）。要看就看 SKU 那一份
+      （ShopProductSkuMapper.xml）：后台是「SKU管理」弹窗那三列，前台是详情页规格那一条的 salesCount/availableStock。
+      上下架和轮位在 shop_product 本表，直接筛 p 这两列。
+    -->
+    <sql id="productColumns">
+        p.id,
+        p.product_code,
+        p.product_name,
+        p.sub_title,
+        p.product_desc,
+        p.category_id,
+        p.brand_id,
+        p.store_id,
+        p.main_image,
+        p.product_specs,
+        p.images,
+        p.sort,
+        p.status,
+        p.carousel_enable,
+        p.cultural_enable,
+        p.user_id,
+        p.create_by,
+        p.update_by,
+        p.create_time,
+        p.update_time,
+        (SELECT MIN(s.product_price)
+        FROM shop_product_sku s
+        WHERE s.product_id = p.id AND s.is_deleted = 0) AS price_min,
+        (SELECT MAX(s.product_price)
+        FROM shop_product_sku s
+        WHERE s.product_id = p.id AND s.is_deleted = 0) AS price_max,
+        c.category_name,
+        b.brand_name,
+        b.logo AS brand_logo,
+        st.store_name
+    </sql>
+
+    <sql id="productJoins">
+        FROM shop_product p
+        LEFT JOIN shop_category c ON c.id = p.category_id AND c.is_deleted = 0
+        LEFT JOIN shop_brand b ON b.id = p.brand_id AND b.is_deleted = 0
+        LEFT JOIN shop_store st ON st.id = p.store_id AND st.is_deleted = 0
+    </sql>
+
+    <select id="selectProductPage" resultType="com.shop.vo.product.ShopProductVo">
+        SELECT
+        <include refid="productColumns"/>
+        <include refid="productJoins"/>
+        <where>
+            p.is_deleted = 0
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (p.product_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR p.product_code LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+            <if test="q.categoryId != null">
+                AND p.category_id = #{q.categoryId}
+            </if>
+            <if test="q.brandId != null">
+                AND p.brand_id = #{q.brandId}
+            </if>
+            <!-- 按 id 批量取：回显用的（手里只有 id 串，要把名字补回来），和关键字那几条是并列的筛选项 -->
+            <if test="q.ids != null and q.ids.size() > 0">
+                AND p.id IN
+                <foreach collection="q.ids" item="productId" open="(" separator="," close=")">#{productId}</foreach>
+            </if>
+            <!-- 数据范围（账号类型=门店）由服务层决定：要收窄就强制置成自己的用户ID，否则置空。这里只认字段、不认角色 -->
+            <if test="q.currentUserId != null">
+                AND p.user_id = #{q.currentUserId}
+            </if>
+            <if test="q.status != null">
+                AND p.status = #{q.status}
+            </if>
+            <if test="q.beginTime != null and q.beginTime != ''">
+                AND p.create_time &gt;= #{q.beginTime}
+            </if>
+            <if test="q.endTime != null and q.endTime != ''">
+                AND p.create_time &lt;= #{q.endTime}
+            </if>
+        </where>
+        <!-- 上架在前（p.status：1上架 0下架，现在是商品本表的列、非空）。同状态内仍按 sort、id -->
+        ORDER BY p.status DESC, p.sort ASC, p.id DESC
+    </select>
+
+    <select id="selectProductById" resultType="com.shop.vo.product.ShopProductVo">
+        SELECT
+        <include refid="productColumns"/>
+        <include refid="productJoins"/>
+        WHERE p.is_deleted = 0 AND p.id = #{id}
+    </select>
+
+    <!--
+      Web 端（/api/web/shop/product）那两条读接口用的列清单：和上面 productColumns 有意分成两份。
+      少了 user_id 和审计字段 —— 这一条不带登录态也能读，复用后台那份 VO 等于把这些格公开出去。
+      单价/重量/积分/能否单卖、销量、可用库存和成本价这些「一个规格（× 一个仓）一个数」的列也不在这里了，
+      它们随 SKU 那一段一起给（ShopProductSkuMapper#selectWebSkusByProductId，只详情那条跑）。
+    -->
+    <sql id="webColumns">
+        p.id,
+        p.product_code,
+        p.product_name,
+        p.sub_title,
+        p.product_desc,
+        p.category_id,
+        p.brand_id,
+        p.store_id,
+        p.main_image,
+        p.product_specs,
+        p.images,
+        p.sort,
+        p.status,
+        p.carousel_enable,
+        p.cultural_enable,
+        (SELECT MIN(s.product_price)
+        FROM shop_product_sku s
+        WHERE s.product_id = p.id AND s.is_deleted = 0) AS price_min,
+        (SELECT MAX(s.product_price)
+        FROM shop_product_sku s
+        WHERE s.product_id = p.id AND s.is_deleted = 0) AS price_max,
+        <!-- 销量和可用库存都不在这一层给：销量记在每一条规格上，库存更是「一个 SKU × 一个仓」那一格的账，
+             摊成商品一个数只会骗人（多规格的商品里，缺货的、卖得动的往往只是其中一档）。
+             前端读详情里 skus 那一条的 salesCount / availableStock -->
+        c.category_name,
+        b.brand_name,
+        b.logo AS brand_logo,
+        st.store_name
+    </sql>
+
+    <sql id="webJoins">
+        FROM shop_product p
+        LEFT JOIN shop_category c ON c.id = p.category_id AND c.is_deleted = 0
+        LEFT JOIN shop_brand b ON b.id = p.brand_id AND b.is_deleted = 0
+        LEFT JOIN shop_store st ON st.id = p.store_id AND st.is_deleted = 0
+    </sql>
+
+    <!-- 状态这一档钉死在 WHERE 里，不跟请求参数走：前台能看见的必须是「已上架」的整件商品。
+         某个规格能不能单卖（SKU.sale_enable）不参与这一条判据，它跟着 SKU 那一段一起给出去，由页面自己决定怎么表现。 -->
+    <select id="selectWebPage" resultType="com.shop.vo.product.ShopProductWebVo">
+        SELECT
+        <include refid="webColumns"/>
+        <include refid="webJoins"/>
+        WHERE p.is_deleted = 0 AND p.status = 1
+        <if test="q.keyword != null and q.keyword != ''">
+            AND (p.product_name LIKE CONCAT('%', #{q.keyword}, '%')
+            OR p.product_code LIKE CONCAT('%', #{q.keyword}, '%'))
+        </if>
+        <!-- 分类命中带整棵下级：categoryIds 是服务层由 categoryId 一层层往下铺开来的（含它自己），
+             这一段只认那个集合。没传 categoryId 时服务层把它置空，这段 <if> 不生效，等于不筛分类。 -->
+        <if test="q.categoryIds != null and q.categoryIds.size() > 0">
+            AND p.category_id IN
+            <foreach collection="q.categoryIds" item="cid" open="(" separator="," close=")">
+                #{cid}
+            </foreach>
+        </if>
+        <!-- 轮播位那一块只要运营勾选过的商品；不传这一格就是全量货架，同一份 SQL 两种用途。 -->
+        <if test="q.carouselEnable != null">
+            AND p.carousel_enable = #{q.carouselEnable}
+        </if>
+        <!-- 门店详情页的「本店商品」：等值筛这一家店的货。store_id 为 NULL 是「不限定门店」的平台货，
+             不算进任何一家店名下，所以这里不补 IS NULL。 -->
+        <if test="q.storeId != null">
+            AND p.store_id = #{q.storeId}
+        </if>
+        <!-- 品牌详情页的「品牌商品」：等值筛这一个品牌的货。brand_id 为 NULL 是「没挂品牌」，
+             同样不算进任何品牌名下，这里也不补 IS NULL。 -->
+        <if test="q.brandId != null">
+            AND p.brand_id = #{q.brandId}
+        </if>
+        <!-- 门店详情页商品区那两档 tab：文创 / 普通商品各一条查询，两档都带 store_id 一起筛。 -->
+        <if test="q.culturalEnable != null">
+            AND p.cultural_enable = #{q.culturalEnable}
+        </if>
+        <!-- 状态已经恒定，排序沿用后台同款：先运营排的 sort，再新上的在前 -->
+        ORDER BY p.sort ASC, p.id DESC
+    </select>
+
+    <select id="selectWebById" resultType="com.shop.vo.product.ShopProductWebVo">
+        SELECT
+        <include refid="webColumns"/>
+        <include refid="webJoins"/>
+        WHERE p.is_deleted = 0 AND p.id = #{id} AND p.status = 1
+    </select>
+
+</mapper>

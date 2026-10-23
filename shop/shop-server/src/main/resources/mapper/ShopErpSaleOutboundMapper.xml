@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopErpSaleOutboundMapper">
+
+    <!-- 公共查询列：表加了列只改这一处（别名固定是 so，和下面的 FROM 对应） -->
+    <sql id="saleOutboundColumns">
+        so.id,
+        so.outbound_no,
+        so.order_id,
+        so.order_no,
+        so.outbound_source,
+        so.total_quantity,
+        so.total_amount,
+        so.status,
+        so.outbound_time,
+        so.user_id,
+        so.remark,
+        so.create_by,
+        so.update_by,
+        so.create_time,
+        so.update_time
+    </sql>
+
+    <!-- 订单状态、下单人昵称、供应商名、操作人昵称一律联表现取，不在出库单里冗余快照：
+         订单状态本来就一直在变（出库后还要从 1 推到 6），快照出去就是错的。
+         LEFT JOIN 的条件写在 ON 上：整张订单被删过的时候，这张出库单本身还得在列表里看得到。
+
+         ⚠ order_id 是按 outbound_source 分指三张表的（1 线上购买 = sys_order.id，2 销售出库 =
+         shop_erp_sale.id，3 采购退货 = shop_erp_purchase.id），几套 id 各自编号，所以那几条 JOIN 的 ON 上必须钉死
+         so.outbound_source = 对应那一档 —— 不然一张退货单的 order_id=7 会去联订单 id=7，
+         列表上凭空多出个不相干的下单人和订单状态。
+         另外 4 调拨出库 / 5 报损出库 / 6 其他 是后台手工建的，order_id 本身为 NULL，
+         三条 JOIN 一律联不上（所以它们必须全是 LEFT JOIN，不然这种单子会在列表里凭空消失）。 -->
+    <sql id="saleOutboundJoins">
+        FROM shop_erp_sale_outbound so
+        LEFT JOIN sys_order o ON o.id = so.order_id AND so.outbound_source = 1 AND o.is_deleted = 0
+        LEFT JOIN sys_user bu ON bu.id = o.user_id
+        LEFT JOIN shop_erp_sale sal ON sal.id = so.order_id AND so.outbound_source = 2 AND sal.is_deleted = 0
+        LEFT JOIN shop_store st ON st.id = sal.store_id AND st.is_deleted = 0
+        LEFT JOIN shop_erp_purchase p ON p.id = so.order_id AND so.outbound_source = 3 AND p.is_deleted = 0
+        LEFT JOIN shop_erp_supplier s ON s.id = p.supplier_id AND s.is_deleted = 0
+        LEFT JOIN sys_user eu ON eu.id = so.user_id
+    </sql>
+
+    <!-- 明细的已出库总数：列表不返回明细，但那一列要显示"已出库 / 计划"、还要判断「出库」按钮能不能点，
+         所以用关联子查询汇总（一页十条、一张单撑死几十行明细，走 idx_outbound，没有代价） -->
+    <sql id="saleOutboundOutSum">
+        (SELECT IFNULL(SUM(oi.outbound_quantity), 0)
+        FROM shop_erp_sale_outbound_item oi
+        WHERE oi.outbound_id = so.id AND oi.is_deleted = 0) AS totalOut
+    </sql>
+
+    <!-- 这一单有几行的出库仓正冻着账（shop_erp_warehouse.status：2 盘点中 3 调拨中）：
+         只给列表用 —— 列表那颗「出库」按它置灰并说明原因，免得点进弹窗填完数才被服务端拦。
+         一行一仓，所以数的是行；仓被删了（联不上 w）不算在这一档，那种行在明细里显示「已删除仓库」 -->
+    <sql id="saleOutboundFrozenRows">
+        (SELECT COUNT(*)
+        FROM shop_erp_sale_outbound_item i
+        LEFT JOIN shop_erp_warehouse w ON w.id = i.warehouse_id AND w.is_deleted = 0
+        WHERE i.outbound_id = so.id AND i.is_deleted = 0 AND w.status IN (2, 3)) AS frozenRows
+    </sql>
+
+    <!-- 这张单绑到哪一条配送单了：一出库单一配送（表上没建唯一键，那道键这轮删了 —— outbound_id 那一列
+         在没换绑的那一条里装的是**订单**的 id，留着唯一键会让下单和支付回调互相撞），所以最多一条，LIMIT 1 是保险。
+         判据是 id + 号**两个一起比**：配送单是统一下单时就建好的，支付回调之前那一槽里是订单的 id 和号，
+         只比 id 会把某个同号订单的配送单错认成这张出库单的（两张表的自增 id 一定会撞上）。
+         所以 deliveryId 有值就等于"这一单钱收了、配送单已经换绑到这张出库单上了"。
+         列表那颗「生成配送单」按钮的判据是 deliveryId + deliveryStatus = 0（出满 + 有配送单 + 还没人确认过），
+         点开的弹框里那一颗「确认」才真把状态推成 1；服务端 confirmDelivery 判的是同一件事；
+         deliveryNo/deliveryStatus 一起带出来，好让按钮收掉还是留着、点开的是详情还是带确认的弹框，
+         都说得清是哪一条 -->
+    <sql id="saleOutboundDelivery">
+        (SELECT d.id FROM shop_delivery d
+        WHERE d.outbound_id = so.id AND d.outbound_no = so.outbound_no AND d.is_deleted = 0 LIMIT 1) AS deliveryId,
+        (SELECT d.delivery_no FROM shop_delivery d
+        WHERE d.outbound_id = so.id AND d.outbound_no = so.outbound_no AND d.is_deleted = 0 LIMIT 1) AS deliveryNo,
+        (SELECT d.status FROM shop_delivery d
+        WHERE d.outbound_id = so.id AND d.outbound_no = so.outbound_no AND d.is_deleted = 0 LIMIT 1) AS deliveryStatus
+    </sql>
+
+    <!-- 自定义 SQL 不走全局逻辑删除，so.is_deleted = 0 必须手写 -->
+    <select id="selectSaleOutboundPage" resultType="com.shop.entity.ShopErpSaleOutbound">
+        SELECT
+            <include refid="saleOutboundColumns"/>,
+            <include refid="saleOutboundOutSum"/>,
+            <include refid="saleOutboundFrozenRows"/>,
+            <include refid="saleOutboundDelivery"/>,
+            o.status AS orderStatus,
+            bu.nickname AS buyerName,
+            st.store_name AS storeName,
+            s.supplier_name AS supplierName,
+            eu.nickname AS userName
+        <include refid="saleOutboundJoins"/>
+        <where>
+            so.is_deleted = 0
+            <!-- 一个输入框搜出库单号、来源单据号（订单号 / 销售单号 / 采购单号，同一列 order_no）、备注和人名，括号内 OR 不会串到上面的筛选。
+                 供应商名和门店名不参与：能按来源单据号搜到，就不必再联一条模糊匹配的口径。
+                 商品名不参与：一单几行商品，联明细会把主单行乘出来（要 DISTINCT 才能对上分页的总数），
+                 按商品找单请去「我的订单」那一页 -->
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (so.outbound_no LIKE CONCAT('%', #{q.keyword}, '%')
+                OR so.order_no LIKE CONCAT('%', #{q.keyword}, '%')
+                OR so.remark LIKE CONCAT('%', #{q.keyword}, '%')
+                OR bu.nickname LIKE CONCAT('%', #{q.keyword}, '%')
+                OR eu.nickname LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+            <if test="q.orderId != null">
+                AND so.order_id = #{q.orderId}
+            </if>
+            <if test="q.outboundSource != null">
+                AND so.outbound_source = #{q.outboundSource}
+            </if>
+            <if test="q.status != null">
+                AND so.status = #{q.status}
+            </if>
+            <if test="q.userId != null">
+                AND so.user_id = #{q.userId}
+            </if>
+            <if test="q.beginTime != null and q.beginTime != ''">
+                AND so.create_time &gt;= #{q.beginTime}
+            </if>
+            <if test="q.endTime != null and q.endTime != ''">
+                AND so.create_time &lt;= #{q.endTime}
+            </if>
+        </where>
+        <!-- 不按 status 排：这里是单据流转状态（0待出库→1部分出库→2已出库），不是启用/禁用，
+             按它排会把"待出库"顶到第一页。新单在前就够了 -->
+        ORDER BY so.id DESC
+    </select>
+
+    <select id="selectSaleOutboundById" resultType="com.shop.entity.ShopErpSaleOutbound">
+        SELECT
+            <include refid="saleOutboundColumns"/>,
+            <include refid="saleOutboundOutSum"/>,
+            <include refid="saleOutboundDelivery"/>,
+            o.status AS orderStatus,
+            bu.nickname AS buyerName,
+            st.store_name AS storeName,
+            s.supplier_name AS supplierName,
+            eu.nickname AS userName
+        <include refid="saleOutboundJoins"/>
+        WHERE so.id = #{id}
+          AND so.is_deleted = 0
+    </select>
+
+    <!-- 一张销售单名下的全部出库单（「销售单」页那颗「出库单」弹窗，形状照 selectReceiptsByPurchaseId）：
+         一次给全、不分页 —— 一张销售单撑死几张出库单，明细由调用方批量另捞。
+
+         so.outbound_source = 2 这一刀是必须的：order_id 按来源分指三张表，销售单 id=7 和
+         订单 id=7 / 采购单 id=7 是各自编号，只比 order_id 会把别人的单子当成本张销售单的捞出来。
+         刻意不像入库那边按 user_id 收窄：出库单这一张表全站唯一一个不按登录账号收窄的 shop_* 列表
+         （线上那一路由支付回调建、user_id 恒 NULL），而这里的 user_id 记的还是"最后谁点的出库"，
+         按它筛的话一张还没出库的单子（谁都没点过）在负责这张单的操作员眼里就凭空消失了。
+         不拐 saleOutboundDelivery：来源 2 没有配送单（那两颗按钮按 isOnlineOrder 藏着）。 -->
+    <select id="selectSaleOutboundsBySaleId" resultType="com.shop.entity.ShopErpSaleOutbound">
+        SELECT
+            <include refid="saleOutboundColumns"/>,
+            <include refid="saleOutboundOutSum"/>,
+            st.store_name AS storeName,
+            eu.nickname AS userName
+        <include refid="saleOutboundJoins"/>
+        WHERE so.order_id = #{saleId}
+          AND so.outbound_source = 2
+          AND so.is_deleted = 0
+        ORDER BY so.id DESC
+    </select>
+
+</mapper>

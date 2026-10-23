@@ -1,0 +1,16 @@
+---
+import Base from '@/layouts/Base.astro';
+import Storefront from '@/views/home/Storefront.vue';
+import { useDict } from '@/i18n';
+
+const { d, locale } = useDict(Astro.locals.locale);
+
+// /?categoryId= 是活动详情页那颗「看这个分类的商品」的落点：手打的、非数、0 这些都当没填，
+// 首页还是浏览全部商品（这一格只当筛选初值，不是判据，所以收不到就回落，不报错也不打发人走）
+const raw = Astro.url.searchParams.get('categoryId');
+const categoryId = raw == null || !/^\d+$/.test(raw) ? 0 : Number(raw);
+---
+
+<Base title={d.page.home.title} description={d.page.home.desc}>
+  <Storefront client:load locale={locale} {...(categoryId > 0 ? { categoryId } : {})} />
+</Base>

@@ -20,4 +20,18 @@
         </dependency>
     </dependencies>
 
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <!-- 不带 classifier 的话 repackage 会把 BOOT-INF 那份覆盖成本模块的主构件，
+                     下游 shop-admin 拿它当编译 classpath 就读不到 com.shop.api.service（其余六个模块都这么写着） -->
+                <configuration>
+                    <classifier>exec</classifier>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
 </project>

@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopSupplierProductMapper">
+
+    <!--
+      注意：自定义 XML SQL 不会被 MyBatis-Plus 的全局逻辑删除自动接管，
+      所以下面每个查询都必须手写 is_deleted = 0，否则会把已删除数据查出来。
+      商品名称用本表的冗余列 r.product_name（服务层按商品表回填），只有商品编码、规格文本和供应商名称才联表现取。
+      商品编码/规格文本两跳：本表这行只记 sku_id，所属商品在 shop_product_sku 那一行，所以先联 sk 再联 p。
+    -->
+    <sql id="relationColumns">
+        r.id,
+        r.supplier_id,
+        r.sku_id,
+        r.product_name,
+        r.category_id,
+        r.supply_price,
+        r.supply_code,
+        r.min_order_qty,
+        r.lead_time,
+        r.is_default,
+        r.status,
+        r.create_by,
+        r.update_by,
+        r.create_time,
+        r.update_time
+    </sql>
+
+    <select id="selectSupplierProductPage" resultType="com.shop.entity.ShopSupplierProduct">
+        SELECT
+            <include refid="relationColumns"/>,
+            s.supplier_name AS supplierName,
+            p.product_code AS productCode,
+            sk.spec_text AS specText
+        FROM shop_supplier_product r
+        LEFT JOIN shop_erp_supplier s ON s.id = r.supplier_id AND s.is_deleted = 0
+        LEFT JOIN shop_product_sku sk ON sk.id = r.sku_id AND sk.is_deleted = 0
+        LEFT JOIN shop_product p ON p.id = sk.product_id AND p.is_deleted = 0
+        <where>
+            r.is_deleted = 0
+            <!-- 一个输入框搜商品名称、供货编码、平台商品编码、规格文本和供应商名称，括号内 OR 不会串到上面的筛选。
+                 规格文本得搜：一行是一个规格，光搜商品名会把同一商品下所有规格都命中，筛不出具体那一行 -->
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (r.product_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR r.supply_code LIKE CONCAT('%', #{q.keyword}, '%')
+                OR p.product_code LIKE CONCAT('%', #{q.keyword}, '%')
+                OR sk.spec_text LIKE CONCAT('%', #{q.keyword}, '%')
+                OR s.supplier_name LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+            <!-- 供应商账号只看自己那份供货关系：supplierId 由服务层覆盖成他绑定的那条，前端传什么都不认 -->
+            <if test="q.supplierId != null">
+                AND r.supplier_id = #{q.supplierId}
+            </if>
+            <!-- 数据范围（供应商账号）：一个账号可以绑多家供应商，所以按一组 id 收；
+                 和上面搜索栏那格的条件是 AND 关系——他筛别人家的供应商只会查到空列表 -->
+            <if test="q.supplierIds != null and !q.supplierIds.isEmpty()">
+                AND r.supplier_id IN
+                <foreach collection="q.supplierIds" item="sid" open="(" separator="," close=")">
+                    #{sid}
+                </foreach>
+            </if>
+            <if test="q.categoryId != null">
+                AND r.category_id = #{q.categoryId}
+            </if>
+            <if test="q.status != null">
+                AND r.status = #{q.status}
+            </if>
+        </where>
+        <!-- 合作中的在前（status：1合作中 0已停止，属于启用/禁用那类字典），同状态内新记录在前 -->
+        ORDER BY r.status DESC, r.id DESC
+    </select>
+
+    <!--
+      采购单明细的商品候选：只有"合作中"的供货关系里的规格可以进这张单，一行是一个规格
+      （本表这行记的就是 sku_id，所以同一商品供了几个规格就会出几行，选下来落进采购明细的是 sku_id）。
+      这里用 INNER JOIN 而不是上面列表的 LEFT JOIN——SKU 或商品已被删除的关系行要让它掉出去，
+      否则下拉里能选到一条存不进采购单的规格。
+      上下架（shop_product.status）和「这个规格能不能单卖」（shop_product_sku.sale_enable）都不作为条件：
+      采购不看这两档，下架商品、不给单卖的规格照样能进货（那两档管的是前台卖不卖，不管进不进货）。
+    -->
+    <select id="selectProductOptionsBySupplier" resultType="com.shop.entity.ShopSupplierProduct">
+        SELECT
+            <include refid="relationColumns"/>,
+            p.product_code AS productCode,
+            sk.spec_text AS specText
+        FROM shop_supplier_product r
+        INNER JOIN shop_product_sku sk ON sk.id = r.sku_id AND sk.is_deleted = 0
+        INNER JOIN shop_product p ON p.id = sk.product_id AND p.is_deleted = 0
+        WHERE r.is_deleted = 0
+          AND r.status = 1
+          AND r.supplier_id = #{supplierId}
+        <!-- 规格文本也在搜的这一串里：一行是一个规格，只搜商品名会把同一商品名下所有供货行都捞出来，
+             想挑"红色 L 码"那条就只能靠规格文本收窄 -->
+        <if test="keyword != null and keyword != ''">
+            AND (r.product_name LIKE CONCAT('%', #{keyword}, '%')
+            OR p.product_code LIKE CONCAT('%', #{keyword}, '%')
+            OR sk.spec_text LIKE CONCAT('%', #{keyword}, '%')
+            OR r.supply_code LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <!-- LIMIT 卡的是候选行数，现在一行是一个规格，所以同一商品可能连着占好几行 ——
+             下拉本来就要逐行选规格，这个条数口径不用改回按商品去重 -->
+        ORDER BY r.id DESC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopStoreMapper">
+
+    <!-- 公共查询列：表加了列只改这一处（别名固定是 s，和下面的 FROM 对应） -->
+    <sql id="storeColumns">
+        s.id,
+        s.store_code,
+        s.store_name,
+        s.store_type,
+        s.brand_id,
+        s.contact_name,
+        s.contact_phone,
+        s.area_code,
+        s.area_zh,
+        s.address,
+        s.longitude,
+        s.latitude,
+        s.business_hours,
+        s.business_status,
+        s.is_delivery,
+        s.delivery_radius,
+        s.min_delivery_amount,
+        s.logo,
+        s.cover_images,
+        s.manager_id,
+        s.user_id,
+        <!-- 来源招商那两列要在列表行里带回去：门店列表那颗「招商信息」按钮按 row.investmentId 决定给不给看 -->
+        s.investment_id,
+        s.investment_no,
+        s.create_by,
+        s.update_by,
+        s.sort,
+        s.status,
+        s.create_time,
+        s.update_time
+    </sql>
+
+    <!-- 自定义 SQL 不走全局逻辑删除，is_deleted = 0 必须手写 -->
+    <select id="selectStorePage" resultType="com.shop.entity.ShopStore">
+        SELECT
+            <include refid="storeColumns"/>
+        FROM shop_store s
+        <where>
+            s.is_deleted = 0
+            <if test="q.storeType != null">
+                AND s.store_type = #{q.storeType}
+            </if>
+            <if test="q.businessStatus != null">
+                AND s.business_status = #{q.businessStatus}
+            </if>
+            <if test="q.status != null">
+                AND s.status = #{q.status}
+            </if>
+            <!-- 数据范围（账号类型=门店）：服务层要收窄时强制置成当前用户ID，其它类型置空。这里只认字段、不认角色。
+                 自己建的或自己当店长都算自己的店；括号不能省，否则 OR 会把上面的筛选一起放行 -->
+            <if test="q.currentUserId != null">
+                AND (s.user_id = #{q.currentUserId} OR s.manager_id = #{q.currentUserId})
+            </if>
+            <!-- 一个输入框搜名称和编码，括号内 OR 不会串到上面的筛选 -->
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (s.store_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR s.store_code LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+        </where>
+        <!-- 启用在前（status：1启用 0禁用），同状态内仍按 sort、id -->
+        ORDER BY s.status DESC, s.sort ASC, s.id DESC
+    </select>
+
+</mapper>

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopDeliveryFeeRuleMapper">
+
+    <!-- 公共查询列：表加了列只改这一处（别名固定是 r，和下面的 FROM 对应） -->
+    <sql id="ruleColumns">
+        r.id,
+        r.rule_name,
+        r.delivery_type,
+        r.base_fee,
+        r.base_distance,
+        r.per_km_fee,
+        r.weight_free,
+        r.per_kg_fee,
+        r.peak_fee,
+        r.peak_start,
+        r.peak_end,
+        r.night_fee,
+        r.night_start,
+        r.night_end,
+        r.weather_fee,
+        r.free_delivery_amount,
+        r.free_delivery_distance,
+        r.priority,
+        r.status,
+        r.user_id,
+        r.create_by,
+        r.update_by,
+        r.create_time,
+        r.update_time
+    </sql>
+
+    <!-- 自定义 SQL 不走全局逻辑删除，is_deleted = 0 必须手写 -->
+    <select id="selectRulePage" resultType="com.shop.entity.ShopDeliveryFeeRule">
+        SELECT
+            <include refid="ruleColumns"/>
+        FROM shop_delivery_fee_rule r
+        <where>
+            r.is_deleted = 0
+            <if test="q.keyword != null and q.keyword != ''">
+                AND r.rule_name LIKE CONCAT('%', #{q.keyword}, '%')
+            </if>
+            <if test="q.deliveryType != null">
+                AND r.delivery_type = #{q.deliveryType}
+            </if>
+            <if test="q.status != null">
+                AND r.status = #{q.status}
+            </if>
+        </where>
+        <!-- 启用在前（status：1启用 0禁用），同状态内优先级大的在前，和 selectTopRule 一个口径 -->
+        ORDER BY r.status DESC, r.priority DESC, r.id DESC
+    </select>
+
+    <!-- 下单建配送单取规则：一个配送类型只认一条，所以 LIMIT 1。
+         同优先级按 id 升序（先建的赢），和列表那句"最新的在上面"相反是有意的 ——
+         计价要稳定，别让后建的那条悄悄把先建的那条顶掉。 -->
+    <select id="selectTopRule" resultType="com.shop.entity.ShopDeliveryFeeRule">
+        SELECT
+            <include refid="ruleColumns"/>
+        FROM shop_delivery_fee_rule r
+        WHERE r.is_deleted = 0
+          AND r.status = 1
+          AND r.delivery_type = #{deliveryType}
+        ORDER BY r.priority DESC, r.id ASC
+        LIMIT 1
+    </select>
+
+</mapper>

@@ -105,6 +105,19 @@ export function getUserProfileApi() {
   })
 }
 
+/**
+ * 改自己的基本信息（后台「个人信息」那一页）
+ * 和下面 updateUserProfileApi 的区别：这一条服务端把 id 钉成登录 id、只认白名单里的几格，
+ * 所以不用给账号勾 sys:user:update 也能用（那一条是整行实体直接落库，权限必须压着）
+ */
+export function updateMyProfileApi(data: any) {
+  return request({
+    url: '/sys/user/myProfile',
+    method: 'put',
+    data: data
+  })
+}
+
 // 修改用户个人信息
 export function updateUserProfileApi(data: any) {
   return request({

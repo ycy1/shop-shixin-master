@@ -4,12 +4,7 @@
     <div class="search-wrapper">
       <el-form ref="queryFormRef" :model="queryParams" :inline="true" class="search-form">
         <el-form-item label="关键字" prop="keyword">
-          <el-input
-            v-model="queryParams.keyword"
-            placeholder="请输入用户名/昵称/账号"
-            clearable
-            @keyup.enter="handleQuery"
-          />
+          <el-input v-model="queryParams.keyword" placeholder="请输入用户名/昵称/账号" clearable @keyup.enter="handleQuery" />
         </el-form-item>
         <el-form-item label="登录方式" prop="loginType">
           <el-select v-model="queryParams.loginType" placeholder="请选择登录方式" clearable>
@@ -17,16 +12,18 @@
           </el-select>
         </el-form-item>
         <el-form-item label="所属部门">
-          <DeptSelect
-            v-model="queryParams.deptIds"
-            placeholder="请选择所属部门"
-            style="width: 220px"
-          />
+          <DeptSelect v-model="queryParams.deptIds" placeholder="请选择所属部门" style="width: 220px" />
         </el-form-item>
         <el-form-item label="状态" prop="status">
           <el-select v-model="queryParams.status" placeholder="请选择状态" clearable>
             <el-option label="启用" value="1" />
             <el-option label="禁用" value="0" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="账号类型" prop="accountType">
+          <el-select v-model="queryParams.accountType" placeholder="请选择账号类型" clearable>
+            <el-option v-for="item in dict.options('account_type')" :key="item.value" :label="item.label"
+              :value="item.value" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -41,67 +38,46 @@
       <template #header>
         <div class="card-header">
           <ButtonGroup>
-            <el-button
-              v-permission="['sys:user:add']"
-              type="primary"
-              icon="Plus"
-              @click="handleAdd"
-            >新增</el-button>
-            <el-button
-             v-permission="['sys:user:delete']"
-              type="danger"
-              icon="Delete"
-              :disabled="selectedIds.length === 0"
-              @click="handleBatchDelete"
-            >批量删除</el-button>
-            <el-button
-              type="success"
-              icon="Upload"
-              v-permission="['sys:user:import']"
-              @click="openImportDialog"
-            >导入</el-button>
-            <el-button
-              type="warning"
-              icon="Download"
-              v-permission="['sys:user:export']"
-              :loading="exportLoading"
-              @click="handleExport"
-            >导出</el-button>
+            <el-button v-permission="['sys:user:add']" type="primary" icon="Plus" @click="handleAdd">新增</el-button>
+            <el-button v-permission="['sys:user:delete']" type="danger" icon="Delete"
+              :disabled="selectedIds.length === 0" @click="handleBatchDelete">批量删除</el-button>
+            <el-button type="success" icon="Upload" v-permission="['sys:user:import']"
+              @click="openImportDialog">导入</el-button>
+            <el-button type="warning" icon="Download" v-permission="['sys:user:export']" :loading="exportLoading"
+              @click="handleExport">导出</el-button>
           </ButtonGroup>
         </div>
       </template>
 
       <!-- 数据表格 -->
-      <el-table
-        v-loading="loading"
-        :data="userList"
-        style="width: 100%"
-        @selection-change="handleSelectionChange"
-      >
-        <el-table-column type="selection"  width="55" align="center" />
-        <el-table-column label="头像"  prop="avatar" align="center">
+      <el-table v-loading="loading" :data="userList" style="width: 100%" @selection-change="handleSelectionChange">
+        <el-table-column type="selection" width="55" align="center" />
+        <el-table-column label="头像" prop="avatar" align="center">
           <template #default="{ row }">
             <el-image :src="row.avatar" style="width: 40px; height: 40px; border-radius: 5px;" />
           </template>
         </el-table-column>
         <el-table-column label="二维码" prop="qrImg" align="center" width="90">
           <template #default="{ row }">
-            <el-image
-              v-if="row.qrImg"
-              :src="row.qrImg"
-              style="width: 40px; height: 40px; border-radius: 4px;"
-              :preview-src-list="[row.qrImg]"
-              preview-teleported
-            />
+            <el-image v-if="row.qrImg" :src="row.qrImg" style="width: 40px; height: 40px; border-radius: 4px;"
+              :preview-src-list="[row.qrImg]" preview-teleported />
             <span v-else>-</span>
           </template>
         </el-table-column>
+        <el-table-column label="账号" align="center" prop="username" show-overflow-tooltip />
         <el-table-column label="昵称" align="center" prop="nickname" show-overflow-tooltip />
-        <el-table-column label="登录方式" align="center" prop="ipLocation" >
+        <el-table-column label="账号类型" align="center" prop="accountType" width="110">
+          <template #default="{ row }">
+            <el-tag :type="dict.tag('account_type', row.accountType)">
+              {{ dict.label('account_type', row.accountType) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="登录方式" align="center" prop="ipLocation">
           <template #default="{ row }">
             <span v-for="item in loginTypes">
-                <el-tag :type="item.style" v-if="row.loginType === item.value">
-                  {{ item.label}}
+              <el-tag :type="item.style" v-if="row.loginType === item.value">
+                {{ item.label }}
               </el-tag>
             </span>
           </template>
@@ -113,11 +89,6 @@
         </el-table-column>
         <!-- <el-table-column label="登录IP" align="center" prop="ip" show-overflow-tooltip /> -->
         <!-- <el-table-column label="登录地址" align="center" prop="ipLocation" show-overflow-tooltip /> -->
-        <el-table-column label="地址" width="150" align="center" prop="areaCode" show-overflow-tooltip>
-          <template #default="{ row }">
-            <span>{{ row.areaZh || resolveAreaCode(row.areaCode) || '-' }}</span>
-          </template>
-        </el-table-column>
         <el-table-column label="状态" align="center" width="80">
           <template #default="{ row }">
             <el-tag :type="row.status === 1 ? 'success' : 'danger'">
@@ -133,91 +104,61 @@
         <!-- <el-table-column label="创建时间" align="center" prop="createTime" width="160" /> -->
         <el-table-column label="操作" align="center" width="280" fixed="right">
           <template #default="scope">
-            <TableMoreActions
-              :actions="[
-                {
-                  label: '修改',
-                  icon: 'Edit',
-                  disabled: !hasPermission('sys:user:update'),
-                  command: { type: 'edit', row: scope.row }
-                },
-                {
-                  label: '二维码',
-                  type: 'warning',
-                  icon: 'Link',
-                  disabled: !hasPermission('sys:user:update'),
-                  command: { type: 'qr', row: scope.row }
-                },
-                {
-                  label: '重置密码',
-                  type: 'info',
-                  icon: 'Key',
-                  disabled: !hasPermission('sys:user:reset'),
-                  command: { type: 'resetPwd', row: scope.row }
-                },
-                {
-                  label: '删除',
-                  type: 'danger',
-                  icon: 'Delete',
-                  disabled: !hasPermission('sys:user:delete'),
-                  command: { type: 'delete', row: scope.row }
-                }
-              ]"
-              @command="handleActionCommand"
-            />
+            <TableMoreActions :actions="[
+              {
+                label: '修改',
+                icon: 'Edit',
+                hidden: !hasPermission('sys:user:update'),
+                command: { type: 'edit', row: scope.row }
+              },
+              {
+                label: '二维码',
+                type: 'warning',
+                icon: 'Link',
+                hidden: !hasPermission('sys:user:update'),
+                command: { type: 'qr', row: scope.row }
+              },
+              {
+                label: '重置密码',
+                type: 'info',
+                icon: 'Key',
+                hidden: !hasPermission('sys:user:reset'),
+                command: { type: 'resetPwd', row: scope.row }
+              },
+              {
+                label: '删除',
+                type: 'danger',
+                icon: 'Delete',
+                hidden: !hasPermission('sys:user:delete'),
+                command: { type: 'delete', row: scope.row }
+              }
+            ]" @command="handleActionCommand" />
           </template>
         </el-table-column>
       </el-table>
 
       <!-- 分页组件 -->
       <div class="pagination-container">
-        <el-pagination
-          v-model:current-page="queryParams.pageNum"
-          v-model:page-size="queryParams.pageSize"
-          :page-sizes="[10, 20, 30, 50]"
-          :total="total"
-          :background="true"
-          layout="total, sizes, prev, pager, next, jumper"
-          @size-change="handleSizeChange"
-          @current-change="handleCurrentChange"
-        />
+        <el-pagination v-model:current-page="queryParams.pageNum" v-model:page-size="queryParams.pageSize"
+          :page-sizes="[10, 20, 30, 50]" :total="total" :background="true"
+          layout="total, sizes, prev, pager, next, jumper" @size-change="handleSizeChange"
+          @current-change="handleCurrentChange" />
       </div>
     </el-card>
 
     <!-- 添加或修改用户对话框 -->
-    <el-dialog
-      :title="dialog.title"
-      v-model="dialog.visible"
-      width="600px"
-      append-to-body
-      destroy-on-close
-      class="custom-dialog"
-    >
-      <el-form
-        ref="userFormRef"
-        :model="userForm"
-        :rules="rules"
-        label-width="80px"
-        class="custom-form"
-      >
+    <el-dialog :title="dialog.title" v-model="dialog.visible" width="600px" append-to-body destroy-on-close
+      class="custom-dialog">
+      <el-form ref="userFormRef" :model="userForm" :rules="rules" label-width="80px" class="custom-form">
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="用户名" prop="username">
-              <el-input 
-                v-model="userForm.username" 
-                placeholder="请输入用户名" 
-                :disabled="dialog.type === 'edit'"
-                clearable
-              />
+              <el-input v-model="userForm.username" placeholder="请输入用户名" clearable />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="昵称" prop="nickname">
-              <el-input 
-                v-model="userForm.nickname" 
-                placeholder="请输入昵称"
-                clearable 
-              />
+              <el-input v-model="userForm.nickname" placeholder="请输入昵称" clearable />
             </el-form-item>
           </el-col>
         </el-row>
@@ -225,20 +166,12 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="手机号" prop="mobile">
-              <el-input 
-                v-model="userForm.mobile" 
-                placeholder="请输入手机号"
-                clearable 
-              />
+              <el-input v-model="userForm.mobile" placeholder="请输入手机号" clearable />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="邮箱" prop="email">
-              <el-input 
-                v-model="userForm.email" 
-                placeholder="请输入邮箱"
-                clearable 
-              />
+              <el-input v-model="userForm.email" placeholder="请输入邮箱" clearable />
             </el-form-item>
           </el-col>
         </el-row>
@@ -255,33 +188,22 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="密码" prop="password" v-if="dialog.type === 'add'">
-              <el-input 
-                v-model="userForm.password" 
-                type="password" 
-                placeholder="请输入密码"
-                show-password
-                clearable
-              />
+              <el-input v-model="userForm.password" type="password" placeholder="请输入密码" show-password clearable />
             </el-form-item>
           </el-col>
         </el-row>
 
+        <el-form-item label="账号类型" prop="accountType">
+          <el-select v-model="userForm.accountType" placeholder="请选择账号类型" style="width: 100%">
+            <el-option v-for="item in dict.options('account_type')" :key="item.value" :label="item.label"
+              :value="item.value" />
+          </el-select>
+        </el-form-item>
+
         <el-form-item label="角色" prop="roleIds">
-          <el-select
-            v-model="userForm.roleIds"
-            multiple
-            placeholder="请选择角色"
-            style="width: 100%"
-            :disabled="userForm.username === 'admin'"
-            clearable
-      
-          >
-            <el-option
-              v-for="role in roleOptions"
-              :key="role.id"
-              :label="role.name"
-              :value="role.id"
-            />
+          <el-select v-model="userForm.roleIds" multiple placeholder="请选择角色" style="width: 100%"
+            :disabled="userForm.username === 'admin'" clearable>
+            <el-option v-for="role in roleOptions" :key="role.id" :label="role.name" :value="role.id" />
           </el-select>
         </el-form-item>
 
@@ -290,14 +212,32 @@
         </el-form-item>
 
         <el-form-item label="地址" prop="areaCode">
-          <el-cascader
-            v-model="areaCodeArr"
-            :options="colPickerData"
-            :props="{ label: 'text', value: 'value', children: 'children' }"
-            style="width: 100%"
-            clearable
-            placeholder="请选择所在地区"
-          />
+          <el-cascader v-model="areaCodeArr" :options="colPickerData"
+            :props="{ label: 'text', value: 'value', children: 'children' }" style="width: 100%" clearable
+            placeholder="请选择所在地区" />
+        </el-form-item>
+        <el-row :gutter="20">
+          <el-col :span="18">
+            <el-form-item label="经纬度" prop="longitude">
+              <div class="pair-field">
+                <el-input-number v-model="userForm.longitude" :precision="6" :controls="false"
+                  placeholder="经度 如 120.150000" style="width: 100%" />
+                <span class="pair-split">-</span>
+                <el-input-number v-model="userForm.latitude" :precision="6" :controls="false"
+                  placeholder="纬度 如 30.250000" style="width: 100%" />
+              </div>
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <!-- 这一格只有 6 格宽，不取消 label 按钮就顶出去了（同供应商/仓库管理） -->
+            <el-form-item label-width="0">
+              <shop-map :longitude="userForm.longitude" :latitude="userForm.latitude"
+                @confirm="handleLocationConfirm" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-form-item label="详细地址" prop="address">
+          <el-input v-model="userForm.address" placeholder="选填，街道、门牌号" maxlength="255" />
         </el-form-item>
         <el-form-item label="状态">
           <el-radio-group v-model="userForm.status">
@@ -316,37 +256,15 @@
     </el-dialog>
 
     <!-- 添加重置密码弹窗 -->
-    <el-dialog
-      title="重置密码"
-      v-model="resetPwdDialog.visible"
-      width="500px"
-      append-to-body
-      destroy-on-close
-      class="custom-dialog"
-    >
-      <el-form
-        ref="resetPwdFormRef"
-        :model="resetPwdForm"
-        :rules="resetPwdRules"
-        label-width="100px"
-      >
+    <el-dialog title="重置密码" v-model="resetPwdDialog.visible" width="500px" append-to-body destroy-on-close
+      class="custom-dialog">
+      <el-form ref="resetPwdFormRef" :model="resetPwdForm" :rules="resetPwdRules" label-width="100px">
         <el-form-item label="新密码" prop="password">
-          <el-input
-            v-model="resetPwdForm.password"
-            type="password"
-            placeholder="请输入新密码"
-            show-password
-            clearable
-          />
+          <el-input v-model="resetPwdForm.password" type="password" placeholder="请输入新密码" show-password clearable />
         </el-form-item>
         <el-form-item label="确认密码" prop="confirmPassword">
-          <el-input
-            v-model="resetPwdForm.confirmPassword"
-            type="password"
-            placeholder="请再次输入新密码"
-            show-password
-            clearable
-          />
+          <el-input v-model="resetPwdForm.confirmPassword" type="password" placeholder="请再次输入新密码" show-password
+            clearable />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -358,20 +276,10 @@
     </el-dialog>
 
     <!-- 二维码弹窗 -->
-    <el-dialog
-      title="用户二维码"
-      v-model="qrDialog.visible"
-      width="360px"
-      append-to-body
-      destroy-on-close
-    >
+    <el-dialog title="用户二维码" v-model="qrDialog.visible" width="360px" append-to-body destroy-on-close>
       <div style="text-align: center;">
-        <el-image
-          v-if="qrDialog.url"
-          :src="qrDialog.url"
-          style="width: 240px; height: 240px; border: 1px solid #eee; border-radius: 8px;"
-          fit="contain"
-        />
+        <el-image v-if="qrDialog.url" :src="qrDialog.url"
+          style="width: 240px; height: 240px; border: 1px solid #eee; border-radius: 8px;" fit="contain" />
         <el-empty v-else description="正在生成…" :image-size="60" />
         <p v-if="qrDialog.nickname" style="color: #666; margin-top: 8px;">{{ qrDialog.nickname }}</p>
       </div>
@@ -384,25 +292,10 @@
     </el-dialog>
 
     <!-- 导入用户弹窗 -->
-    <el-dialog
-      title="导入用户"
-      v-model="importDialog.visible"
-      width="480px"
-      append-to-body
-      destroy-on-close
-      class="custom-dialog"
-      @closed="resetImport"
-    >
-      <el-upload
-        ref="importUploadRef"
-        drag
-        :auto-upload="false"
-        :limit="1"
-        accept=".xlsx,.xls"
-        :on-change="handleFileChange"
-        :on-remove="handleFileRemove"
-        :on-exceed="handleExceed"
-      >
+    <el-dialog title="导入用户" v-model="importDialog.visible" width="480px" append-to-body destroy-on-close
+      class="custom-dialog" @closed="resetImport">
+      <el-upload ref="importUploadRef" drag :auto-upload="false" :limit="1" accept=".xlsx,.xls"
+        :on-change="handleFileChange" :on-remove="handleFileRemove" :on-exceed="handleExceed">
         <el-icon class="el-icon--upload"><upload-filled /></el-icon>
         <div class="el-upload__text">将文件拖到此处，或<em>点击选择文件</em></div>
         <template #tip>
@@ -414,7 +307,8 @@
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="importDialog.visible = false">取 消</el-button>
-          <el-button type="primary" :loading="importLoading" :disabled="!importFile" @click="submitImport">开始导入</el-button>
+          <el-button type="primary" :loading="importLoading" :disabled="!importFile"
+            @click="submitImport">开始导入</el-button>
         </div>
       </template>
     </el-dialog>
@@ -440,8 +334,10 @@ import { getDictDataByDictTypesApi } from '@/api/system/dict'
 import ButtonGroup from '@/components/ButtonGroup/index.vue'
 import TableMoreActions from '@/components/TableMoreActions/index.vue'
 import DeptSelect from '@/components/DeptSelect/index.vue'
+import ShopMap from '@/components/ShopMap/index.vue'
 import { useUserStore } from '@/store/modules/user'
 import validate from '@/utils/validate'
+import { useDict } from '@/utils/dictCache'
 
 const userStore = useUserStore()
 const permissions = computed(() => userStore.user.permissions || [])
@@ -458,6 +354,7 @@ const queryParams = reactive({
   keyword: '',
   status: '',
   loginType: '',
+  accountType: undefined as number | undefined,
   deptIds: [] as number[]
 })
 
@@ -495,8 +392,12 @@ const userForm = reactive({
   email: '',
   areaCode: '',
   areaZh: '',
+  longitude: undefined as number | undefined,
+  latitude: undefined as number | undefined,
+  address: '',
   sex: 0,
   status: 1,
+  accountType: 0,
   ip: undefined,
   ipLocation: undefined,
   lastLoginTime: undefined,
@@ -525,15 +426,17 @@ const rules = reactive<FormRules>({
     { type: 'email', message: '请输入正确的邮箱地址', trigger: 'blur' }
   ],
   roleIds: [
-    { required: true, message: '请选择角色', trigger: 'change',validator: (rule, value, callback) => {
-      if (userForm.username === 'admin') {
-        callback()
-      } else if (value.length === 0) {
-        callback(new Error('请选择角色'))
-      } else {
-        callback()
+    {
+      required: true, message: '请选择角色', trigger: 'change', validator: (rule, value, callback) => {
+        if (userForm.username === 'admin') {
+          callback()
+        } else if (value.length === 0) {
+          callback(new Error('请选择角色'))
+        } else {
+          callback()
+        }
       }
-    } }
+    }
   ],
   sex: [
     { required: true, message: '请选择性别', trigger: 'change' }
@@ -586,6 +489,9 @@ const qrDialog = reactive({
 
 const loginTypes = ref<any>([])
 
+// 账号类型：枚举值一律走字典，不在页面写死文案
+const dict = useDict('account_type')
+
 // 导入用户
 const importDialog = reactive({ visible: false })
 const importUploadRef = ref<any>()
@@ -619,7 +525,7 @@ const handleSelectionChange = (selection: any[]) => {
 // 批量删除
 const handleBatchDelete = () => {
   if (selectedIds.value.length === 0) return
-  
+
   ElMessageBox.confirm('是否确认批量删除选中的用户?', '警告', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
@@ -661,12 +567,16 @@ const handleAdd = () => {
   userForm.email = ''
   userForm.sex = 0
   userForm.status = 1
+  userForm.accountType = 0
   userForm.ip = undefined
   userForm.ipLocation = undefined
   userForm.lastLoginTime = undefined
   userForm.createTime = undefined
   userForm.areaCode = ''
   userForm.areaZh = ''
+  userForm.longitude = undefined
+  userForm.latitude = undefined
+  userForm.address = ''
   userForm.roleIds = []
   userForm.deptIds = []
   areaCodeArr.value = []
@@ -675,11 +585,16 @@ const handleAdd = () => {
 // 修改用户
 const handleUpdate = (row: any) => {
   Object.assign(userForm, row)
-  if(row.roles?.length > 0) {
-    userForm.roleIds  = row.roles[0].split(',').map((item: string) => parseInt(item))
+  if (row.roles?.length > 0) {
+    userForm.roleIds = row.roles[0].split(',').map((item: string) => parseInt(item))
   }
   userForm.deptIds = row.deptIds || []
   userForm.password = null
+  // SysUser 上是 @JsonInclude(NON_NULL)：没填过的用户返回体里根本没有这几个 key，
+  // Object.assign 顶不掉上一次弹窗里的值，地图会拿旧坐标回显、保存就写错了人
+  userForm.longitude = row.longitude ?? undefined
+  userForm.latitude = row.latitude ?? undefined
+  userForm.address = row.address ?? ''
   areaCodeArr.value = (row.areaCode || '').split(',').filter(Boolean)
   dialog.type = 'edit'
   dialog.title = '修改用户'
@@ -687,17 +602,25 @@ const handleUpdate = (row: any) => {
 
 }
 
+// 地图选点确认：坐标收进列精度；换了点位老地址就对不上，解析出地址就一起改掉（同仓库/供应商管理）
+const handleLocationConfirm = (point: any) => {
+  userForm.longitude = Number(Number(point.longitude).toFixed(6))
+  userForm.latitude = Number(Number(point.latitude).toFixed(6))
+  // 逆地理没回来（resolving）或失败时 address 是空串，别把用户已经手填的详细地址抹掉
+  if (point.address) userForm.address = point.address
+}
+
 // 提交表单
 const submitForm = async () => {
   if (!userFormRef.value) return
-  
+
   await userFormRef.value.validate(async (valid) => {
     if (valid) {
       submitLoading.value = true
       try {
         userForm.areaCode = areaCodeArr.value.join(',')
         userForm.areaZh = resolveAreaCode(userForm.areaCode)
-        const data = {user: userForm, roleIds: userForm.roleIds, deptIds: userForm.deptIds}
+        const data = { user: userForm, roleIds: userForm.roleIds, deptIds: userForm.deptIds }
         if (dialog.type === 'add') {
           await createUserApi(data)
           ElMessage.success('新增成功')
@@ -793,7 +716,7 @@ const regenerateQr = async () => {
 // 提交重置密码
 const submitResetPwd = async () => {
   if (!resetPwdFormRef.value) return
-  
+
   await resetPwdFormRef.value.validate(async (valid) => {
     if (valid) {
       submitLoading.value = true
@@ -955,5 +878,29 @@ onMounted(() => {
   :deep(.el-form-item .user-select) {
     width: 100% !important;
   }
+}
+
+/* 经纬度拆成两格：两个输入等分整行，中间夹一个分隔符（同供应商/仓库管理）。
+   el-input-number 上写死的 width:100% 会被 flex-basis 0 顶掉，正好让两格等宽 */
+.pair-field {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+
+  :deep(.el-select),
+  :deep(.el-input-number) {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+/* 分隔符不参与伸缩，高度对齐输入框、文字居中，颜色压到占位符一档免得抢输入框 */
+.pair-split {
+  flex: 0 0 auto;
+  height: var(--el-component-size, 32px);
+  line-height: var(--el-component-size, 32px);
+  text-align: center;
+  color: var(--el-text-color-placeholder);
+  user-select: none;
 }
 </style>

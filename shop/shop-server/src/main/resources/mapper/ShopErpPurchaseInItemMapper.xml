@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopErpPurchaseInItemMapper">
+
+    <!-- 明细只跟着单走：一单的明细最多几十行，不分页。
+         名称/编码要两跳才够得着：明细行上只有 sku_id，所属商品挂在 shop_product_sku 那一行，
+         所以每条查询都是先联 sk 再联 pr（口径同库存列表） -->
+    <sql id="itemColumns">
+        i.id,
+        i.receipt_id,
+        i.sku_id,
+        i.quantity,
+        i.received_quantity,
+        i.price,
+        i.amount,
+        pr.product_name AS productName,
+        pr.product_code AS productCode,
+        sk.spec_text AS specText
+    </sql>
+
+    <select id="selectItemsByReceiptId" resultType="com.shop.entity.ShopErpPurchaseInItem">
+        SELECT
+            <include refid="itemColumns"/>
+        FROM shop_erp_purchase_in_item i
+                 LEFT JOIN shop_product_sku sk ON sk.id = i.sku_id AND sk.is_deleted = 0
+                 LEFT JOIN shop_product pr ON pr.id = sk.product_id AND pr.is_deleted = 0
+        WHERE i.receipt_id = #{receiptId}
+          AND i.is_deleted = 0
+        ORDER BY i.id ASC
+    </select>
+
+    <!-- 一次捞几张单的明细，按 receipt_id + 行序排好，调用方顺序分组即可（采购单页那个「入库单」弹窗） -->
+    <select id="selectItemsByReceiptIds" resultType="com.shop.entity.ShopErpPurchaseInItem">
+        SELECT
+            <include refid="itemColumns"/>
+        FROM shop_erp_purchase_in_item i
+                 LEFT JOIN shop_product_sku sk ON sk.id = i.sku_id AND sk.is_deleted = 0
+                 LEFT JOIN shop_product pr ON pr.id = sk.product_id AND pr.is_deleted = 0
+        WHERE i.receipt_id IN
+        <foreach collection="receiptIds" item="receiptId" open="(" separator="," close=")">
+            #{receiptId}
+        </foreach>
+          AND i.is_deleted = 0
+        ORDER BY i.receipt_id ASC, i.id ASC
+    </select>
+
+</mapper>

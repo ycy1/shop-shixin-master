@@ -1,0 +1,48 @@
+<!--
+  一条招商线索 = 一页（见 utils/print.ts 的 printInvestments）。
+  {{...}} 里的值都由 print.ts 转过义再填，模板这边只管摆格子。
+  字段取自 shop_store_investment，"登记门店"是打印入口那边塞进来的（门店列表里点打印时才有，
+  从招商列表打就留空），和签约文件那行一样都属于"给人看的上下文"，不是库里的列。
+-->
+<section class="sheet">
+  <h1>门店招商信息登记</h1>
+  <table class="head">
+    <tr>
+      <th>招商编号</th><td>{{investmentNo}}</td>
+      <th>登记门店</th><td>{{storeName}}</td>
+    </tr>
+    <tr>
+      <th>申请人</th><td>{{applicantName}}</td>
+      <th>联系电话</th><td>{{applicantPhone}}</td>
+    </tr>
+    <tr>
+      <th>负责专员</th><td>{{userName}}</td>
+      <th>状态</th><td>{{status}}</td>
+    </tr>
+    <tr>
+      <th>意向类型</th><td>{{intentType}}</td>
+      <th>线索来源</th><td>{{source}}</td>
+    </tr>
+    <tr>
+      <th>投资预算</th><td>{{budgetAmount}}</td>
+      <th>行业经验</th><td>{{hasExperience}}</td>
+    </tr>
+    <tr>
+      <th>签约时间</th><td>{{signTime}}</td>
+      <th>过期时间</th><td>{{expiryTime}}</td>
+    </tr>
+    <tr>
+      <th>意向地址</th><td colspan="3">{{area}}</td>
+    </tr>
+    <tr>
+      <th>签约文件</th><td colspan="3">{{contractFile}}</td>
+    </tr>
+    <tr>
+      <th>备注</th><td colspan="3">{{remark}}</td>
+    </tr>
+    <tr>
+      <th>登记时间</th><td>{{createTime}}</td>
+      <th>打印时间</th><td>{{printTime}}</td>
+    </tr>
+  </table>
+</section>

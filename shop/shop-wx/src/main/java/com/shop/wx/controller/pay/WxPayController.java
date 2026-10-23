@@ -2,7 +2,7 @@ package com.shop.wx.controller.pay;
 
 import com.google.gson.Gson;
 import com.shop.common.Result;
-import com.shop.entity.SysOrder;
+import com.shop.dto.order.ShopOrderCreateDto;
 import com.shop.wx.service.WxPayService;
 import com.shop.wx.utils.HttpUtils;
 import com.shop.wx.utils.WechatPay2ValidatorForRequest;
@@ -32,8 +32,8 @@ public class WxPayController {
 
     @ApiOperation("jsapi下单")
     @RequestMapping("/jsapi/createOrder")
-    public Result PayNative(@RequestBody SysOrder order) throws Exception{
-        return Result.success(wxPayService.jsapiPay(order));
+    public Result PayNative(@RequestBody ShopOrderCreateDto form) throws Exception{
+        return Result.success(wxPayService.jsapiPay(form));
     }
 
 

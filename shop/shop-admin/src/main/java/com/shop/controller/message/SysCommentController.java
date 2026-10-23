@@ -31,7 +31,7 @@ public class SysCommentController {
     @ApiOperation(value = "删除评论")
     @SaCheckPermission("sys:comment:delete")
     public Result<Void> delete(@PathVariable List<Integer> ids) {
-        sysCommentService.removeBatchByIds(ids);
+        sysCommentService.removeWithChildren(ids);
         return Result.success();
     }
 

@@ -216,6 +216,46 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         baseMapper.updateById(user);
     }
 
+    /**
+     * 改自己名下的基本信息（后台「消费者管理 → 个人信息」那一页的「修改」）
+     *
+     * 和上面那条 updateProfile 的分别是**这一条逐格搬、id 钉死登录 id**：它不压 sys:user:update
+     *（每个账号都得能改自己的昵称），所以拿 SysUser 整个实体当入参时不能原样 updateById ——
+     * 请求体里塞一个 accountType=0 就能把自己提成平台用户、status 一填就能把自己停用，
+     * 而列表那些读接口是按账号类型分数据范围的 —— 这一层就白分了。
+     * 搬过去的只有这几格：昵称 / 手机号 / 邮箱 / 性别 / 头像 / 所在地区 / 详细地址 / 经纬度 / 个性签名。
+     *
+     * 手机号只验形状不查重（用户管理那一路改手机号也不查重，两条口径一致）。
+     * 空值不写：全局 field-strategy=not_empty（SysUser 上经纬度那两列的注释交代过这个脾气），
+     * 所以这几格能改不能清空 —— 和右上角「个人中心」那一路同一个表现。
+     */
+    @Override
+    public void updateMyProfile(SysUser form) {
+        if (form == null) {
+            throw new ServiceException("没有要修改的内容");
+        }
+        if (StringUtils.isBlank(form.getNickname())) {
+            throw new ServiceException("昵称不能为空");
+        }
+        if (StringUtils.isNotBlank(form.getMobile()) && !form.getMobile().matches("1[3-9]\\d{9}")) {
+            throw new ServiceException("手机号格式不正确");
+        }
+        SysUser user = new SysUser();
+        user.setId(StpUtil.getLoginIdAsInt());
+        user.setNickname(form.getNickname().trim());
+        user.setMobile(form.getMobile());
+        user.setEmail(form.getEmail());
+        user.setSex(form.getSex());
+        user.setAvatar(form.getAvatar());
+        user.setAreaCode(form.getAreaCode());
+        user.setAreaZh(form.getAreaZh());
+        user.setAddress(form.getAddress());
+        user.setLongitude(form.getLongitude());
+        user.setLatitude(form.getLatitude());
+        user.setSignature(form.getSignature());
+        baseMapper.updateById(user);
+    }
+
     @Override
     public Boolean verifyPassword(String password) {
         SysUser user = baseMapper.selectById(StpUtil.getLoginIdAsInt());
@@ -270,12 +310,16 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
             throw new ServiceException("用户不存在");
         }
         try {
-            // 1. 组装二维码纯文本内容并生成 PNG（地址优先用中文，缺失时回退地区编码）
-            String address = StringUtils.isNotBlank(user.getAreaZh()) ? user.getAreaZh() : user.getAreaCode();
+            // 1. 组装二维码纯文本内容并生成 PNG
+            // 地址两段拼一起：地区（优先中文，缺失时回退地区编码）+ 详细地址（街道门牌，地图选点回填的那一列）；
+            // 两段都可能没填，拼完为空就整行留空，别打出 "地址：null"
+            String area = StringUtils.isNotBlank(user.getAreaZh()) ? user.getAreaZh() : user.getAreaCode();
+            String address = (StringUtils.isNotBlank(area) ? area : "")
+                    + (StringUtils.isNotBlank(user.getAddress()) ? user.getAddress() : "");
             String content = "用户名称：" + (user.getNickname() == null ? "" : user.getNickname())
                     + "\n账号：" + (user.getUsername() == null ? "" : user.getUsername())
                     + "\n电话：" + (user.getMobile() == null ? "" : user.getMobile())
-                    + "\n地址：" + (address == null ? "" : address);
+                    + "\n地址：" + address;
             byte[] pngBytes = QrCodeUtils.generatePng(content, 300);
             // 2. 写入临时文件
             File qrFile = File.createTempFile("qr_" + userId + "_", ".png");

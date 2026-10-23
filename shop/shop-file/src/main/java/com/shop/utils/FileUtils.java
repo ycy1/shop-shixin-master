@@ -229,7 +229,6 @@ public class FileUtils {
         if(StringUtils.isEmpty(imageUrl)) return null;
         File tempFile = null;
         try {
-            log.info("图片URL：{}", imageUrl);
             // 1. 创建 URL 对象并打开连接
             URL url = new URL(imageUrl);
             HttpURLConnection connection = (HttpURLConnection) url.openConnection();

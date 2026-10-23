@@ -6,6 +6,7 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import javax.servlet.http.HttpServletRequest;
+import java.util.Collections;
 import java.util.Objects;
 
 public class PageUtil {
@@ -18,6 +19,18 @@ public class PageUtil {
     public static <T> Page<T> getPage() {
         PageQuery query = getPageQuery();
         return new Page<>(query.getPageNum(), query.getPageSize());
+    }
+
+    /**
+     * 空分页：数据范围收窄到"一行都不该看到"时直接返回，省掉一次注定为空的查询，
+     * 也避免拿着空集合去拼 IN () 把条件写失效
+     */
+    public static <T> Page<T> getEmptyPage() {
+        PageQuery query = getPageQuery();
+        Page<T> page = new Page<>(query.getPageNum(), query.getPageSize());
+        page.setRecords(Collections.emptyList());
+        page.setTotal(0);
+        return page;
     }
 
     /**

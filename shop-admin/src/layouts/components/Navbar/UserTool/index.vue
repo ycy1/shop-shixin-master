@@ -35,7 +35,7 @@
           
           <!-- 菜单项 -->
           <div class="menu-items">
-            <div class="menu-item" @click="toGitee">
+            <!-- <div class="menu-item" @click="toGitee">
               <div class="menu-icon">
                 <el-icon><Document /></el-icon>
               </div>
@@ -45,14 +45,14 @@
               </div>
             </div>
             
-            <div class="divider"></div>
+            <div class="divider"></div> -->
             
             <div class="menu-item" @click="toProfile">
               <div class="menu-icon">
                 <el-icon><User /></el-icon>
               </div>
               <div class="menu-content">
-                <span class="menu-title">个人中心</span>
+                <span class="menu-title">账号中心</span>
                 <span class="menu-desc">管理您的账户信息</span>
               </div>
             </div>

@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopErpInventoryMapper">
+
+    <!-- 公共查询列：表加了列只改这一处（别名固定是 i，和下面的 FROM 对应）
+         available_stock 是数据库的生成列，放在最后单独一条 —— 实体上它是 exist=false，
+         只能靠这里显式别名带出来（写成 i.available_stock 也能映射，但看着像是可写列，故意用 AS 形式标出来） -->
+    <sql id="inventoryColumns">
+        i.id,
+        i.sku_id,
+        i.warehouse_id,
+        i.user_id,
+        i.stock,
+        i.locked_stock,
+        i.in_transit_stock,
+        i.safety_stock,
+        i.max_stock,
+        i.stock_warn_enable,
+        i.cost_price,
+        i.version,
+        i.create_by,
+        i.update_by,
+        i.create_time,
+        i.update_time,
+        (i.stock - i.locked_stock) AS availableStock
+    </sql>
+
+    <!-- 商品名/编码、规格文本、仓库名、操作人昵称一律联表现取，不在库存行里冗余快照：改了名不用回头刷库存表。
+         规格文本走 sk 这一跳：库存行的身份是「一个 SKU × 一个仓」，所属商品（SPU）在 SKU 那一行上，
+         所以「按商品筛库存」也是 sk.product_id 等值筛，本表没有商品列 -->
+    <sql id="inventoryJoins">
+        FROM shop_erp_inventory i
+        LEFT JOIN shop_product_sku sk ON sk.id = i.sku_id AND sk.is_deleted = 0
+        LEFT JOIN shop_product pr ON pr.id = sk.product_id AND pr.is_deleted = 0
+        LEFT JOIN shop_erp_warehouse w ON w.id = i.warehouse_id AND w.is_deleted = 0
+        LEFT JOIN sys_user eu ON eu.id = i.user_id
+    </sql>
+
+    <!-- 自定义 SQL 不走全局逻辑删除，i.is_deleted = 0 必须手写 -->
+    <select id="selectInventoryPage" resultType="com.shop.entity.ShopErpInventory">
+        SELECT
+            <include refid="inventoryColumns"/>,
+            pr.product_name AS productName,
+            pr.product_code AS productCode,
+            sk.spec_text AS specText,
+            w.warehouse_name AS warehouseName,
+            eu.nickname AS userName
+        <include refid="inventoryJoins"/>
+        <where>
+            i.is_deleted = 0
+            <!-- 一个输入框搜商品名称、商品编码和仓库名，括号内 OR 不会串到上面的筛选（同供应商） -->
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (pr.product_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR pr.product_code LIKE CONCAT('%', #{q.keyword}, '%')
+                OR w.warehouse_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR sk.spec_text LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+            <if test="q.productId != null">
+                AND sk.product_id = #{q.productId}
+            </if>
+            <if test="q.warehouseId != null">
+                AND i.warehouse_id = #{q.warehouseId}
+            </if>
+            <!-- 那格「只看低于安全库存」：三列都在本行上（安全库存是建行时从 SKU 快照来的），
+                 所以不用再联 SKU 表算一遍， —— 预警看的是总库存。
+                 开了预警开关的行才算数，关掉的行不该出现在预警列表里 -->
+            <if test="q.lowStockOnly != null and q.lowStockOnly">
+                AND i.stock_warn_enable = 1
+                AND i.safety_stock &gt; 0
+                AND i.stock &lt; i.safety_stock
+            </if>
+        </where>
+        <!-- 这张表没有启用/禁用列（不套用 status DESC 那条惯例），新开的行在前就够了 -->
+        ORDER BY i.id DESC
+    </select>
+
+    <select id="selectInventoryById" resultType="com.shop.entity.ShopErpInventory">
+        SELECT
+            <include refid="inventoryColumns"/>,
+            pr.product_name AS productName,
+            pr.product_code AS productCode,
+            sk.spec_text AS specText,
+            w.warehouse_name AS warehouseName,
+            eu.nickname AS userName
+        <include refid="inventoryJoins"/>
+        WHERE i.id = #{id}
+          AND i.is_deleted = 0
+    </select>
+
+    <!-- 入库落库：加库存 + 刷成本价 + 记操作人 + version 自增，一条 UPDATE 走完（口径见 Mapper 接口的注释）。
+         这里刻意不 WHERE version 之外再加 stock 条件：并发保护全靠 version，
+         撞上就返回 0 行，由服务层重读重试，绝不用旧值覆盖别人刚写进去的数 -->
+    <update id="increaseStock">
+        UPDATE shop_erp_inventory
+        SET stock      = stock + #{delta},
+            cost_price = #{costPrice},
+            user_id    = #{userId},
+            update_by  = #{updateBy},
+            version    = version + 1
+        WHERE id = #{id}
+          AND version = #{version}
+          AND is_deleted = 0
+          AND stock + #{delta} &gt;= 0
+    </update>
+
+    <!-- 出库落库：减总库存 + 同时把这一行对应的锁定还掉 + 记操作人 + version 自增，一条 UPDATE 走完
+         （口径见 Mapper 接口的注释：成本价不动，卖货按现有成本价结转）。
+         和 increaseStock 一样刻意不靠"读-改-写"：并发保护全在 WHERE 这三条闸门上，
+         撞上就返回 0 行由服务层重读重试或报错回滚，绝不用旧值覆盖别人刚写进去的数。
+         最后一条是保可用库存不为负的：出的货比还回去的锁定多，多出来的那部分只能从可用量里扣，
+         可用量本来就不够就是调用方算错了（下单锁的那一份没还够），不该让它出成负数 -->
+    <update id="decreaseStock">
+        UPDATE shop_erp_inventory
+        SET stock        = stock - #{delta},
+            locked_stock = locked_stock - #{release},
+            user_id      = #{userId},
+            update_by    = #{updateBy},
+            version      = version + 1
+        WHERE id = #{id}
+          AND version = #{version}
+          AND is_deleted = 0
+          AND stock - #{delta} &gt;= 0
+          AND locked_stock - #{release} &gt;= 0
+          AND stock - locked_stock - #{delta} + #{release} &gt;= 0
+    </update>
+
+    <!-- 就近分仓：候选 = 这条规格在这家仓还够卖（可用库存 >= 本行数量）的启用仓库，
+         按球面距离取最近的一家。ST_Distance_Sphere 返回米，POINT() 的参数顺序是（经度, 纬度）。
+         没坐标的仓排不掉就只能整个丢掉：NULL 参与计算结果是 NULL，ORDER BY 会把它们混在末尾，
+         不如显式 IS NOT NULL，好让"挑不出仓"这件事在服务层报得出来。
+         w.status = 1 这一句管的是仓库状态：禁用（0）、盘点中（2）、调拨中（3）都不该被下单挑中，
+         只有启用中的仓才接生意；下单报错那句「附近的仓都没设经纬度」不包括这一档，
+         仓全被状态筛掉时服务层那句"库存不足/合计几件"会说清楚。
+         自定义 SQL 不走全局逻辑删除，两边的 is_deleted = 0 都手写。 -->
+    <select id="selectNearestWarehouseId" resultType="java.lang.Long">
+        SELECT i.warehouse_id
+        FROM shop_erp_inventory i
+            JOIN shop_erp_warehouse w ON w.id = i.warehouse_id
+                AND w.is_deleted = 0
+                AND w.status = 1
+                AND w.longitude IS NOT NULL
+                AND w.latitude IS NOT NULL
+        WHERE i.is_deleted = 0
+          AND i.sku_id = #{skuId}
+          AND (i.stock - i.locked_stock) &gt;= #{quantity}
+        ORDER BY ST_Distance_Sphere(POINT(w.longitude, w.latitude), POINT(#{longitude}, #{latitude})) ASC,
+                 i.warehouse_id ASC
+        LIMIT 1
+    </select>
+
+    <!-- 按地区分仓：收货地址没录经纬度时才走这一条（上面那条按距离的算不出起点）。
+         候选仓的门槛和上面一样（这条规格在这家仓还够卖 + 启用中），只有两处换了：
+         一是不再要求仓库有坐标 —— 起点本来就没坐标，再卡终点就永远挑不出仓；
+         二是拿收货地址的省/市/区三段行政区划代码去 w.area_code 里 FIND_IN_SET，
+         仓库那两列和地址是同一套口径（"110000,110100,110101" 这种逗号分隔，见 ShopErpWarehouse 的类注释）。
+         三个入参可能是 null（地址只录到省），FIND_IN_SET 遇 NULL 得 NULL、不 > 0，
+         所以那一级自然不参与匹配；三段全空的话整个 WHERE 恒不成立、返回 null 由服务层报错。
+         ORDER BY 那一段 CASE 取最细的一档：对上个区的仓排在只对上个市的仓前面，同档按仓库 id 取先建的。
+         自定义 SQL 不走全局逻辑删除，两边的 is_deleted = 0 都手写。 -->
+    <select id="selectWarehouseIdByArea" resultType="java.lang.Long">
+        SELECT i.warehouse_id
+        FROM shop_erp_inventory i
+            JOIN shop_erp_warehouse w ON w.id = i.warehouse_id
+                AND w.is_deleted = 0
+                AND w.status = 1
+        WHERE i.is_deleted = 0
+          AND i.sku_id = #{skuId}
+          AND (i.stock - i.locked_stock) &gt;= #{quantity}
+          AND (FIND_IN_SET(#{district}, w.area_code) &gt; 0
+            OR FIND_IN_SET(#{city}, w.area_code) &gt; 0
+            OR FIND_IN_SET(#{province}, w.area_code) &gt; 0)
+        ORDER BY CASE
+                     WHEN FIND_IN_SET(#{district}, w.area_code) &gt; 0 THEN 3
+                     WHEN FIND_IN_SET(#{city}, w.area_code) &gt; 0 THEN 2
+                     ELSE 1
+                 END DESC,
+                 i.warehouse_id ASC
+        LIMIT 1
+    </select>
+
+    <!-- 下单锁定库存：只动 locked_stock，总库存 stock 一分不改（货还在仓里，只是不许卖第二遍），
+         所以这条不写库存流水（流水记的是 stock 的变动，锁定不动 stock，记一条 change_quantity = 0 的纯属噪音）。
+         user_id / update_by 也不动：那两列记的是"哪个 ERP 操作员动的这行账"，下单的是消费者，
+         写进去会让库存页把买家显示成最后操作人。
+         WHERE 里那句可用库存判断就是防超卖的闸门：并发下数据库只放行够数的那个请求，返回 0 行由服务层报错回滚。 -->
+    <update id="lockStock">
+        UPDATE shop_erp_inventory
+        SET locked_stock = locked_stock + #{quantity},
+            version      = version + 1
+        WHERE sku_id = #{skuId}
+          AND warehouse_id = #{warehouseId}
+          AND is_deleted = 0
+          AND (stock - locked_stock) &gt;= #{quantity}
+    </update>
+
+    <!-- 出货单分仓的优先档：这一条规格所属商品的门店仓 —— 挂在这个门店名下的那家启用仓（w.store_id 命中门店），
+         并且这个商品在那家仓还够卖。和 selectNearestWarehouseId 相反，这一条不卡经纬度：
+         门店仓本来就是这家门店自己的仓，算距离没有意义（门店没录坐标也该发得出去）。
+         w.status = 1 同就近分仓那一条：禁用/盘点中/调拨中的仓都不接发货。
+         一家门店正常只挂一家门店仓，真挂出多家的话按库存行 id 取先开的那一家，别让数据库随机挑。
+         自定义 SQL 不走全局逻辑删除，两边的 is_deleted = 0 都手写。 -->
+    <select id="selectStoreWarehouseId" resultType="java.lang.Long">
+        SELECT w.id
+        FROM shop_erp_warehouse w
+            JOIN shop_erp_inventory i ON i.warehouse_id = w.id
+                AND i.is_deleted = 0
+                AND i.sku_id = #{skuId}
+        WHERE w.is_deleted = 0
+          AND w.status = 1
+          AND w.store_id = #{storeId}
+          AND (i.stock - i.locked_stock) &gt;= #{quantity}
+        ORDER BY i.id ASC
+        LIMIT 1
+    </select>
+
+    <!-- 解除锁定：lockStock 的镜像，同样只动 locked_stock（货没出仓，所以也不写库存流水）。
+         只有"改派发货仓"那一步会调它，而且是先锁上新仓才来还旧仓这一份（见 ShopOrderPaidServiceImpl#routeWarehouse），
+         所以两条之间不存在"这行货没人锁着"的空档。
+         WHERE 里那句 locked_stock >= quantity 是闸门：还得比锁出去的多就是调用方算错了，
+         返回 0 行由调用方报错回滚，不锁成负数。 -->
+    <update id="unlockStock">
+        UPDATE shop_erp_inventory
+        SET locked_stock = locked_stock - #{quantity},
+            version      = version + 1
+        WHERE sku_id = #{skuId}
+          AND warehouse_id = #{warehouseId}
+          AND is_deleted = 0
+          AND locked_stock &gt;= #{quantity}
+    </update>
+
+    <!-- 锁仓之前先量一次可用库存（口径见 Mapper 接口注释）。
+         warehouseId 传不传是同一条 SQL：传了就量那一家仓（(sku_id, warehouse_id) 唯一，SUM 只有一行），
+         不传就是各仓合计 —— 用来分清"就近分仓挑不出仓"是没货还是仓没录坐标。
+         COALESCE 兜没有库存行的情况：那种时候 SUM 是 NULL，当 0 处理才对。
+         自定义 SQL 不走全局逻辑删除，i.is_deleted = 0 手写。
+         EXISTS 那一档是仓库状态闸：只有 1 启用 的仓接下单（2 盘点中 / 3 调拨中 的仓账已冻结、0 禁用 的仓不发货，
+         判据同上面 selectNearestWarehouseId / selectStoreWarehouseId 的 w.status = 1）。
+         量出来的数必须和挑得出的仓同一口径，否则会拿着"显示有货、下不了单"的库存去锁仓 -->
+    <select id="selectAvailableStock" resultType="java.lang.Integer">
+        SELECT COALESCE(SUM(i.stock - i.locked_stock), 0)
+        FROM shop_erp_inventory i
+        WHERE i.is_deleted = 0
+          AND EXISTS (SELECT 1
+          FROM shop_erp_warehouse w
+          WHERE w.id = i.warehouse_id AND w.is_deleted = 0 AND w.status = 1)
+          AND i.sku_id = #{skuId}
+        <if test="warehouseId != null">
+            AND i.warehouse_id = #{warehouseId}
+        </if>
+    </select>
+
+</mapper>

@@ -43,7 +43,12 @@ public class SysRefund implements Serializable {
     @ApiModelProperty(value = "手机号")
     private String mobile;
 
-    @ApiModelProperty(value = "退款类型：1-全额退款 2-部分退款")
+    // 口径同 SysOrder#addressId：只存 id、不抄快照（shop_consumer_address 是软删的，按 id 永远读得到）。
+    // 故意不加 IGNORED：这一列由建单那一次写定，之后的审核/回调都不该把它抹成 NULL
+    @ApiModelProperty(value = "收货地址ID（shop_consumer_address.id），买家提退货时选的那条（寄回/取件地址）；NULL=老数据没选")
+    private Long addressId;
+
+    @ApiModelProperty(value = "退款类型：1-全额退款 2-部分退款（统一退货接口按行判：这次退完名下所有行都退满就是 1，否则 2）")
     private Integer refundType;
 
     @ApiModelProperty(value = "退款原因（用户填写）")
@@ -58,7 +63,8 @@ public class SysRefund implements Serializable {
     @ApiModelProperty(value = "币种")
     private String currency;
 
-    @ApiModelProperty(value = "退款状态：0-待审核 1-审核通过 2-审核拒绝 3-退款中 4-退款成功 5-退款失败 6-已取消")
+    @ApiModelProperty(value = "退款状态：0-待审核 2-审核拒绝 3-退款中 4-退款成功 5-退款失败 6-已取消"
+            + "（审核通过直接落 3 退款中，没有单独的「已通过」档；3→4/5 由退款回调写）")
     private Integer status;
 
     @ApiModelProperty(value = "退款渠道：1-原路退回 2-余额 3-人工转账")
@@ -91,7 +97,10 @@ public class SysRefund implements Serializable {
     @ApiModelProperty(value = "备注")
     private String remark;
 
-    @ApiModelProperty(value = "扩展字段（JSON，存退款个性化数据）")
+    // 行级申请内容存在这里的 JSON 里（不新建 sys_refund_item 表，也不提前落到 shop_order_item 上）：
+    // [{"orderItemId":12,"productId":3,"quantity":2,"amount":19.90}]，结构见 ShopRefundItemVo
+    // 统一退货接口建单那一刻写定、之后不改；退款回调成功时才按它把各行的 returned_quantity 累加上
+    @ApiModelProperty(value = "扩展字段（JSON 数组）：这次退货申请的商品行快照（orderItemId + productId + quantity + 该行金额），退款回调按它回写明细")
     private String extra;
 
     @ApiModelProperty(value = "创建时间")

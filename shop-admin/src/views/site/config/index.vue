@@ -14,7 +14,7 @@
             <el-row :gutter="20">
               <el-col :span="12">
                 <el-form-item label="网站Logo" prop="logo">
-                  <upload-image v-model="form.logo" :limit="1" />
+                  <upload-image v-model="form.logo" />
                 </el-form-item>
               </el-col>
               <el-col :span="12">
@@ -57,7 +57,7 @@
             <el-row :gutter="20">
               <el-col :span="12">
                 <el-form-item label="作者头像" prop="authorAvatar">
-                  <upload-image v-model="form.authorAvatar" :limit="1" />
+                  <upload-image v-model="form.authorAvatar" />
                 </el-form-item>
               </el-col>
             </el-row>
@@ -167,12 +167,12 @@
             <el-row :gutter="20">
               <el-col :span="12">
                 <el-form-item label="支付宝收款码" prop="aliPay">
-                  <upload-image v-model="form.aliPay" :limit="1" />
+                  <upload-image v-model="form.aliPay" />
                 </el-form-item>
               </el-col>
               <el-col :span="12">
                 <el-form-item label="微信收款码" prop="weixinPay">
-                  <upload-image v-model="form.weixinPay" :limit="1" />
+                  <upload-image v-model="form.weixinPay" />
                 </el-form-item>
               </el-col>
             </el-row>
@@ -191,7 +191,7 @@
             <el-row :gutter="20">
               <el-col :span="12">
                 <el-form-item label="游客头像" prop="touristAvatar">
-                  <upload-image v-model="form.touristAvatar" :limit="1" />
+                  <upload-image v-model="form.touristAvatar" />
                 </el-form-item>
               </el-col>
             </el-row>

@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopErpPurchaseMapper">
+
+    <!-- 公共查询列：表加了列只改这一处（别名固定是 p，和下面的 FROM 对应） -->
+    <sql id="purchaseColumns">
+        p.id,
+        p.purchase_no,
+        p.supplier_id,
+        p.store_id,
+        p.user_id,
+        p.total_amount,
+        p.total_quantity,
+        p.status,
+        p.expect_date,
+        p.audit_time,
+        p.receive_time,
+        p.contact_name,
+        p.contact_phone,
+        p.remark,
+        p.create_by,
+        p.update_by,
+        p.create_time,
+        p.update_time
+    </sql>
+
+    <!-- 供应商名/门店名/操作员名一律联表现取，不在采购单里冗余快照：改了名字不用回头刷单子（同商品列表联分类/品牌） -->
+    <sql id="purchaseJoins">
+        FROM shop_erp_purchase p
+        LEFT JOIN shop_erp_supplier sp ON sp.id = p.supplier_id AND sp.is_deleted = 0
+        LEFT JOIN shop_store st ON st.id = p.store_id AND st.is_deleted = 0
+        LEFT JOIN sys_user eu ON eu.id = p.user_id
+    </sql>
+
+    <!-- 自定义 SQL 不走全局逻辑删除，p.is_deleted = 0 必须手写 -->
+    <select id="selectPurchasePage" resultType="com.shop.entity.ShopErpPurchase">
+        SELECT
+            <include refid="purchaseColumns"/>,
+            sp.supplier_name AS supplierName,
+            st.store_name AS storeName,
+            eu.nickname AS userName
+        <include refid="purchaseJoins"/>
+        <where>
+            p.is_deleted = 0
+            <!-- 一个输入框搜单号、备注和供应商名称，括号内 OR 不会串到上面的筛选 -->
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (p.purchase_no LIKE CONCAT('%', #{q.keyword}, '%')
+                OR p.remark LIKE CONCAT('%', #{q.keyword}, '%')
+                OR sp.supplier_name LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+            <if test="q.supplierId != null">
+                AND p.supplier_id = #{q.supplierId}
+            </if>
+            <if test="q.status != null">
+                AND p.status = #{q.status}
+            </if>
+            <!-- ERP 账号只看自己负责的：userId 由服务层覆盖成登录 id，前端传什么都不认 -->
+            <if test="q.userId != null">
+                AND p.user_id = #{q.userId}
+            </if>
+            <if test="q.beginTime != null and q.beginTime != ''">
+                AND p.create_time &gt;= #{q.beginTime}
+            </if>
+            <if test="q.endTime != null and q.endTime != ''">
+                AND p.create_time &lt;= #{q.endTime}
+            </if>
+        </where>
+        <!-- 不按 status 排：这里的 status 是单据流转状态（0待审核→1已审核→4待入库→2已入库，3已退货 由采购退货
+             那张出库单出库时回写），不是启用/禁用，按它排会把"已退货"顶到第一页。新单在前就够了 -->
+        ORDER BY p.id DESC
+    </select>
+
+    <select id="selectPurchaseById" resultType="com.shop.entity.ShopErpPurchase">
+        SELECT
+            <include refid="purchaseColumns"/>,
+            sp.supplier_name AS supplierName,
+            st.store_name AS storeName,
+            eu.nickname AS userName
+        <include refid="purchaseJoins"/>
+        WHERE p.id = #{id}
+          AND p.is_deleted = 0
+    </select>
+
+</mapper>

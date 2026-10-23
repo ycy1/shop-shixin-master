@@ -33,6 +33,8 @@
         <el-card class="box-card">
             <!-- 操作工具栏 -->
             <template #header>
+                <!-- <el-button type="primary" v-permission="['sys:notification:add']" icon="Plus" @click="handleAdd">添加
+                </el-button> -->
                 <el-button type="danger" v-permission="['sys:notification:delete']" icon="Delete"
                     :disabled="selectedIds.length === 0" @click="handleBatchDelete">批量删除
                 </el-button>
@@ -49,7 +51,8 @@
                 </el-table-column>
                 <el-table-column label="业务类型" align="center" prop="businessType" width="110">
                     <template #default="scope">
-                        <el-tag :type="getTypeTag(scope.row.businessType)">{{ getTypeLabel(scope.row.businessType) }}</el-tag>
+                        <el-tag :type="dict.tag(DICT_BUSINESS_TYPE, scope.row.businessType)">{{
+                            dict.label(DICT_BUSINESS_TYPE, scope.row.businessType) }}</el-tag>
                     </template>
                 </el-table-column>
                 <el-table-column label="阅读数" align="center" prop="readCount" width="90">
@@ -94,9 +97,16 @@
             </div>
         </el-card>
 
-        <!-- 编辑对话框 -->
+        <!-- 编辑对话框：新增和修改共用同一个表单，editForm.id 为空即新增 -->
         <el-dialog v-model="editOpen" :title="editTitle" width="1000px" append-to-body destroy-on-close>
-            <el-form :model="editForm" label-width="90px">
+            <el-form ref="formRef" :model="editForm" :rules="rules" label-width="90px">
+                <el-form-item v-if="isAdd" label="业务类型" prop="businessType">
+                    <!-- 只在新增时可选：留言/反馈那两类的业务类型要一直指向发起它的业务，改了列表里就找不到关联公告了 -->
+                    <el-select v-model="editForm.businessType" placeholder="请选择业务类型" style="width: 100%">
+                        <el-option v-for="item in businessTypeOptions" :key="item.value" :label="item.label"
+                            :value="item.value" />
+                    </el-select>
+                </el-form-item>
                 <el-form-item label="标题" prop="title">
                     <el-input v-model="editForm.title" placeholder="请输入标题" />
                 </el-form-item>
@@ -117,7 +127,8 @@
             </el-form>
             <template #footer>
                 <div class="dialog-footer">
-                    <el-button type="warning" @click="submitEdit('send')">发 送</el-button>
+                    <!-- "发 送"（重新发送）只对已有记录有意义：新增时后端直接就生成了首个 send_code -->
+                    <el-button v-if="!isAdd" type="warning" @click="submitEdit('send')">发 送</el-button>
                     <el-button type="primary" @click="submitEdit('save')">确 定</el-button>
                     <el-button @click="editOpen = false">取 消</el-button>
                 </div>
@@ -187,8 +198,10 @@
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
+import type { FormRules } from 'element-plus'
 import {
     getNotificationListApi,
+    addNotificationApi,
     updateNotificationApi,
     deleteNotificationApi,
     getNotificationReceiverListApi,
@@ -198,6 +211,7 @@ import {
 import WangEditor from '@/components/WangEditor/index.vue'
 import NoticePushTransfer from '@/components/NoticePushTransfer/index.vue'
 import validate from '@/utils/validate'
+import { useDict } from '@/utils/dictCache'
 
 // 查询参数
 const queryParams = reactive({
@@ -209,12 +223,11 @@ const queryParams = reactive({
     delFlag: undefined,
 })
 
-// 业务类型选项
-const businessTypeOptions = [
-    { label: '留言', value: 'note' },
-    { label: '公告', value: 'notice' },
-    { label: '反馈', value: 'feedback' },
-]
+// 业务类型选项：以字典 notification_business_type 为准（这一页原本写死了「留言/公告/反馈」三档，
+// 后五档是任务发的 activity/training/receive/badge 和 system，写死那份遇到新档只能显示原始值）
+const DICT_BUSINESS_TYPE = 'notification_business_type'
+const dict = useDict(DICT_BUSINESS_TYPE)
+const businessTypeOptions = computed(() => dict.options(DICT_BUSINESS_TYPE))
 
 const loading = ref(false)
 const total = ref(0)
@@ -222,10 +235,19 @@ const dataList = ref<any[]>([])
 const selectedIds = ref<any[]>([])
 const queryFormRef = ref()
 
-// 编辑弹窗
+// 编辑弹窗（新增/修改共用）
 const editOpen = ref(false)
 const editTitle = ref('')
 const editForm = reactive<any>({})
+const formRef = ref()
+const isAdd = computed(() => editForm.id === undefined)
+
+// 业务类型/标题/内容对应 sys_notifications 的三个 NOT NULL 列
+const rules = reactive<FormRules>({
+    businessType: [{ required: true, message: '请选择业务类型', trigger: 'change' }],
+    title: [{ required: true, message: '请输入标题', trigger: 'blur' }],
+    message: [{ required: true, message: '请输入消息内容', trigger: 'change' }],
+})
 
 // 阅读记录弹窗
 const recordOpen = ref(false)
@@ -270,17 +292,37 @@ const resetQuery = () => {
     handleQuery()
 }
 
+// 清空共用表单：新增和修改都从这份 editForm 走，不清会残留上一条的内容
+const resetEditForm = () => {
+    editForm.id = undefined
+    editForm.businessType = undefined
+    editForm.title = ''
+    editForm.message = ''
+    editForm.delFlag = 0
+    editForm.noticePush = undefined
+    editForm.send = false
+}
+
+// 打开新增
+const handleAdd = () => {
+    resetEditForm()
+    editForm.businessType = 'notice'
+    editOpen.value = true
+    editTitle.value = '添加消息通知'
+}
+
 // 打开编辑
 const handleEdit = (row: any) => {
+    resetEditForm()
     Object.assign(editForm, row)
-    editForm.send = false
     editOpen.value = true
     editTitle.value = '修改消息通知'
 }
 
-// 提交编辑（save=仅保存，send=重新发送，后端会生成新的 send_code 并清空旧的接收记录）
+// 提交（新增：落一条消息并生成首个 send_code；修改：save=仅保存，send=重新发送，后端会生成新的 send_code 并清空旧的接收记录）
 const submitEdit = async (mode: 'save' | 'send') => {
-    if (!editForm.id) return
+    const valid = await formRef.value?.validate().catch(() => false)
+    if (!valid) return
     if (mode === 'send') {
         try {
             await ElMessageBox.confirm('再次发送会取消之前发送记录，是否继续？', '提示', {
@@ -292,10 +334,16 @@ const submitEdit = async (mode: 'save' | 'send') => {
             return
         }
     }
+    const adding = isAdd.value
     editForm.send = mode === 'send'
     try {
-        await updateNotificationApi(editForm)
-        ElMessage.success(mode === 'send' ? '发送成功' : '修改成功')
+        if (adding) {
+            await addNotificationApi(editForm)
+            ElMessage.success('新增成功')
+        } else {
+            await updateNotificationApi(editForm)
+            ElMessage.success(mode === 'send' ? '发送成功' : '修改成功')
+        }
         editOpen.value = false
         getList()
     } catch (error) {
@@ -452,22 +500,8 @@ const handleRecordBatchDelete = () => {
     })
 }
 
-// 业务类型标签文案
-function getTypeLabel(type: string): string {
-    const item = businessTypeOptions.find(o => o.value === type)
-    return item ? item.label : (type || '-')
-}
-
-// 业务类型标签颜色
-function getTypeTag(type: string): string {
-    const map: Record<string, string> = {
-        note: 'success',
-        notice: 'info',
-        feedback: 'danger',
-    }
-    return map[type] || 'info'
-}
-
+// 业务类型的文案与标签颜色都从字典 notification_business_type 那两格读（标签颜色 = 字典数据的「标签样式」），
+// 页面上不再留一份写死的映射 —— 上一版写死 note/notice/feedback 三档，新五档只能显示原始值
 onMounted(() => {
     getList()
 })

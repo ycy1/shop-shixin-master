@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopConsumerCartMapper">
+
+    <!--
+      注意：自定义 XML SQL 不会被 MyBatis-Plus 的全局逻辑删除自动接管，
+      所以下面每个查询都要手写 is_deleted = 0，否则会把已删除的购物车行查出来。
+      关联表的过滤条件一律写在 LEFT JOIN 的 ON 上而不是 WHERE 上：
+      商品、规格或消费者被删掉时，购物车这条记录本身还要能在列表里看到，不能被整行过滤掉。
+      商品名称/主图/单价/规格文本都不在本表：这一行只记 sku_id，名称在商品（SPU）那一行，
+      单价和规格文本在这个规格（shop_product_sku）那一行，所以只能走两跳（先联 SKU 再联商品），
+      不能像以前那样拿本表一列直接联到商品上。
+      粒度也说清楚：一行就是一个规格，所以 sk 上那一列取出来就是这一行自己的值，
+      不需要按商品 SUM/MIN（那是「一件商品只有一个价」时代的写法）。
+      主图也按这一行的规格走：这条规格自己传过图（sku_image）就用它，NULL 才退回商品的 main_image。
+      productId 和 availableStock 同样是联出来的：前者是这一条规格所属的商品（SPU），本表没有这一列，
+      前台购物车页要点回 /product/{商品id} 用的就是它（传 sku_id 点不进详情页）；
+      后者是这一条规格在各仓的可用库存 SUM(stock - locked_stock)，购物车行上不存库存。
+    -->
+    <sql id="cartColumns">
+        c.id,
+        c.user_id,
+        c.sku_id,
+        c.category_id,
+        c.brand_id,
+        c.store_id,
+        c.quantity,
+        c.selected,
+        c.create_by,
+        c.update_by,
+        c.create_time,
+        c.update_time,
+        p.product_code,
+        p.product_name,
+        sk.product_id AS productId,
+        COALESCE(sk.sku_image, p.main_image) AS main_image,
+        sk.product_price,
+        sk.spec_text AS specText,
+        <!-- 可用库存不在购物车也不在 SKU 表上：库存是一个规格 × 一个仓一行，这里按这一条规格汇总各仓。
+             口径同商品列表的 available_stock（那边按商品名下所有 SKU 汇总，这边一行本来就只有一个规格），
+             同样只算 1 启用 的仓 —— 盘点中/调拨中/禁用 的仓发不了货，不该算进"还能买几件"。 -->
+        (SELECT IFNULL(SUM(i.stock - i.locked_stock), 0)
+        FROM shop_erp_inventory i
+        WHERE i.sku_id = sk.id AND i.is_deleted = 0
+        AND EXISTS (SELECT 1 FROM shop_erp_warehouse w
+        WHERE w.id = i.warehouse_id AND w.is_deleted = 0 AND w.status = 1)) AS available_stock,
+        cat.category_name,
+        b.brand_name,
+        b.logo AS brand_logo,
+        st.store_name,
+        u.nickname,
+        u.username
+    </sql>
+
+    <sql id="cartJoins">
+        FROM shop_consumer_cart c
+        LEFT JOIN shop_product_sku sk ON sk.id = c.sku_id AND sk.is_deleted = 0
+        LEFT JOIN shop_product p ON p.id = sk.product_id AND p.is_deleted = 0
+        LEFT JOIN shop_category cat ON cat.id = c.category_id AND cat.is_deleted = 0
+        LEFT JOIN shop_brand b ON b.id = c.brand_id AND b.is_deleted = 0
+        LEFT JOIN shop_store st ON st.id = c.store_id AND st.is_deleted = 0
+        LEFT JOIN sys_user u ON u.id = c.user_id
+    </sql>
+
+    <select id="selectCartPage" resultType="com.shop.vo.cart.ShopCartVo">
+        SELECT
+        <include refid="cartColumns"/>
+        <include refid="cartJoins"/>
+        <where>
+            c.is_deleted = 0
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (p.product_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR p.product_code LIKE CONCAT('%', #{q.keyword}, '%')
+                OR sk.spec_text LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+            <if test="q.userId != null">
+                AND c.user_id = #{q.userId}
+            </if>
+            <if test="q.categoryId != null">
+                AND c.category_id = #{q.categoryId}
+            </if>
+            <if test="q.storeId != null">
+                AND c.store_id = #{q.storeId}
+            </if>
+            <if test="q.selected != null">
+                AND c.selected = #{q.selected}
+            </if>
+            <if test="q.beginTime != null and q.beginTime != ''">
+                AND c.create_time &gt;= #{q.beginTime}
+            </if>
+            <if test="q.endTime != null and q.endTime != ''">
+                AND c.create_time &lt;= #{q.endTime}
+            </if>
+        </where>
+        ORDER BY c.id DESC
+    </select>
+
+    <select id="selectCartById" resultType="com.shop.vo.cart.ShopCartVo">
+        SELECT
+        <include refid="cartColumns"/>
+        <include refid="cartJoins"/>
+        WHERE c.is_deleted = 0 AND c.id = #{id}
+    </select>
+
+    <!--
+      前台「购物车」这一页：一次把这个人名下的全部行捞回来，不分页。
+      不分页是这一页的用法决定的：数量、勾选、合计都要横跨全部行，切成一页一页就没法「全选」也没法报总数。
+      和上面两条的区别只在 WHERE：这里按 user_id 钉死一个人（服务层第一句就把它覆盖成登录 id），
+      并且把规格或商品已经被删掉的行筛掉 —— 那两行 LEFT JOIN 出来单价和名称都是 NULL，
+      画不出这一行是啥、也算不出钱，不如不给（购物车行本身还在库里，后台那两条看得见，商品回来它也跟着回来）。
+      商品下架、规格停售不筛：那种行还认得出是什么，就地灰掉、不计入合计（buyable 那一格），
+      不至于让人以为车吞了他的货。
+      buyable 只认商品在不在架上：规格的 sale_enable 是 ERP 建销售单那边的开关，不参与前台能不能买。
+    -->
+    <select id="selectCartListByUser" resultType="com.shop.vo.cart.ShopCartVo">
+        SELECT
+        <include refid="cartColumns"/>,
+        CASE WHEN p.status = 1 THEN 1 ELSE 0 END AS buyable
+        <include refid="cartJoins"/>
+        WHERE c.is_deleted = 0
+          AND c.user_id = #{userId}
+          AND sk.id IS NOT NULL
+          AND p.id IS NOT NULL
+        ORDER BY c.id DESC
+    </select>
+
+    <!--
+      前台那颗「加入购物车」的两条写，都按 (消费者, 规格) 这一对点，不走购物车行的 id：
+      详情页上只有「这个规格我车里有没」这一个事实，id 是车那一页才拿得到的东西。
+      两份都不挂 @Transactional —— 每条各自最多一句 UPDATE，没有要一起成才算数的第二句。
+
+      数量是 quantity = quantity + #{delta} 而不是覆盖：加购是「在车里已有的那个规格上再加几件」，
+      读出来加完再写回去中间能被另一个标签页插一次（口径同库存那几条原子 UPDATE）。
+      update_time 手写 NOW()：这里是绕过 MP 的直接 UPDATE，MyMetaObjectHandler 不插手；
+      create_time / create_by 不动 —— 那是这一对第一次建上行的留痕。
+      WHERE 不带库存判据：可用库存只在下单那一刻才真的拦，加购和改数量都不过这道闸（口径同后台那份 update）。
+    -->
+    <update id="increaseQuantityBySku">
+        UPDATE shop_consumer_cart
+        SET quantity    = quantity + #{delta},
+            update_by   = #{updateBy},
+            update_time = NOW()
+        WHERE user_id = #{userId}
+          AND sku_id = #{skuId}
+          AND is_deleted = 0
+    </update>
+
+    <!--
+      WHERE 上没有 is_deleted —— uk_user_sku(user_id, sku_id) 不含这一列，删掉的行也还占着这个键，
+      所以「删掉后又加回同一个规格」必须把那一行复活，而不是插第二条（口径同收藏的 reviveByTarget、
+      也是后台新增那一路撞键报错的根由，那边是代客补录、撞了就让用户去列表找，前台这一颗不能这么回）。
+      分类/品牌/门店三格重新按现在这个商品带：这一行是「重新加进来的」，快照该跟着这一次走。
+      selected 一律回 1：刚加进来的东西默认就是要买的，用户在车里改过的勾选跟着那次删除一起作废了。
+    -->
+    <update id="reviveBySku">
+        UPDATE shop_consumer_cart
+        SET is_deleted   = 0,
+            quantity     = #{quantity},
+            selected     = 1,
+            category_id  = #{categoryId},
+            brand_id     = #{brandId},
+            store_id     = #{storeId},
+            update_by    = #{updateBy},
+            update_time  = NOW()
+        WHERE user_id = #{userId}
+          AND sku_id = #{skuId}
+    </update>
+
+    <!--
+      「全选 / 取消全选」一颗顶掉逐条点：按人一次刷完，不走 id 数组。
+      只刷还能买的那几行（EXISTS 那一档判据和上面 selectCartListByUser 的 buyable 那一格是同一条：
+      商品在架上）。下架那些行页面上画成灰行、勾是禁用着的，
+      这里要是把它们一并置成 1，前端下一次重拉就会看见一排勾着又点不动的格子，两说的不是同一件事。
+      改的是本表、判据在别的表上，所以 EXISTS 不违反"同一张表不能子查询自己"那条限制。
+    -->
+    <update id="updateSelectedByUser">
+        UPDATE shop_consumer_cart c
+        SET c.selected    = #{selected},
+            c.update_by   = #{updateBy},
+            c.update_time = NOW()
+        WHERE c.user_id = #{userId}
+          AND c.is_deleted = 0
+          AND EXISTS (SELECT 1
+                      FROM shop_product_sku sk
+                      JOIN shop_product p ON p.id = sk.product_id AND p.is_deleted = 0 AND p.status = 1
+                      WHERE sk.id = c.sku_id
+                        AND sk.is_deleted = 0)
+    </update>
+
+</mapper>

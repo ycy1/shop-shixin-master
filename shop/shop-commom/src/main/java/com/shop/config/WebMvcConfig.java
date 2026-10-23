@@ -3,7 +3,9 @@ package com.shop.config;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.shop.config.interceptor.ApiAccessLogInterceptor;
 import com.shop.controller.BaseAppController;
+import com.shop.controller.BaseCommController;
 import com.shop.controller.BaseMpController;
+import com.shop.controller.BaseWebController;
 import com.shop.entity.SysFileOss;
 import com.shop.enums.FileOssEnum;
 import com.shop.mapper.SysFileOssMapper;
@@ -72,6 +74,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
         // 为所有继承BaseAppController的类添加前缀
         configurer.addPathPrefix("/api/app", BaseAppController.class::isAssignableFrom);
         configurer.addPathPrefix("/wx/mp", BaseMpController.class::isAssignableFrom);
+        configurer.addPathPrefix("/api/web", BaseWebController.class::isAssignableFrom);
+        configurer.addPathPrefix("/api/comm", BaseCommController.class::isAssignableFrom);
     }
 
     @Bean

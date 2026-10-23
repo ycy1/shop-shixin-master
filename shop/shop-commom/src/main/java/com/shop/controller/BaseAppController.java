@@ -8,8 +8,10 @@ import com.shop.dto.user.LoginUserInfo;
  * @author xxj
  * @title BaseAppController
  * @date 2025/9/3 16:51
- * @description TODO
+ * @description TODO App 层基类 /api/app
  */
+
+// WebConfig.configurePathMatch 中指定所有继承 BaseMpController 的类添加前缀
 public class BaseAppController {
 
     // app 公共接口

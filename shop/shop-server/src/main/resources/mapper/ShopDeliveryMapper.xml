@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopDeliveryMapper">
+
+    <!-- 公共查询列：表加了列只改这一处（别名固定是 d，和下面的 FROM 对应） -->
+    <sql id="deliveryColumns">
+        d.id,
+        d.delivery_no,
+        d.outbound_id,
+        d.outbound_no,
+        d.rider_id,
+        d.delivery_type,
+        d.assign_type,
+        d.receiver_name,
+        d.receiver_phone,
+        d.receiver_address,
+        d.receiver_lng,
+        d.receiver_lat,
+        d.sender_name,
+        d.sender_phone,
+        d.sender_address,
+        d.sender_lng,
+        d.sender_lat,
+        d.distance,
+        d.estimated_time,
+        d.delivery_fee,
+        d.fee_rule_id,
+        d.tip_fee,
+        d.weight,
+        d.expect_time,
+        d.assign_time,
+        d.accept_time,
+        d.pickup_time,
+        d.delivered_time,
+        d.cancel_time,
+        d.status,
+        d.cancel_reason,
+        d.exception_reason,
+        d.create_by,
+        d.update_by,
+        d.create_time,
+        d.update_time
+    </sql>
+
+    <!-- 自定义 SQL 不走全局逻辑删除，is_deleted = 0 必须手写 -->
+    <select id="selectDeliveryPage" resultType="com.shop.entity.ShopDelivery">
+        SELECT
+            <include refid="deliveryColumns"/>
+        FROM shop_delivery d
+        <where>
+            d.is_deleted = 0
+            <!-- 只按出库单那一格查（这一列一槽两用：没换绑的那一条里面装的是订单ID，
+                 所以这一格查的既可能是「某张出库单的配送」也可能是「某张订单的配送」，谁传的值谁自己清楚） -->
+            <if test="q.outboundId != null">
+                AND d.outbound_id = #{q.outboundId}
+            </if>
+            <!-- 数据范围（账号类型=送货员）：派给我的 + 还没人接的那一批（rider_id 为空且 1 待接单）。
+                 抢单池和"我的配送"合成一个列表看，因为他接哪一单之前那一单本来就没有归属；
+                 0 待派单的那一些不进这个池子 —— 那是统一下单那一刻就建出来的（钱可能还没收、货还没出），
+                 要等商品出库页点「确认」才翻成 1 待接单。
+                 scopeRiderId 由服务层按登录账号查出来覆盖，前端传什么都不认 -->
+            <if test="q.scopeRiderId != null">
+                AND (d.rider_id = #{q.scopeRiderId}
+                OR (d.rider_id IS NULL AND d.status = 1))
+            </if>
+            <if test="q.riderId != null">
+                AND d.rider_id = #{q.riderId}
+            </if>
+            <if test="q.deliveryType != null">
+                AND d.delivery_type = #{q.deliveryType}
+            </if>
+            <if test="q.status != null">
+                AND d.status = #{q.status}
+            </if>
+            <!-- 时间范围由前端拆成整日边界（开始=当天 00:00:00，结束=当天 23:59:59） -->
+            <if test="q.acceptBeginTime != null and q.acceptBeginTime != ''">
+                AND d.accept_time &gt;= #{q.acceptBeginTime}
+            </if>
+            <if test="q.acceptEndTime != null and q.acceptEndTime != ''">
+                AND d.accept_time &lt;= #{q.acceptEndTime}
+            </if>
+            <if test="q.assignBeginTime != null and q.assignBeginTime != ''">
+                AND d.assign_time &gt;= #{q.assignBeginTime}
+            </if>
+            <if test="q.assignEndTime != null and q.assignEndTime != ''">
+                AND d.assign_time &lt;= #{q.assignEndTime}
+            </if>
+            <!-- 一个输入框搜单号、关联单号、收件人和手机号，括号内 OR 不会串到上面的筛选。
+                 关联单号那一格里两种号都可能：还没换绑的就是订单号，换绑过了就是出库单号，
+                 所以订单号不用再单开一列去搜（表上也没有那一列） -->
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (d.delivery_no LIKE CONCAT('%', #{q.keyword}, '%')
+                OR d.outbound_no LIKE CONCAT('%', #{q.keyword}, '%')
+                OR d.receiver_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR d.receiver_phone LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+        </where>
+        <!-- 默认就是最新一单在前。送货员账号那一份先按"离我常驻地多远"排：
+             量的是常驻地 → **发货点**（他得先去那儿取货，出发的那一头才决定这一单顺不顺路）；
+             要改成量到收货点，把下面那个 POINT 换成 d.receiver_lng / d.receiver_lat 就行。
+             发货点没坐标的老单/人工单当成最远，排在这一批的最后；
+             档案上没填常驻经纬度时服务层不传这两个值，整个 ORDER BY 退回默认的 id 倒序。
+             这一句在 ORDER BY 里走不了索引（也不值得为它建列存距离），配送单量级不大。 -->
+        ORDER BY
+        <if test="q.residentLng != null and q.residentLat != null">
+            CASE WHEN d.sender_lng IS NULL OR d.sender_lat IS NULL THEN 1 ELSE 0 END,
+            ST_Distance_Sphere(POINT(#{q.residentLng}, #{q.residentLat}), POINT(d.sender_lng, d.sender_lat)),
+        </if>
+        d.id DESC
+    </select>
+
+    <!-- 两个地点之间的距离（km）：配送单上 distance / estimated_time 那两格就取这个值。
+         和就近分仓用的是同一个 ST_Distance_Sphere（返回米，POINT() 参数顺序是「经度, 纬度」），
+         球面算法不在 Java 里再抄一份。除以 1000 后 ROUND 到 2 位 = 存进库里的那个数。
+         算的是球面直线距离（没接路网 API），所以它是估算值，服务层注释里说清了口径。 -->
+    <select id="selectDistanceKm" resultType="java.math.BigDecimal">
+        SELECT ROUND(
+                   ST_Distance_Sphere(POINT(#{senderLng}, #{senderLat}), POINT(#{receiverLng}, #{receiverLat})) / 1000,
+                   2)
+    </select>
+
+</mapper>

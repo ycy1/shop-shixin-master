@@ -1,0 +1,59 @@
+<!--
+  一张入库单 = 一页（见 utils/print.ts 的 printReceipts）。
+  {{...}} 里的值都由 print.ts 转过义再填，模板这边只管摆格子。
+  单头字段取自 shop_erp_purchase_in（含服务端子查询现汇总的 totalReceived），
+  明细列同「商品入库详情」和「采购单-入库单」两个弹窗里那张表，多一列序号方便纸对上账。
+-->
+<section class="sheet">
+  <h1>商品入库单</h1>
+  <table class="head">
+    <tr>
+      <th>入库单号</th><td>{{receiptNo}}</td>
+      <th>来源单据</th><td>{{sourceNo}}</td>
+    </tr>
+    <tr>
+      <th>入库来源</th><td>{{inboundSource}}</td>
+      <th>状态</th><td>{{status}}</td>
+    </tr>
+    <tr>
+      <th>供应商</th><td>{{supplierName}}</td>
+      <th>入库仓库</th><td>{{warehouseName}}</td>
+    </tr>
+    <tr>
+      <th>操作人</th><td>{{userName}}</td>
+      <th>入库时间</th><td>{{receiveTime}}</td>
+    </tr>
+    <tr>
+      <th>计划总数</th><td>{{totalQuantity}}</td>
+      <th>已入库</th><td>{{totalReceived}}</td>
+    </tr>
+    <tr>
+      <th>待入库</th><td>{{pendingQuantity}}</td>
+      <th>入库金额</th><td>{{totalAmount}}</td>
+    </tr>
+    <tr>
+      <th>创建时间</th><td colspan="3">{{createTime}}</td>
+    </tr>
+    <tr>
+      <th>备注</th><td colspan="3">{{remark}}</td>
+    </tr>
+  </table>
+
+  <h2>入库明细</h2>
+  <table class="items">
+    <thead>
+      <tr>
+        <th style="width:44px">序号</th>
+        <th>商品名称</th>
+        <th style="width:100px">规格</th>
+        <th style="width:120px">商品编码</th>
+        <th style="width:70px">计划入库</th>
+        <th style="width:60px">已入库</th>
+        <th style="width:50px">剩余</th>
+        <th style="width:90px">单价(成本价)</th>
+        <th style="width:90px">小计</th>
+      </tr>
+    </thead>
+    <tbody>{{itemRows}}</tbody>
+  </table>
+</section>

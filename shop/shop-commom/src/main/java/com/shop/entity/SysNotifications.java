@@ -30,8 +30,11 @@ public class SysNotifications implements Serializable {
     @ApiModelProperty(value = "业务id")
     private Long businessId;
 
-    @ApiModelProperty(value = "业务类型")
+    @ApiModelProperty(value = "业务类型（NotificationTypeEnum 那八档，字典 notification_business_type）")
     private String businessType;
+
+    @ApiModelProperty(value = "消息分类 1-系统消息 2-互动消息，由 businessType 派生（字典 notification_category）")
+    private Integer category;
 
     @ApiModelProperty(value = "通知的标题")
     private String title;
@@ -39,8 +42,11 @@ public class SysNotifications implements Serializable {
     @ApiModelProperty(value = "通知的具体内容")
     private String message;
 
-    @ApiModelProperty(value = "推送对象（JSON：{\"user\":[],\"dept\":[],\"role\":[]}，null 或全空=全员可见）")
+    @ApiModelProperty(value = "推送对象（JSON：{\"user\":[],\"dept\":[],\"role\":[]}）；前台可见性已不看这一格，只留作后台回显发送范围")
     private String noticePush;
+
+    @ApiModelProperty(value = "1-全员可见，发送时不展开接收人；0-定向，接收人已展开进 sys_notifications_receiver")
+    private Integer isBroadcast;
 
     @ApiModelProperty(value = "发送批次标识（32位uuid，重新发送时更新，用于标识子表记录的所属发送批次）")
     private String sendCode;

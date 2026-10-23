@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopOrderItemMapper">
+
+    <!--
+      注意：自定义 XML SQL 不会被 MyBatis-Plus 的全局逻辑删除自动接管，
+      所以下面每个查询都要手写 is_deleted = 0，否则会把已删除的明细行查出来。
+      关联表的过滤条件一律写在 LEFT JOIN 的 ON 上而不是 WHERE 上：
+      商品/门店/仓库甚至整张订单被删掉时，这条明细本身还要能在列表里看到，不能被整行过滤掉。
+      商品名称/主图/单价/规格文本在本表上是下单时的快照，不联商品表取当前值；只有商品编码和所属商品 id 没快照，得现联。
+      那个 id 是本行 sku_id 的父商品 —— 前台「我的订单」要点回商品详情页，而详情页的路由认的是商品 id 不是规格 id。
+      现联这一条要走两跳（本行 sku_id → shop_product_sku → 它的 product_id → shop_product）：
+      商品编码在 SPU 那一行上，而订单行只记到规格，中间那一跳不能省；订单行指向的那条规格也可能已经被
+      软删（那个规格下架后删掉了），所以两道都是 LEFT JOIN、判据强度一如从前——联不到就空着，
+      绝不把这条明细整行滤掉。
+      这套列和联表现在只给详情弹窗那张商品表格用（selectOrderItemsByOrderId）。
+    -->
+    <sql id="orderItemColumns">
+        i.id,
+        i.order_id,
+        i.user_id,
+        i.store_id,
+        i.warehouse_id,
+        i.order_no,
+        i.sku_id,
+        i.product_name,
+        i.spec_text,
+        i.image,
+        i.price,
+        i.quantity,
+        i.returned_quantity,
+        i.total_amount,
+        i.discount_amount,
+        i.used_points,
+        i.gain_points,
+        i.ship_status,
+        i.create_by,
+        i.update_by,
+        i.create_time,
+        i.update_time,
+        p.id AS product_id,
+        p.product_code,
+        st.store_name,
+        w.warehouse_name,
+        u.nickname,
+        u.username,
+        o.status AS order_status,
+        o.pay_type AS order_pay_type,
+        o.pay_amount AS order_pay_amount,
+        o.pay_time AS order_pay_time,
+        o.remark AS order_remark
+    </sql>
+
+    <sql id="orderItemJoins">
+        FROM shop_order_item i
+        LEFT JOIN sys_order o ON o.id = i.order_id AND o.is_deleted = 0
+        LEFT JOIN shop_product_sku sk ON sk.id = i.sku_id AND sk.is_deleted = 0
+        LEFT JOIN shop_product p ON p.id = sk.product_id AND p.is_deleted = 0
+        LEFT JOIN shop_store st ON st.id = i.store_id AND st.is_deleted = 0
+        LEFT JOIN shop_erp_warehouse w ON w.id = i.warehouse_id AND w.is_deleted = 0
+        LEFT JOIN sys_user u ON u.id = i.user_id
+    </sql>
+
+    <!--
+      订单主表（sys_order）：「我的订单」列表一行是一张订单之后用的两条查询。
+      列以主表为准，明细行上的东西只以三种形式出现：
+        · 三个汇总子查询 = 商品行数 / 件数合计 / 名下门店名（列表上那一格「共 N 行 · M 件」）；
+        · 两个 EXISTS 筛选 = 发货状态、所属门店，含义是"名下有这样一个商品行"，老页面上的筛选保住；
+        · 详情弹窗里那张商品表格，由下面 selectOrderItemsByOrderId 单独查一次（分页时不做 N+1）。
+      退货那两格判据子查询在 orderColumns 末尾，跟着行一起回来（口径同下面的 orderDelivery，判据不给前端猜）：
+      refundedQuantity = 名下各行已退件数合计（钱已经退出去的那部分）；pendingRefundCount = 这一单还在流程里的
+      退款单条数（0 待审核 / 3 退款中）—— 2026-09-22 起它**不再拦退货按钮**，一张订单可以同时挂
+      好几张在途退款单（每次退的商品、件数都可以不一样），它只在弹窗上说明"为什么这一行的可退数少了"；
+      真正压住可退数的是逐行的在途占用件数，由服务层按各张 extra 现算后挂在明细行的 refundingQuantity 上
+      （口径同 shop-api 建单那道行级闸）。refundCount = 名下全部退款单张数（不分状态），列表那颗「退款单」按钮的判据。
+      终态那几档（2 拒绝 / 4 成功 / 5 失败 / 6 取消）不占额度，拒绝和失败都要能重新提。
+      同样是自定义 SQL，主表/明细表/退款表的 is_deleted = 0 都得手写。
+      下单人直接用主表冗余的 user_name（下单那一刻跟着 user_id 写的），不再联 sys_user：
+      这一页要的是"这一单是谁下的"，不是"那个人现在叫什么"。
+    -->
+    <sql id="orderColumns">
+        o.id,
+        o.order_no,
+        o.order_type,
+        o.user_id,
+        o.user_name,
+        o.mobile,
+        o.address_id,
+        o.biz_id,
+        o.biz_type,
+        o.total_amount,
+        o.pay_amount,
+        o.discount_amount,
+        o.delivery_fee,
+        o.currency,
+        o.status,
+        o.pay_type,
+        o.pay_time,
+        o.expire_time,
+        o.remark,
+        o.extra,
+        o.create_time,
+        o.update_time,
+        (SELECT COUNT(*) FROM shop_order_item i
+          WHERE i.order_id = o.id AND i.is_deleted = 0) AS itemCount,
+        (SELECT COALESCE(SUM(i.quantity), 0) FROM shop_order_item i
+          WHERE i.order_id = o.id AND i.is_deleted = 0) AS totalQuantity,
+        (SELECT GROUP_CONCAT(DISTINCT COALESCE(st.store_name, '非门店商品') SEPARATOR '、')
+           FROM shop_order_item i
+           LEFT JOIN shop_store st ON st.id = i.store_id AND st.is_deleted = 0
+          WHERE i.order_id = o.id AND i.is_deleted = 0) AS storeNames,
+        (SELECT COALESCE(SUM(i.returned_quantity), 0) FROM shop_order_item i
+          WHERE i.order_id = o.id AND i.is_deleted = 0) AS refundedQuantity,
+        (SELECT COUNT(*) FROM sys_refund r
+          WHERE r.order_id = o.id AND r.is_deleted = 0 AND r.status IN (0, 3)) AS pendingRefundCount,
+        <!-- 这一单名下**全部**退款单张数（不分状态，被拒的、失败的、取消的都算）：
+             列表那颗「退款单」按钮的判据 —— 有过退货就要点得开，哪怕现在没有在途的那张 -->
+        (SELECT COUNT(*) FROM sys_refund r
+          WHERE r.order_id = o.id AND r.is_deleted = 0) AS refundCount
+    </sql>
+
+    <!--
+      这一单配送到哪一步了：列表上那颗「配送单」按钮只在已经有配送单的那几行出现，
+      判据不能靠前端猜，得跟着行一起回来（口径同商品出库列表的 saleOutboundDelivery）。
+
+      表上**没有** order_id 那一列（2026-09-21 他的口径："直接使用出库单号和出库id，这时候出库单还没有生成"）：
+      shop_delivery 只有一槽 outbound_id / outbound_no —— 统一下单建出来的那一条先装这一单的 id + 订单号，
+      支付回调再把它覆盖成出库单的 id + 出库单号。所以"这一单的配送单"有两种长相，两道都认：
+      · 还没换绑的：id 和号两个都等于这张订单的（号对不上就不是它，光比 id 会撞上别的表的同号行）；
+      · 已换绑的：拐一道出库单，那张出库单得是来源=1 线上购买 的（同一列上采购退货那一路装的是采购单 id）。
+      一张订单只会有那一条（统一下单一单一配送），LIMIT 1 是保险。
+    -->
+    <sql id="orderDeliveryMatch">
+        d.is_deleted = 0
+        AND (   (d.outbound_id = o.id AND d.outbound_no = o.order_no)
+             OR EXISTS (SELECT 1 FROM shop_erp_sale_outbound so
+                          WHERE so.id = d.outbound_id AND so.outbound_no = d.outbound_no
+                            AND so.outbound_source = 1 AND so.order_id = o.id AND so.is_deleted = 0))
+    </sql>
+
+    <sql id="orderDelivery">
+        (SELECT d.id FROM shop_delivery d
+         WHERE <include refid="orderDeliveryMatch"/>
+         ORDER BY d.id ASC LIMIT 1) AS deliveryId,
+        (SELECT d.delivery_no FROM shop_delivery d
+         WHERE <include refid="orderDeliveryMatch"/>
+         ORDER BY d.id ASC LIMIT 1) AS deliveryNo,
+        (SELECT d.status FROM shop_delivery d
+         WHERE <include refid="orderDeliveryMatch"/>
+         ORDER BY d.id ASC LIMIT 1) AS deliveryStatus
+    </sql>
+
+    <select id="selectOrderPage" resultType="com.shop.vo.order.ShopOrderVo">
+        SELECT
+        <include refid="orderColumns"/>,
+        <include refid="orderDelivery"/>
+        FROM sys_order o
+        <where>
+            o.is_deleted = 0
+            <if test="q.keyword != null and q.keyword != ''">
+                <!-- 规格文本也进这一串：同一件商品现在拆成几条规格，"这一单买的是哪个规格"本身就是一条线索，
+                     而且读的是明细行上那份下单快照（同商品名），不用为它多联一道 -->
+                AND (o.order_no LIKE CONCAT('%', #{q.keyword}, '%')
+                OR o.user_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR o.mobile LIKE CONCAT('%', #{q.keyword}, '%')
+                OR EXISTS (SELECT 1 FROM shop_order_item i
+                            WHERE i.order_id = o.id AND i.is_deleted = 0
+                              AND (i.product_name LIKE CONCAT('%', #{q.keyword}, '%')
+                                   OR i.spec_text LIKE CONCAT('%', #{q.keyword}, '%'))))
+            </if>
+            <if test="q.userId != null">
+                AND o.user_id = #{q.userId}
+            </if>
+            <if test="q.status != null">
+                AND o.status = #{q.status}
+            </if>
+            <if test="q.storeId != null">
+                AND EXISTS (SELECT 1 FROM shop_order_item i
+                             WHERE i.order_id = o.id AND i.is_deleted = 0
+                               AND i.store_id = #{q.storeId})
+            </if>
+            <if test="q.shipStatus != null">
+                AND EXISTS (SELECT 1 FROM shop_order_item i
+                             WHERE i.order_id = o.id AND i.is_deleted = 0
+                               AND i.ship_status = #{q.shipStatus})
+            </if>
+            <if test="q.beginTime != null and q.beginTime != ''">
+                AND o.create_time &gt;= #{q.beginTime}
+            </if>
+            <if test="q.endTime != null and q.endTime != ''">
+                AND o.create_time &lt;= #{q.endTime}
+            </if>
+        </where>
+        ORDER BY o.id DESC
+    </select>
+
+    <select id="selectOrderById" resultType="com.shop.vo.order.ShopOrderVo">
+        SELECT
+        <include refid="orderColumns"/>,
+        <include refid="orderDelivery"/>
+        FROM sys_order o
+        WHERE o.is_deleted = 0 AND o.id = #{id}
+    </select>
+
+    <!-- 详情弹窗里那张商品表格：复用上面明细的那套列和联表，一单最多几十行，不分页 -->
+    <select id="selectOrderItemsByOrderId" resultType="com.shop.vo.order.ShopOrderItemVo">
+        SELECT
+        <include refid="orderItemColumns"/>
+        <include refid="orderItemJoins"/>
+        WHERE i.is_deleted = 0 AND i.order_id = #{orderId}
+        ORDER BY i.id ASC
+    </select>
+
+    <!--
+      退款成功回调回写这一行（判据见 ShopOrderItemMapper#increaseReturnedQuantity）：
+      一次 UPDATE 同时做两件事 —— 累加已退件数、按累加后的进度把发货状态写成退货轨道上的那一档：
+      退满 → 2 已退货，退了一部分没退满 → 4 部分退货（这一次调用必定退了件数，
+      数量 > 0 由调用方挡；WHERE 那道 <= 又保证不会退过头，所以两档之外没有第三种落点）。
+      2 / 4 就是 ShopOrderItem.SHIP_STATUS_RETURNED / SHIP_STATUS_PARTIAL_RETURNED，
+      静态 SQL 引不到 Java 常量所以这里写死，改值域时两边一起改。
+      两个 SET 的先后顺序有 MySQL 的坑要记：同一句里后面的 SET 读到的已是前面刚写的新值，
+      所以判"退到哪一档"的 ship_status 必须写在前面，并且把 #{quantity} 显式加回去和旧值比；
+      换成先加 returned_quantity 再判断，就会把这次的数量算两遍。
+      WHERE 那道 <= 是闸门，不满足就是 0 行，由调用方报错回滚（自定义 SQL 不走全局逻辑删除，is_deleted = 0 手写）。
+    -->
+    <update id="increaseReturnedQuantity">
+        UPDATE shop_order_item
+        SET ship_status = IF(returned_quantity + #{quantity} &gt;= quantity, 2, 4),
+            returned_quantity = returned_quantity + #{quantity},
+            update_time = NOW()
+        WHERE id = #{id}
+          AND is_deleted = 0
+          AND returned_quantity + #{quantity} &lt;= quantity
+    </update>
+
+    <!-- 支付回调送分时把"这一行送了几分"回写到行上（写的人见 shop-api 的 ShopOrderPointsServiceImpl#grant）：
+         这一格是**当时**的档位快照，退款收回送分读的就是它，不再拿 shop_product_sku.gain_points 倒推
+         —— 档位现在按规格各存一份，而且商品后来改过送分档位，倒推出来的就不是当初送的那一份。
+         直接覆盖不判并发：只有送分那一条链写它，而那条链挂在支付回调"一张订单只建一张出库单"那道幂等闸后面，
+         重复通知走不到这儿；自定义 SQL 不走全局逻辑删除，is_deleted = 0 手写 -->
+    <update id="updateGainPoints">
+        UPDATE shop_order_item
+        SET gain_points = #{points},
+            update_time = NOW()
+        WHERE id = #{id}
+          AND is_deleted = 0
+    </update>
+
+</mapper>

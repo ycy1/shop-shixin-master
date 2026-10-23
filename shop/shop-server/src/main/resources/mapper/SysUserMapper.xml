@@ -18,8 +18,14 @@
         <result property="userTags" column="user_tags" />
         <result property="areaCode" column="area_code"/>
         <result property="areaZh" column="area_zh"/>
+        <!-- 这个 resultMap 带了 collection，MyBatis 的自动映射就整体失效了，
+             新列必须在下面 selectUserPage 的字段清单和这里一起写上，否则查出来永远是 null -->
+        <result property="longitude" column="longitude"/>
+        <result property="latitude" column="latitude"/>
+        <result property="address" column="address"/>
         <result property="qrImg" column="qr_img"/>
         <result property="loginType" column="login_type" />
+        <result property="accountType" column="account_type" />
         <result property="createTime" column="create_time" />
 
         <!-- 部门信息：SQL 层用 GROUP_CONCAT 聚合，再经 TypeHandler 反序列化为 List<T> -->
@@ -44,7 +50,7 @@
     <sql id="Base_Column_List">
         id, username,sex, password,openid, create_time, update_time, status,
         ip, ip_location, os, last_login_time, browser,user_tags, area_code,
-        nickname, avatar, mobile, qr_img, area_code, area_zh
+        nickname, avatar, mobile, qr_img, area_code, area_zh, account_type
     </sql>
 
     <!-- 根据用户名查询用户信息 -->
@@ -73,8 +79,12 @@
             u.sex,
             u.area_code,
             u.area_zh,
+            u.longitude,
+            u.latitude,
+            u.address,
             u.user_tags,
             u.login_type,
+            u.account_type,
             -- 部门信息在 SQL 层聚合：JSON_ARRAYAGG(DISTINCT) 去重，映射回 deptIds/deptNames
             (SELECT GROUP_CONCAT(DISTINCT du.dept_id) FROM sys_dept_user du WHERE du.user_id = u.id) AS dept_ids,
             (SELECT GROUP_CONCAT(DISTINCT d.name) FROM sys_dept_user du INNER JOIN sys_dept d ON du.dept_id = d.id WHERE du.user_id = u.id) AS dept_names,
@@ -95,6 +105,17 @@
             </if>
             <if test="sysUser.loginType != null and sysUser.loginType != ''">
                 and u.login_type = #{sysUser.loginType}
+            </if>
+            <!-- accountType 是 Integer，只判 null（判空串会走字符串比较） -->
+            <if test="sysUser.accountType != null">
+                and u.account_type = #{sysUser.accountType}
+            </if>
+            <!-- 一个类型筛不出"这几档都要"的时候用它（如优惠券的负责的运营=平台+门店两条），调用方只传这两条中的一条 -->
+            <if test="sysUser.accountTypes != null and sysUser.accountTypes.size() > 0">
+                and u.account_type in
+                <foreach collection="sysUser.accountTypes" item="accountTypeItem" open="(" separator="," close=")">
+                    #{accountTypeItem}
+                </foreach>
             </if>
             <if test="sysUser.deptIds != null and sysUser.deptIds.size() > 0">
                 and exists (

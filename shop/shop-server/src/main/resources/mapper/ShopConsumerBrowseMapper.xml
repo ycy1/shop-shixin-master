@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopConsumerBrowseMapper">
+
+    <!--
+      注意：自定义 XML SQL 不会被 MyBatis-Plus 的全局逻辑删除自动接管，
+      所以下面每个查询都要手写 is_deleted = 0，否则会把已删除的足迹查出来。
+      例外的是 markBrowsed 和 countSameTarget：那两个就是要把已删除的行也算进来（见各自注释）。
+      商品/消费者被删掉时这条足迹本身还要能在列表里看到，所以关联表的过滤条件一律写在 LEFT JOIN 的 ON 上而不是 WHERE 上。
+      本表不冗余商品名，分类也不存（足迹只有 product_id），所以分类走商品的 category_id 现联。
+    -->
+    <sql id="browseColumns">
+        b.id,
+        b.user_id,
+        b.product_id,
+        b.browse_time,
+        b.create_by,
+        b.update_by,
+        b.create_time,
+        b.update_time,
+        p.product_code,
+        p.product_name,
+        p.main_image,
+        (SELECT MIN(s.product_price) FROM shop_product_sku s WHERE s.product_id = p.id AND s.is_deleted = 0) AS product_price,
+        cat.category_name,
+        u.nickname,
+        u.username
+    </sql>
+
+    <sql id="browseJoins">
+        FROM shop_consumer_browse b
+        LEFT JOIN shop_product p ON p.id = b.product_id AND p.is_deleted = 0
+        LEFT JOIN shop_category cat ON cat.id = p.category_id AND cat.is_deleted = 0
+        LEFT JOIN sys_user u ON u.id = b.user_id
+    </sql>
+
+    <select id="selectBrowsePage" resultType="com.shop.vo.browse.ShopBrowseVo">
+        SELECT
+        <include refid="browseColumns"/>
+        <include refid="browseJoins"/>
+        <where>
+            b.is_deleted = 0
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (p.product_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR p.product_code LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+            <if test="q.userId != null">
+                AND b.user_id = #{q.userId}
+            </if>
+            <!-- 时间范围筛的是业务列 browse_time（最近一次浏览时间），不是 create_time：
+                 足迹会因重复浏览被刷新，按 create_time 筛出来的就不是"这段时间看过什么"了。
+                 前端传的是补过时分的 'yyyy-MM-dd HH:mm:ss'，所以这一列直接用字符串比 -->
+            <if test="q.beginTime != null and q.beginTime != ''">
+                AND b.browse_time &gt;= #{q.beginTime}
+            </if>
+            <if test="q.endTime != null and q.endTime != ''">
+                AND b.browse_time &lt;= #{q.endTime}
+            </if>
+        </where>
+        ORDER BY b.browse_time DESC, b.id DESC
+    </select>
+
+    <select id="selectBrowseById" resultType="com.shop.vo.browse.ShopBrowseVo">
+        SELECT
+        <include refid="browseColumns"/>
+        <include refid="browseJoins"/>
+        WHERE b.is_deleted = 0 AND b.id = #{id}
+    </select>
+
+    <!--
+      upsert 的前半段：有这一对 (消费者, 商品) 就把浏览时间刷成最新。
+      WHERE 上没有 is_deleted = 0 —— 已删除的那条也一并复活（is_deleted 置回 0），
+      这样 insert 分支只会在这个消费者从没浏览过这件商品时才走到，uk_user_product 撞不上。
+      update_time 手写 NOW()：这里是绕过 MP 的直接 UPDATE，MyMetaObjectHandler 不会插手。
+    -->
+    <update id="markBrowsed">
+        UPDATE shop_consumer_browse
+        SET browse_time = #{browseTime},
+            is_deleted  = 0,
+            update_by   = #{updateBy},
+            update_time = NOW()
+        WHERE user_id = #{userId}
+          AND product_id = #{productId}
+    </update>
+
+    <select id="countSameTarget" resultType="java.lang.Long">
+        SELECT COUNT(*)
+        FROM shop_consumer_browse
+        WHERE user_id = #{userId}
+        AND product_id = #{productId}
+        <if test="excludeId != null">
+            AND id != #{excludeId}
+        </if>
+    </select>
+
+</mapper>

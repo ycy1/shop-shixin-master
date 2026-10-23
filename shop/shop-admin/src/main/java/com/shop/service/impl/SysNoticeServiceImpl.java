@@ -1,15 +1,13 @@
 package com.shop.service.impl;
 
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.shop.common.Constants;
-import com.shop.entity.SysNotifications;
 import com.shop.enums.NoticePosttionEnum;
+import com.shop.enums.NotificationTypeEnum;
+import com.shop.event.NotificationEvent;
 import com.shop.exception.ServiceException;
-import com.shop.utils.EmailUtil;
 import com.shop.utils.NotificationsUtil;
 import org.springframework.stereotype.Service;
 import com.shop.mapper.SysNoticeMapper;
@@ -30,7 +28,30 @@ public class SysNoticeServiceImpl extends ServiceImpl<SysNoticeMapper, SysNotice
 
     private final NotificationsUtil notificationsUtil;
 
-    private final ExecutorService taskExecutor = Executors.newFixedThreadPool(10);
+    /**
+     * 公告落库成功后丢一条事件出去：新增、修改、上下线三处都走这一句，落主表和展开接收人都在 NotificationsUtil 那段异步里做。
+     *
+     * 为什么不再自己 submit 到线程池：原先是一个 service 实例 new 一个 FixedThreadPool（容器关掉还漏线程），
+     * 而且那一段跑在事务提交之前 —— 公告回滚了，消息却已经发出去了。
+     */
+    private void publishNotice(SysNotice notice, Long fromUserId) {
+        if (notice == null || notice.getId() == null) {
+            return;
+        }
+        // 收件范围还是公告表单里那串 notice_push（user/dept/role 三档），三档全空 = 全员广播
+        List<List<Long>> push = NotificationsUtil.parseNoticePush(notice.getNoticePush());
+        notificationsUtil.publish(NotificationEvent.builder()
+                .type(NotificationTypeEnum.NOTICE)
+                .businessId(notice.getId())
+                .title("公告通知【" + notice.getTitle() + "】")
+                .message(notice.getContent())
+                .fromUserId(fromUserId)
+                .userIds(push.get(0))
+                .deptIds(push.get(1))
+                .roleIds(push.get(2))
+                .build());
+    }
+
     /**
      * 查询公告分页列表
      */
@@ -78,23 +99,7 @@ public class SysNoticeServiceImpl extends ServiceImpl<SysNoticeMapper, SysNotice
         boolean shouldPush = Boolean.TRUE.equals(sysNotice.getSend())
                 || sysNotice.getIsShow() == Constants.YES;
         if (shouldPush) {
-            long loginIdAsLong = StpUtil.getLoginIdAsLong();
-            taskExecutor.submit(() -> {
-                try {
-                    SysNotifications notifications = SysNotifications.builder()
-                            .title("公告通知【"+ sysNotice.getTitle()+"】")
-                            .message(sysNotice.getContent())
-                            .businessId(sysNotice.getId())
-                            .businessType("notice")
-                            // 推送对象由公告的 notice_push 指定（null 或全空 = 全员可见）
-                            .noticePush(sysNotice.getNoticePush())
-                            .fromUserId(loginIdAsLong)
-                            .build();
-                    notificationsUtil.publish(notifications);
-                } catch (Exception e) {
-                    log.error("发送通知失败", e);
-                }
-            });
+            publishNotice(sysNotice, StpUtil.getLoginIdAsLong());
         }
         return result;
     }
@@ -116,23 +121,7 @@ public class SysNoticeServiceImpl extends ServiceImpl<SysNoticeMapper, SysNotice
         boolean result = updateById(sysNotice);
         // 修改弹窗点击“发送”（send=true）：保存并立即推送
         if (Boolean.TRUE.equals(sysNotice.getSend())) {
-            long loginIdAsLong = StpUtil.getLoginIdAsLong();
-            taskExecutor.submit(() -> {
-                try {
-                    SysNotifications notifications = SysNotifications.builder()
-                            .title("公告通知【" + sysNotice.getTitle() + "】")
-                            .message(sysNotice.getContent())
-                            .businessId(sysNotice.getId())
-                            .businessType("notice")
-                            // 推送对象由公告的 notice_push 指定（null 或全空 = 全员可见）
-                            .noticePush(sysNotice.getNoticePush())
-                            .fromUserId(loginIdAsLong)
-                            .build();
-                    notificationsUtil.publish(notifications);
-                } catch (Exception e) {
-                    log.error("发送通知失败", e);
-                }
-            });
+            publishNotice(sysNotice, StpUtil.getLoginIdAsLong());
         }
         return result;
     }
@@ -144,24 +133,12 @@ public class SysNoticeServiceImpl extends ServiceImpl<SysNoticeMapper, SysNotice
             throw new ServiceException("公告不存在!");
         }
         if (sysNotice.getIsShow() == Constants.YES) {
-            long loginIdAsLong = StpUtil.getLoginIdAsLong();
-            taskExecutor.submit(() -> {
-                try {
-                    SysNotifications notifications = SysNotifications.builder()
-                            .title("公告通知【"+ one.getTitle()+"】")
-                            .message(one.getContent())
-                            .businessId(one.getId())
-                            .businessType("notice")
-                            // 推送对象由公告的 notice_push 指定（null 或全空 = 全员可见）
-                            .noticePush(one.getNoticePush())
-                            .fromUserId(loginIdAsLong)
-                            .build();
-                    notificationsUtil.publish(notifications);
-                } catch (Exception e) {
-                    log.error("发送通知失败", e);
-                }
-            });
+            // 上下线这一趟用的是库里的正文（弹窗只递了 isShow 那一格）
+            publishNotice(one, StpUtil.getLoginIdAsLong());
         }
+        // 上面已经发过一遍了：转手给 update 只做「是否展示」那格的保存，
+        // 别让它带着表单里的 send=true 再发第二遍（老代码这么双发过一次）
+        sysNotice.setSend(false);
         return update(sysNotice);
     }
 

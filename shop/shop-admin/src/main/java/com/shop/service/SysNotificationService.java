@@ -26,6 +26,14 @@ public interface SysNotificationService extends IService<SysNotifications> {
     IPage<NotificationsListVo> selectPage(SysNotifications notifications);
 
     /**
+     * 新增消息通知（管理端手工发消息：发送人取当前登录用户，新增即生成首个发送批次 send_code）
+     *
+     * @param notifications 消息通知（业务类型/标题/内容为必填，noticePush 为空或全空数组=全员可见）
+     * @return 是否成功
+     */
+    boolean insert(SysNotifications notifications);
+
+    /**
      * 批量删除消息通知
      *
      * @param ids 消息id集合

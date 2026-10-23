@@ -1,12 +1,14 @@
 package com.shop.wx.service.impl;
 
 import com.google.gson.Gson;
-import com.shop.entity.SysOrder;
+import com.shop.api.service.ShopOrderCreateService;
+import com.shop.dto.order.ShopOrderCreateDto;
+import com.shop.exception.ServiceException;
+import com.shop.vo.order.ShopOrderCreateVo;
 import com.shop.wx.config.WxPayConfig;
 import com.shop.wx.enums.wxpay.WxApiType;
 import com.shop.wx.enums.wxpay.WxNotifyType;
 import com.shop.wx.enums.wxpay.WxTradeState;
-import com.shop.wx.service.OrderWxService;
 import com.shop.wx.service.WxPayService;
 import com.shop.wx.utils.HttpUtils;
 import com.shop.wx.utils.WechatPay2ValidatorForRequest;
@@ -21,6 +23,7 @@ import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.util.EntityUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -47,15 +50,19 @@ public class WxPayServiceImpl implements WxPayService {
     private final Verifier verifier;
     private final ReentrantLock lock = new ReentrantLock();
 
-    private final OrderWxService sysOrderWxService;
+    private final ShopOrderCreateService shopOrderCreateService;
 
 //    @Resource
 //    @Qualifier("wxPayNoSignClient")
 //    private CloseableHttpClient wxPayNoSignClient;
 
     @Override
-    public Map<String, Object> jsapiPay(SysOrder sysOrder) throws IOException {
-        SysOrder orderInfo = sysOrderWxService.createOrder(sysOrder);
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> jsapiPay(ShopOrderCreateDto form) throws IOException {
+        //落单和微信下单算一件事：create() 在这里加入同一个事务（不是自己单独提交），
+        //微信那一步失败就整单回滚，库里不留待支付的孤单。
+        //注意因此请求微信期间事务和数据库连接是占着的，响应慢会拖住连接池
+        ShopOrderCreateVo orderInfo = shopOrderCreateService.create(form);
         log.info("调用统一下单接口API");
         //请求URL
         HttpPost httpPost = new HttpPost(wxPayConfig.getDomain().concat(WxApiType.JSAPI_PAY.getType()));
@@ -68,7 +75,8 @@ public class WxPayServiceImpl implements WxPayService {
         paramsMap.put("notify_url",wxPayConfig.getNotifyDomain().concat(WxNotifyType.NATIVE_NOTIFY.getType()));
 
         HashMap<Object, Object> amountMap = new HashMap<>();
-        amountMap.put("total",orderInfo.getTotalAmount().multiply(new BigDecimal(100)).intValue());
+        //向微信收的是实付金额（总金额-优惠）
+        amountMap.put("total",orderInfo.getPayAmount().multiply(new BigDecimal(100)).intValue());
         amountMap.put("currency","CNY");
         paramsMap.put("amount",amountMap);
         String paramsJson = new Gson().toJson(paramsMap);
@@ -90,7 +98,10 @@ public class WxPayServiceImpl implements WxPayService {
                 log.info("success");
             } else {
                 log.info("failed,resp code = {},return body = {}",statusCode, bodyStr);
-                throw new IOException("request failed");
+                //微信的失败应答是 {"code":"...","message":"..."}，把 message 抛给前端，别只报 request failed
+                Map errMap = new Gson().fromJson(bodyStr, Map.class);
+                Object errMsg = errMap == null ? null : errMap.get("message");
+                throw new ServiceException("微信支付下单失败：" + (errMsg == null ? bodyStr : errMsg));
             }
             Map fromMap = new Gson().fromJson(bodyStr, Map.class);
             Object prepay_id = fromMap.get("prepay_id");

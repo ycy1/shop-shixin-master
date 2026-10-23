@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopErpWarehouseMapper">
+
+    <!-- 公共查询列：表加了列只改这一处（别名固定是 w，和下面的 FROM 对应） -->
+    <sql id="warehouseColumns">
+        w.id,
+        w.warehouse_code,
+        w.warehouse_name,
+        w.warehouse_type,
+        w.store_id,
+        w.user_id,
+        w.contact_name,
+        w.contact_phone,
+        w.area_code,
+        w.area_zh,
+        w.address,
+        w.longitude,
+        w.latitude,
+        w.capacity,
+        w.capacity_warn,
+        w.capacity_used,
+        w.warn_enable,
+        w.status,
+        w.create_by,
+        w.update_by,
+        w.create_time,
+        w.update_time
+    </sql>
+
+    <!-- 门店名/操作员名一律联表现取，不在仓库里冗余快照：门店改名不用回头刷仓库（同采购单联供应商） -->
+    <sql id="warehouseJoins">
+        FROM shop_erp_warehouse w
+        LEFT JOIN shop_store st ON st.id = w.store_id AND st.is_deleted = 0
+        LEFT JOIN sys_user eu ON eu.id = w.user_id
+    </sql>
+
+    <!-- 自定义 SQL 不走全局逻辑删除，w.is_deleted = 0 必须手写 -->
+    <select id="selectWarehousePage" resultType="com.shop.entity.ShopErpWarehouse">
+        SELECT
+            <include refid="warehouseColumns"/>,
+            st.store_name AS storeName,
+            eu.nickname AS userName
+        <include refid="warehouseJoins"/>
+        <where>
+            w.is_deleted = 0
+            <!-- 一个输入框搜名称、编码、联系人和电话，括号内 OR 不会串到上面的筛选（同供应商） -->
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (w.warehouse_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR w.warehouse_code LIKE CONCAT('%', #{q.keyword}, '%')
+                OR w.contact_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR w.contact_phone LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+            <if test="q.warehouseType != null">
+                AND w.warehouse_type = #{q.warehouseType}
+            </if>
+            <if test="q.status != null">
+                AND w.status = #{q.status}
+            </if>
+            <!-- ERP 账号只看自己负责的：userId 由服务层覆盖成登录 id，前端传什么都不认 -->
+            <if test="q.userId != null">
+                AND w.user_id = #{q.userId}
+            </if>
+            <!-- 这一格是搜索栏的「关联门店」筛选，和账号类型无关 -->
+            <if test="q.storeId != null">
+                AND w.store_id = #{q.storeId}
+            </if>
+        </where>
+        <!-- 启用打头，其后盘点中(2)、调拨中(3)，禁用在末（四档不是 1/0，光看 status DESC 会让 调拨中 排在 启用 前面）。
+             同状态内按 id 倒序 -->
+        ORDER BY FIELD(w.status, 1, 2, 3, 0), w.id DESC
+    </select>
+
+    <select id="selectWarehouseById" resultType="com.shop.entity.ShopErpWarehouse">
+        SELECT
+            <include refid="warehouseColumns"/>,
+            st.store_name AS storeName,
+            eu.nickname AS userName
+        <include refid="warehouseJoins"/>
+        WHERE w.id = #{id}
+          AND w.is_deleted = 0
+    </select>
+
+    <!--
+      已用容量按库存表现汇总，不做"capacity_used = capacity_used + 本次数量"的增量：
+      入库一条明细调一次、同一张单多行同仓库会重复加，增量口径迟早对不上；重算天然幂等。
+      用 stock 不用 available_stock：锁住的货一样占仓里的位置。
+      自定义 SQL 不走全局逻辑删除，两边的 is_deleted = 0 都手写。
+      这一条是系统重算不是谁改档案，所以不动 update_by（update_time 由库的 ON UPDATE 自己刷，无妨）。
+    -->
+    <update id="refreshCapacityUsed">
+        UPDATE shop_erp_warehouse w
+        SET w.capacity_used = (SELECT IFNULL(SUM(i.stock), 0)
+                               FROM shop_erp_inventory i
+                               WHERE i.warehouse_id = w.id
+                                 AND i.is_deleted = 0)
+        WHERE w.id = #{warehouseId}
+          AND w.is_deleted = 0
+    </update>
+
+</mapper>

@@ -55,9 +55,11 @@ declare global {
   const resolveComponent: typeof import('vue')['resolveComponent']
   const setActivePinia: typeof import('pinia')['setActivePinia']
   const setMapStoreSuffix: typeof import('pinia')['setMapStoreSuffix']
+  const setupStore: typeof import('./store/index')['setupStore']
   const shallowReactive: typeof import('vue')['shallowReactive']
   const shallowReadonly: typeof import('vue')['shallowReadonly']
   const shallowRef: typeof import('vue')['shallowRef']
+  const store: typeof import('./store/index')['store']
   const storeToRefs: typeof import('pinia')['storeToRefs']
   const toRaw: typeof import('vue')['toRaw']
   const toRef: typeof import('vue')['toRef']
@@ -72,11 +74,16 @@ declare global {
   const useId: typeof import('vue')['useId']
   const useLink: typeof import('vue-router')['useLink']
   const useModel: typeof import('vue')['useModel']
+  const usePermissionStore: typeof import('./store/modules/permission')['usePermissionStore']
+  const usePermissionStoreHook: typeof import('./store/modules/permission')['usePermissionStoreHook']
   const useRoute: typeof import('vue-router')['useRoute']
   const useRouter: typeof import('vue-router')['useRouter']
-  const useSettingsStore: typeof import('./stores/settings.js')['useSettingsStore']
+  const useSettingsStore: typeof import('./store/modules/settings')['useSettingsStore']
   const useSlots: typeof import('vue')['useSlots']
+  const useTagsViewStore: typeof import('./store/modules/tagsView')['useTagsViewStore']
   const useTemplateRef: typeof import('vue')['useTemplateRef']
+  const useUserStore: typeof import('./store/modules/user')['useUserStore']
+  const useUserStoreHook: typeof import('./store/modules/user')['useUserStoreHook']
   const watch: typeof import('vue')['watch']
   const watchEffect: typeof import('vue')['watchEffect']
   const watchPostEffect: typeof import('vue')['watchPostEffect']
@@ -143,9 +150,11 @@ declare module 'vue' {
     readonly resolveComponent: UnwrapRef<typeof import('vue')['resolveComponent']>
     readonly setActivePinia: UnwrapRef<typeof import('pinia')['setActivePinia']>
     readonly setMapStoreSuffix: UnwrapRef<typeof import('pinia')['setMapStoreSuffix']>
+    readonly setupStore: UnwrapRef<typeof import('./store/index')['setupStore']>
     readonly shallowReactive: UnwrapRef<typeof import('vue')['shallowReactive']>
     readonly shallowReadonly: UnwrapRef<typeof import('vue')['shallowReadonly']>
     readonly shallowRef: UnwrapRef<typeof import('vue')['shallowRef']>
+    readonly store: UnwrapRef<typeof import('./store/index')['store']>
     readonly storeToRefs: UnwrapRef<typeof import('pinia')['storeToRefs']>
     readonly toRaw: UnwrapRef<typeof import('vue')['toRaw']>
     readonly toRef: UnwrapRef<typeof import('vue')['toRef']>
@@ -160,10 +169,16 @@ declare module 'vue' {
     readonly useId: UnwrapRef<typeof import('vue')['useId']>
     readonly useLink: UnwrapRef<typeof import('vue-router')['useLink']>
     readonly useModel: UnwrapRef<typeof import('vue')['useModel']>
+    readonly usePermissionStore: UnwrapRef<typeof import('./store/modules/permission')['usePermissionStore']>
+    readonly usePermissionStoreHook: UnwrapRef<typeof import('./store/modules/permission')['usePermissionStoreHook']>
     readonly useRoute: UnwrapRef<typeof import('vue-router')['useRoute']>
     readonly useRouter: UnwrapRef<typeof import('vue-router')['useRouter']>
+    readonly useSettingsStore: UnwrapRef<typeof import('./store/modules/settings')['useSettingsStore']>
     readonly useSlots: UnwrapRef<typeof import('vue')['useSlots']>
+    readonly useTagsViewStore: UnwrapRef<typeof import('./store/modules/tagsView')['useTagsViewStore']>
     readonly useTemplateRef: UnwrapRef<typeof import('vue')['useTemplateRef']>
+    readonly useUserStore: UnwrapRef<typeof import('./store/modules/user')['useUserStore']>
+    readonly useUserStoreHook: UnwrapRef<typeof import('./store/modules/user')['useUserStoreHook']>
     readonly watch: UnwrapRef<typeof import('vue')['watch']>
     readonly watchEffect: UnwrapRef<typeof import('vue')['watchEffect']>
     readonly watchPostEffect: UnwrapRef<typeof import('vue')['watchPostEffect']>

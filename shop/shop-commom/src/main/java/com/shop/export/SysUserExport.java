@@ -34,6 +34,11 @@ public class SysUserExport implements Serializable {
     @ColumnWidth(10)
     private Integer sex;
 
+    @ExcelProperty(value = "账号类型", converter = CustomConverter.DicConverterToInt.class)
+    @DictFormat(code = "account_type") // 声明字典类型
+    @ColumnWidth(12)
+    private Integer accountType;
+
     @ExcelProperty(value = "用户标签")
     @ColumnWidth(20)
     private String userTags;

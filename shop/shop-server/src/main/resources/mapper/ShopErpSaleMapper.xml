@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopErpSaleMapper">
+
+    <!-- 公共查询列：表加了列只改这一处（别名固定是 s，和下面的 FROM 对应） -->
+    <sql id="saleColumns">
+        s.id,
+        s.sale_no,
+        s.store_id,
+        s.warehouse_id,
+        s.user_id,
+        s.total_amount,
+        s.total_quantity,
+        s.status,
+        s.expect_date,
+        s.audit_time,
+        s.ship_time,
+        s.contact_name,
+        s.contact_phone,
+        s.remark,
+        s.create_by,
+        s.update_by,
+        s.create_time,
+        s.update_time
+    </sql>
+
+    <!-- 门店名/仓库名/操作员名一律联表现取，不在销售单里冗余快照：改了名称不用回头刷单子（同采购单） -->
+    <sql id="saleJoins">
+        FROM shop_erp_sale s
+        LEFT JOIN shop_store st ON st.id = s.store_id AND st.is_deleted = 0
+        LEFT JOIN shop_erp_warehouse w ON w.id = s.warehouse_id AND w.is_deleted = 0
+        LEFT JOIN sys_user eu ON eu.id = s.user_id
+    </sql>
+
+    <!-- 自定义 SQL 不走全局逻辑删除，s.is_deleted = 0 必须手写 -->
+    <select id="selectSalePage" resultType="com.shop.entity.ShopErpSale">
+        SELECT
+            <include refid="saleColumns"/>,
+            st.store_name AS storeName,
+            w.warehouse_name AS warehouseName,
+            eu.nickname AS userName
+        <include refid="saleJoins"/>
+        <where>
+            s.is_deleted = 0
+            <!-- 一个输入框搜单号、备注和门店名称，括号内 OR 不会串到上面的筛选 -->
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (s.sale_no LIKE CONCAT('%', #{q.keyword}, '%')
+                OR s.remark LIKE CONCAT('%', #{q.keyword}, '%')
+                OR st.store_name LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+            <if test="q.storeId != null">
+                AND s.store_id = #{q.storeId}
+            </if>
+            <if test="q.warehouseId != null">
+                AND s.warehouse_id = #{q.warehouseId}
+            </if>
+            <if test="q.status != null">
+                AND s.status = #{q.status}
+            </if>
+            <!-- ERP 账号只看自己负责的：userId 由服务层覆盖成登录 id，前端传什么都不认 -->
+            <if test="q.userId != null">
+                AND s.user_id = #{q.userId}
+            </if>
+            <if test="q.beginTime != null and q.beginTime != ''">
+                AND s.create_time &gt;= #{q.beginTime}
+            </if>
+            <if test="q.endTime != null and q.endTime != ''">
+                AND s.create_time &lt;= #{q.endTime}
+            </if>
+        </where>
+        <!-- 不按 status 排：这里的 status 是单据流转状态（0待审核→1已审核→2待出库→3已出库，4已取消 是手工作废），
+             不是启用/禁用，按它排会把"已取消"顶到第一页。新单在前就够了 -->
+        ORDER BY s.id DESC
+    </select>
+
+    <select id="selectSaleById" resultType="com.shop.entity.ShopErpSale">
+        SELECT
+            <include refid="saleColumns"/>,
+            st.store_name AS storeName,
+            w.warehouse_name AS warehouseName,
+            eu.nickname AS userName
+        <include refid="saleJoins"/>
+        WHERE s.id = #{id}
+          AND s.is_deleted = 0
+    </select>
+
+    <!--
+      销售单明细的商品候选：一行是一个规格（shop_product_sku），下拉选下来落进明细那行的是 skuId。
+      判据两档：属于这家门店（shop_product.store_id 写死，"不限定门店"的商品算不进这家店的销售单）
+      + 这一条规格标了「可销售」（shop_product_sku.sale_enable = 1）。
+      sale_enable 和上架/下架是两个维度（前者管这一条规格能不能建销售单，后者管这件商品前台显不显示、买不买得了），
+      所以这里不看 p.status —— 重构前判的也是详情表那一格，这一档口径没跟着搬去商品。
+      shop_product 用 INNER：SKU 行必须在，没有这一条规格就没有价格，那一行进不了单。
+      选了发货仓库再加一档：那个仓里**这一条规格**得有可用库存（stock - locked_stock > 0，口径同商品列表的
+      available_stock），仓里没货的规格开进单子也出不了货；不选仓库就不加这一档（出库时才定仓）。
+      库存判据从按商品改成按规格（i.sku_id = sk.id）比原来更紧也更准：库存行本来就是一规格一仓一行，
+      同一商品别的规格有货，不该再把这条没货的规格摆进候选。
+      用 EXISTS 不用 SUM 子查询：这里只问"有没有"，不问"有几个"，找到一行就能停。
+      LIMIT 卡的是候选行数，现在一行是一个规格，所以同一商品可能连着占几行 —— 逐行选规格本来就要这个效果。
+      主图同理跟着这一行走：这一条规格自己传过图（sku_image）就用它，NULL 才退回商品的 main_image，
+      口径同规格选择器弹窗里那格缩略图。
+    -->
+    <select id="selectProductOptions" resultType="com.shop.vo.product.ShopProductVo">
+        SELECT p.id,
+               p.product_code,
+               p.product_name,
+               COALESCE(sk.sku_image, p.main_image) AS main_image,
+               p.store_id,
+               sk.id AS skuId,
+               sk.spec_text AS specText,
+               sk.product_price AS productPrice
+        FROM shop_product_sku sk
+        INNER JOIN shop_product p ON p.id = sk.product_id AND p.is_deleted = 0
+        WHERE sk.is_deleted = 0
+          AND sk.sale_enable = 1
+          AND p.store_id = #{storeId}
+        <if test="warehouseId != null">
+            AND EXISTS (SELECT 1 FROM shop_erp_inventory i
+                        WHERE i.sku_id = sk.id
+                          AND i.warehouse_id = #{warehouseId}
+                          AND i.is_deleted = 0
+                          AND i.stock - i.locked_stock > 0)
+        </if>
+        <!-- 规格文本也进这一串：一行是一个规格，只搜商品名会把同一商品名下所有规格都捞出来，
+             想挑具体那一行只能靠规格文本收窄 -->
+        <if test="keyword != null and keyword != ''">
+            AND (p.product_name LIKE CONCAT('%', #{keyword}, '%')
+            OR p.product_code LIKE CONCAT('%', #{keyword}, '%')
+            OR sk.spec_text LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <!-- 先按商品新在前、同一商品内再按 SKU 新在前：原来是按商品 id 倒序，
+             现在一个商品会出好几行，不加第二档同一商品的行会在结果里散开 -->
+        ORDER BY p.id DESC, sk.id DESC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

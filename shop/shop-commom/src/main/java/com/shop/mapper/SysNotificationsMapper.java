@@ -6,7 +6,6 @@ import com.shop.entity.SysNotifications;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.shop.vo.notifications.NotificationsListVo;
 import com.shop.vo.notifications.NotificationsReceiverVo;
-import org.apache.ibatis.annotations.MapKey;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -19,10 +18,10 @@ import java.util.Map;
 @Mapper
 public interface SysNotificationsMapper extends BaseMapper<SysNotifications> {
     /**
-     * 分页查询消息通知（当前用户可见的，按 notice_push 判断接收人，按 sys_notifications_receiver 判断已读）
+     * 分页查询消息通知（当前用户可见的：全员广播的 + 接收人展开到自己名下且自己没删的；已读看 sys_notifications_receiver.is_read）
      *
      * @param page          分页参数
-     * @param notifications 查询条件
+     * @param notifications 查询条件（category、businessType、businessTypes）
      * @param userId        当前登录用户id
      * @return 消息通知分页
      */
@@ -38,25 +37,26 @@ public interface SysNotificationsMapper extends BaseMapper<SysNotifications> {
      */
     NotificationsListVo selectNotificationsById(@Param("id") Long id, @Param("userId") Long userId);
 
-    @MapKey("type")
-    Map<String, Integer> getUnReadNum(@Param("userId") long userId);
-
     /**
-     * 当前用户的未读消息数量（>0 表示有未读）
+     * 当前用户的未读汇总：一趟捞回「总数 + 系统消息 + 互动消息」三格（前台消息中心两档 tab 和头上那颗红点共用这一趟）
+     *
+     * @return 一行三列：total、system_num、interact_num
      */
-    long countMyUnread(@Param("userId") long userId);
+    Map<String, Object> countUnreadSummary(@Param("userId") Long userId);
 
     /**
-     * 标记已读：存在已读记录则更新 is_read=1，否则插入（幂等，upsert）
+     * 标记已读：存在接收人记录则更新 is_read=1，否则插入（幂等，upsert）
      *
      * @return 受影响行数（<=0 表示主消息不存在）
      */
     int doRead(@Param("userId") Long userId, @Param("notificationId") Long notificationId);
 
     /**
-     * 全部标记已读：把当前用户可见的未读消息批量插入 receiver 记录
+     * 全部标记已读：把当前用户可见的未读消息批量补上已读的接收人记录
+     *
+     * @param category 只清这一档（1 系统 / 2 互动），null 表示两档一起
      */
-    int allRead(@Param("userId") Long userId);
+    int allRead(@Param("userId") Long userId, @Param("category") Integer category);
 
     /**
      * 接收人删除消息：upsert receiver 记录 is_deleted=1（仅对当前用户隐藏）
@@ -100,5 +100,18 @@ public interface SysNotificationsMapper extends BaseMapper<SysNotifications> {
      * @return 受影响行数
      */
     int deleteReceiverByNotificationId(@Param("notificationId") Long notificationId);
+
+    /**
+     * 发送时展开接收人：把 userIds / deptIds（sys_dept_user）/ roleIds（sys_user_role）三档命中的启用账号一趟铺成
+     * sys_notifications_receiver 的未读记录（insert ignore + uk_message_user 天然去重，同一个人既在部门又在角色也只落一行）。
+     * 三格全空不能调这一条 —— 那样等于铺全表，全员广播走主表 is_broadcast，不落接收人。
+     *
+     * @return 铺出来的接收人行数（撞唯一键被忽略的不计）
+     */
+    int fanOutReceivers(@Param("notificationId") Long notificationId,
+                        @Param("sendCode") String sendCode,
+                        @Param("userIds") List<Long> userIds,
+                        @Param("deptIds") List<Long> deptIds,
+                        @Param("roleIds") List<Long> roleIds);
 
 }

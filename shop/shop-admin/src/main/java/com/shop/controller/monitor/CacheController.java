@@ -1,6 +1,8 @@
 package com.shop.controller.monitor;
 
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.shop.annotation.OperationLogger;
 import com.shop.common.Result;
 import com.shop.service.CacheService;
 import com.shop.vo.cache.*;
@@ -39,6 +41,38 @@ public class CacheController {
     @DeleteMapping
     public Result<Void> clearCache() {
         cacheService.clearCache();
+        return Result.success();
+    }
+
+    /**
+     * 看某一个键存的内容（列表那一行点开）。
+     *
+     * 内容给的是库里那串原始文本，不是反序列化后的对象 —— 见 CacheServiceImpl.getValue 那段说明。
+     */
+    @ApiOperation(value = "查看缓存内容")
+    @GetMapping("/value")
+    public Result<CacheValueVo> getValue(@RequestParam("key") String key) {
+        return Result.success(cacheService.getValue(key));
+    }
+
+    @ApiOperation(value = "修改缓存内容（只有 string 类型可改）")
+    @OperationLogger("修改缓存内容")
+    @SaCheckPermission("monitor:cache:update")
+    @PutMapping("/value")
+    public Result<Void> updateValue(@RequestBody CacheValueDto dto) {
+        cacheService.updateValue(dto);
+        return Result.success();
+    }
+
+    /**
+     * 删某一个键。缓存的常规改法其实就是这一颗：删掉，让写它的那一段回源重灌。
+     */
+    @ApiOperation(value = "删除缓存键")
+    @OperationLogger("删除缓存键")
+    @SaCheckPermission("monitor:cache:delete")
+    @DeleteMapping("/key")
+    public Result<Void> deleteValue(@RequestParam("key") String key) {
+        cacheService.deleteValue(key);
         return Result.success();
     }
 }

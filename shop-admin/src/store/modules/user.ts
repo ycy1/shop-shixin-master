@@ -20,7 +20,9 @@ export const useUserStore = defineStore("user", () => {
     intro: null,
     avatar: null,
     nickname: null,
-    permissions: []
+    permissions: [],
+    // 账号类型：0平台用户 1门店 2送货员 3消费者 4供应商 5ERP操作员（字典 account_type）
+    accountType: undefined as number | undefined
   });
 
   /**
@@ -35,6 +37,8 @@ export const useUserStore = defineStore("user", () => {
         .then((response) => {
           const { data } = response;
           setToken(data.token)
+          // 登录响应里就带账号类型，先缓存一份；进首页时路由守卫会用 /api/auth/info 覆盖成最新值
+          user.value.accountType = data.accountType
           resolve();
         })
         .catch((error) => {

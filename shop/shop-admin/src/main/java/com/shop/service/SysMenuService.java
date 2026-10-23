@@ -9,8 +9,9 @@ import java.util.List;
 public interface SysMenuService extends IService<SysMenu> {
     /**
      * 获取菜单树
+     * @param query 查询条件，目前只用 title（菜单名称模糊匹配）
      */
-    List<SysMenu> getMenuTree();
+    List<SysMenu> getMenuTree(SysMenu query);
     
     /**
      * 新增菜单

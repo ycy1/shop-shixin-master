@@ -1,0 +1,505 @@
+---
+import { ClientRouter } from 'astro:transitions';
+import '@/styles/global.css';
+import UserAuth from '@/views/auth/UserAuth.vue';
+import {
+  DEFAULT_LOCALE,
+  HTML_LANG,
+  LANG_NAMES,
+  LOCALES,
+  localeHref,
+  stripLocalePrefix,
+  useDict,
+} from '@/i18n';
+import type { Locale } from '@/i18n';
+
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description = '' } = Astro.props;
+/**
+ * 语种是 astro 按 URL 前缀认出来的（/en/xxx 就是英文档），页面文件不用各语抄一份。
+ * 这一格还要往下传两处：<html lang> 和每一颗 island 的 locale prop（岛是各自小程序，读不到 Astro 对象）。
+ */
+const { locale, d, fill, href } = useDict(Astro.locals.locale);
+/** 切语言要落回「同一页的另一语种版」：先把当前路径上的语种前缀剥掉，再按对方档位拼回去（查询串原样带着） */
+const currentPath = stripLocalePrefix(Astro.url.pathname);
+const switchUrl = (code: Locale) => localeHref(code, currentPath) + Astro.url.search;
+---
+
+<!doctype html>
+<html lang={HTML_LANG[locale]}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title}</title>
+
+    <!-- 站内跳转不整页刷新：astro 拦下同源 <a> 的点击，只把变掉的那一段换进当前文档。
+         这么一挂，各个 island 只要 astro-id 对得上就留着原来的实例 —— 页头那颗登录按钮（UserAuth，无 props，
+         每页算出来的 id 一样）里的登录态因此不会被导航洗掉；而 /product/5 → /product/6 因为 productId 是 props 的一部分，
+         id 不同 ⇒ 详情那一岛照常重挂、重新按新 id 捞数据，不会出现停在上一件商品的画面。
+         换页动画不走这里的 transition:animate，改在 body 末尾那条脚本 + .page-enter（见 global.css）：
+         astro 那个指令生成的 CSS 全在它自带的一条 @media (prefers-reduced-motion) 罩子里（animation: none !important，
+         连 view-transition-name 打在的元素自己身上都压），这台机器系统里关了动效，写什么都不会动。 -->
+    <ClientRouter />
+
+    <!-- 昼夜模式：主题只落在 <html> 的一格 .dark 上，全站（含各个 island）靠 dark: 变体跟着翻，
+         所以这份状态不进 Pinia —— island 之间本来就不共享 store，挂 DOM 上才是一份。
+         is:inline 是为了让它在这页 CSS 画出来之前就跑完，否则一进黑夜模式的站点会先白闪一下。 -->
+    <script is:inline>
+      (() => {
+        const KEY = 'shop-theme';
+        const root = document.documentElement;
+
+        // 点过一次开关就以存的那格为准，没点过才跟着系统走
+        function wantsDark() {
+          let stored = null;
+          try {
+            stored = localStorage.getItem(KEY);
+          } catch {
+            // 隐私模式下 localStorage 会抛，读不到就当没选过
+          }
+          return stored ? stored === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+        }
+
+        root.classList.toggle('dark', wantsDark());
+
+        // 换页要把这一格重新钉上：astro 换文档那一步（swap-functions.js 的 swapRootAttributes）是把 <html> 上
+        // 原有的属性**一条条 removeAttribute 掉**，再只按新文档那一串 setAttribute 回来。新文档是 SSR 出来的、
+        // 上面没有 .dark（这格只有客户端的 localStorage 知道），所以每点一条链接主题就被抹平一次。
+        // 它抛的 astro:after-swap 和换页在同一个任务里、浏览器还没画，所以补回来不会看见闪。
+        document.addEventListener('astro:after-swap', () => {
+          root.classList.toggle('dark', wantsDark());
+        });
+
+        // 这一格按钮在 body 里，脚本跑的时候还没有，所以绑在 document 上按属性认领。
+        // 挡重绑用 window 上的一格，不用 <html> 的属性 —— 上面那条会把 html 上的属性全抹掉，拿它当标记就靠不住。
+        if (!window.__shopThemeBound) {
+          window.__shopThemeBound = true;
+          document.addEventListener('click', (event) => {
+            const target = event.target;
+            if (!(target instanceof Element) || !target.closest('[data-theme-toggle]')) return;
+            const dark = !root.classList.contains('dark');
+            root.classList.toggle('dark', dark);
+            try {
+              localStorage.setItem(KEY, dark ? 'dark' : 'light');
+            } catch {
+              // 存不进去也只是下次进来回到默认，按钮本身照样能用
+            }
+          });
+        }
+      })();
+    </script>
+  </head>
+  <body class="flex min-h-screen flex-col bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100">
+    <!-- 吸顶：z-40 要压得住商品环，那几张卡片带 transform 会自己起一层 stacking context。
+         transition:persist 让换页时这一条留在原来那个节点上不被重建（它里面挂着登录那颗岛），
+         入场动画也只加在 <main> 上，所以页头始终是稳的，看着不像重开了一次站。 -->
+    <header
+      transition:persist="site-header"
+      class="sticky top-0 z-40 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+    >
+      <!-- 移动端菜单：整条 nav 是那个 group，开合只改它身上的 data-open（body 末尾那条脚本按属性认领，
+           和昼夜、回到顶部同一写法）⇒ 换页把 header 换掉了也认得新节点。gap-y 给"菜单展开成第二行"留出间距。 -->
+      <nav
+        data-site-nav
+        data-open="false"
+        class="group mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-3"
+      >
+        <a href={href('/')} class="text-lg font-semibold">
+          <span class="text-blue-600 dark:text-blue-400">Shop</span> {d.site.brandTail}
+        </a>
+
+        <!-- 三条链接这一格：桌面（md+）挂 md:contents ⇒ 自己不占形状，三条直接进上面那一排，和原来一模一样；
+             窄屏它是一条整行（basis-full ⇒ 排到第二行 = 向下伸展），行高在 0fr ↔ 1fr 之间动，动的是 grid-template-rows。
+             里面那格 overflow-hidden 是 0fr 那一条的配套（网格项默认 min-height:auto，不裁就顶不开）；
+             收起时整格 invisible ⇒ 那三条既看不见也 tab 不进去（光靠 0fr 裁高度，焦点还会掉进看不见的链接里）。 -->
+        <div
+          id="site-menu"
+          data-site-menu
+          class="order-3 grid w-full basis-full grid-rows-[0fr] transition-[grid-template-rows] duration-200 ease-out group-data-[open=true]:grid-rows-[1fr] md:contents"
+        >
+          <div class="invisible overflow-hidden transition-[visibility] duration-200 group-data-[open=true]:visible md:visible md:overflow-visible">
+            <div class="flex flex-col gap-1 py-2 text-sm md:flex-row md:items-center md:gap-4 md:py-0">
+              <a
+                href={href('/')}
+                class="rounded-lg px-2 py-2 text-blue-600 hover:bg-gray-100 hover:underline dark:text-blue-400 dark:hover:bg-gray-700 md:px-0 md:py-0 md:hover:bg-transparent md:dark:hover:bg-transparent"
+                >{d.site.home}</a
+              >
+              <!-- 活动列表：这一条是静态链接，不带登录态；里面的卡片再按活动自己的跳转类型分流 -->
+              <a
+                href={href('/activity')}
+                class="rounded-lg px-2 py-2 text-blue-600 hover:bg-gray-100 hover:underline dark:text-blue-400 dark:hover:bg-gray-700 md:px-0 md:py-0 md:hover:bg-transparent md:dark:hover:bg-transparent"
+                >{d.site.activity}</a
+              >
+              <!-- 广场：前台用户发的图文流，游客也能逛（发布和点赞那两颗在自己岛里判登录态） -->
+              <a
+                href={href('/plaza')}
+                class="rounded-lg px-2 py-2 text-blue-600 hover:bg-gray-100 hover:underline dark:text-blue-400 dark:hover:bg-gray-700 md:px-0 md:py-0 md:hover:bg-transparent md:dark:hover:bg-transparent"
+                >{d.site.plaza}</a
+              >
+              <!-- 购物车挂全站入口：车里那些行是落在库里的（按登录的人记），所以没登录也点得进去，
+                   那一页会自己说「登录后查看」。数不带在这一格 —— 这一条是静态的 astro，带数就得再挂一颗岛。 -->
+              <a
+                href={href('/cart')}
+                class="rounded-lg px-2 py-2 text-blue-600 hover:bg-gray-100 hover:underline dark:text-blue-400 dark:hover:bg-gray-700 md:px-0 md:py-0 md:hover:bg-transparent md:dark:hover:bg-transparent"
+                >{d.site.cart}</a
+              >
+            </div>
+          </div>
+        </div>
+
+        <!-- 右边这一排窄屏也不收：登录那颗、搜索、昼夜都是图标级尺寸，加上汉堡还摆得下；
+             收的只有上面那三条文字链接（登录态在 island 里，把它搬进折叠格会多出"弹窗挂在会 hidden 的子里面"那一堆牵连）。 -->
+        <div class="flex items-center gap-4 text-sm">
+          <UserAuth client:load locale={locale} />
+          <!-- 语言切换收成一颗下拉，而且两颗选项都钉 data-astro-reload ⇒ 选完是真的一次整页载入。
+               这一道是必须的：页头挂了 transition:persist，ClientRouter 换页时整条 header（连登录那颗岛）都留着旧节点，
+               只换 main ⇒ 正文翻成英文、页头还写着中文；岛留着原实例还多一桩，它的 locale prop 就停在旧语种那一档。
+               整页重走一趟，服务端那一趟直接按目标语种现渲，页头和岛一起翻，不会有「先画中文再翻英文」那一闪。
+               这一格还是静态 astro（不为记语种挂一颗岛），展开收起靠原生 details，禁用 JS 也点得开。 -->
+          <details class="relative" aria-label={d.site.language} data-lang-default={DEFAULT_LOCALE}>
+            <summary
+              class="flex list-none cursor-pointer items-center gap-1 rounded-lg border border-gray-200 px-2 py-1.5 text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700 [&::-webkit-details-marker]:hidden"
+            >
+              <svg
+                class="h-4 w-4 shrink-0"
+                viewBox="0 0 20 20"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.6"
+                aria-hidden="true"
+              >
+                <circle cx="10" cy="10" r="7" />
+                <path stroke-linecap="round" d="M3.3 7.8h13.4M3.3 12.2h13.4" />
+                <path d="M10 3c2.2 2 3.3 4.4 3.3 7S12.2 15 10 17c-2.2-2-3.3-4.4-3.3-7S7.8 5 10 3Z" />
+              </svg>
+              <span>{LANG_NAMES[locale]}</span>
+              <svg
+                class="h-3 w-3 shrink-0"
+                viewBox="0 0 12 12"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                aria-hidden="true"
+              >
+                <path stroke-linecap="round" d="m3 4.5 3 3 3-3" />
+              </svg>
+            </summary>
+            <ul
+              class="absolute right-0 z-50 mt-1 w-32 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-600 dark:bg-gray-800"
+            >
+              {
+                LOCALES.map((code) => (
+                  <li>
+                    <a
+                      href={switchUrl(code)}
+                      data-lang-target={code}
+                      data-astro-reload
+                      aria-current={code === locale ? 'true' : undefined}
+                      class:list={[
+                        'block px-3 py-1.5 text-xs transition-colors hover:bg-gray-100 dark:hover:bg-gray-700',
+                        code === locale
+                          ? 'font-medium text-gray-900 dark:text-gray-100'
+                          : 'text-gray-600 dark:text-gray-300',
+                      ]}
+                    >
+                      {LANG_NAMES[code]}
+                    </a>
+                  </li>
+                ))
+              }
+            </ul>
+          </details>
+          <!-- 搜索入口：首页和搜索页顶上那个搜索框只在两页上有，页头这一颗是「在任何一页都能去搜」的落点。
+               做成图标不做成框：这一格是静态 astro，收关键字就得再挂一颗 island 和一个全局状态。 -->
+          <a
+            href={href('/search')}
+            aria-label={d.site.search}
+            class="inline-flex items-center rounded-lg border border-gray-200 p-1.5 text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+          >
+            <!-- 这一颗不是照抄 SearchBox 那个放大镜：那一幅是 24 格画幅里只占中间 14 格（圈 r=7、柄只往外伸 3.5），
+                 在它自己那个大输入框里够大，缩到页头就糊成一个点拖着两个像素 —— 认不出是放大镜。
+                 这一份换成 20 格画幅 + 画满（圈 3→14、柄拉到 17）+ h-5，1:1 落地，圈 11px、柄 4px，描边 2px 不再被缩放削细。 -->
+            <svg
+              class="h-5 w-5"
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
+              <circle cx="8.5" cy="8.5" r="5.5" />
+              <path stroke-linecap="round" d="M17 17 12.4 12.4" />
+            </svg>
+          </a>
+          <button
+            type="button"
+            data-theme-toggle
+            aria-label={d.site.toggleTheme}
+            class="rounded-lg border border-gray-200 p-2 text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+          >
+            <!-- 两颗图标互相顶掉：亮色给太阳、暗色给月亮，谁显示全凭那格 .dark，不用 JS 管 -->
+            <svg
+              class="h-4 w-4 dark:hidden"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="4" />
+              <path stroke-linecap="round" d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+            </svg>
+            <svg
+              class="hidden h-4 w-4 dark:block"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" d="M20.3 15.4A8.5 8.5 0 1 1 8.6 3.7a7 7 0 0 0 11.7 11.7Z" />
+            </svg>
+          </button>
+          <!-- 汉堡：只管窄屏，桌面 md:hidden 直接不画。两颗图标同样互相顶掉，谁显示看 nav 那格 data-open -->
+          <button
+            type="button"
+            data-site-menu-toggle
+            aria-controls="site-menu"
+            aria-expanded="false"
+            aria-label={d.site.expandMenu}
+            data-label-open={d.site.expandMenu}
+            data-label-close={d.site.collapseMenu}
+            class="rounded-lg border border-gray-200 p-2 text-gray-600 transition-colors hover:bg-gray-100 md:hidden dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+          >
+            <svg
+              class="h-4 w-4 group-data-[open=true]:hidden"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
+              <path stroke-linecap="round" d="M3 6h18M3 12h18M3 18h18" />
+            </svg>
+            <svg
+              class="hidden h-4 w-4 group-data-[open=true]:block"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
+              <path stroke-linecap="round" d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        </div>
+      </nav>
+    </header>
+
+    <!-- flex-1 而不是 min-h-[70vh]：撑不满的那一段由 main 自己吃掉，页脚永远贴在最后一屏的下沿，
+         内容真超一屏时它就跟在内容后面（不是 fixed，fixed 会盖住最后一排商品）。
+         换页那一瞬岛上还没取到数、main 是空的，也靠这一格顶着，页脚不会先蹿上来再掉回去。 -->
+    <main class="mx-auto w-full max-w-7xl flex-1 px-4 py-8">
+      <slot />
+    </main>
+
+    <footer class="shrink-0 border-t border-gray-200 bg-white py-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
+      {fill(d.site.footer, { year: new Date().getFullYear() })}
+    </footer>
+
+    <!-- 回到顶部：首页货架是滚动加载、搜索页能连点好几页，滚下去就想收回来，所以整站一颗（放布局里，
+         各页的岛不用各自再挂一遍）。这一格在 <main> 外面，换页那条淡入淡出牵不到它；
+         初始带 hidden，画不画得出来全由下面那条脚本按滚动位置说了算。 -->
+    <button
+      type="button"
+      data-back-to-top
+      aria-label={d.site.backToTop}
+      class="fixed bottom-6 right-4 z-40 hidden rounded-full border border-gray-200 bg-white p-3 text-gray-600 shadow-md transition-colors hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+    >
+      <svg
+        class="h-4 w-4"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        aria-hidden="true"
+      >
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 19V5m-7 7 7-7 7 7" />
+      </svg>
+    </button>
+
+    <!-- 换页动画两头各一半，都不走 view transition（这机器系统里关了动效，astro 会把整套 VT 动画压成 none !important）：
+         淡出挂在 astro 换页前那个可等待的 loader 上，淡入挂在换完页抛的 astro:after-swap 上。 -->
+    <script>
+      const LEAVE_MS = 160;
+      let leaveTimer = 0;
+
+      function getMain() {
+        const main = document.querySelector('main');
+        return main instanceof HTMLElement ? main : null;
+      }
+
+      // 淡出：astro 在 astro:before-preparation 之后会 await event.loader()，所以拿它当闸门，让旧内容播完这段再换页。
+      // 只能在这份 loader 外面套一层，绝不能整份替掉：默认那份 loader 就是「把下一页 fetch 回来、写进 event.newDocument」
+      // （router.js 里的 defaultLoader），而 newDocument 的初值是 window.document 自己。替掉之后换页用的就是当前这份文档，
+      // swap 里 body.replaceWith(自己)、head 全摘再重挂 => 样式丢、脚本被标记已执行（岛不再水合），整页就乱了。
+      document.addEventListener('astro:before-preparation', (event) => {
+        const main = getMain();
+        if (!main) return;
+        clearTimeout(leaveTimer);
+        main.classList.remove('page-leave');
+        void main.offsetWidth;
+        main.classList.add('page-leave');
+        const loadPage = event.loader;
+        event.loader = async () => {
+          const startedAt = Date.now();
+          await loadPage();
+          const remaining = LEAVE_MS - (Date.now() - startedAt);
+          if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+        };
+        // 这一趟导航也可能被后面的点击抢掉（那时不会有 after-swap 来摘这个类），动画是 forwards、
+        // 摘不掉内容就一直停在透明上，所以兜一条：到点还挂着就当它没换过页，自己收掉。
+        leaveTimer = setTimeout(() => main.classList.remove('page-leave'), LEAVE_MS + 3000);
+      });
+
+      // 淡入：astro 换完内容只抛这一条事件，类在这里摘了再重挂（同名动画连挂两次浏览器不当新一轮，第二次不播；
+      // 挂到下一帧会让成品先亮一帧再退回透明，看着就是闪一下）。
+      document.addEventListener('astro:after-swap', () => {
+        const main = getMain();
+        clearTimeout(leaveTimer);
+        if (!main) return;
+        main.classList.remove('page-leave');
+        main.classList.remove('page-enter');
+        void main.offsetWidth;
+        main.classList.add('page-enter');
+      });
+
+      // 回到顶部这一颗：每次现查节点，不在脚本开头存引用 —— astro 换页是把 <body> 整条换掉，
+      // 这颗按钮跟着重建，攥着旧节点的手就把不认新节点（和上面 getMain 同一条理由）。
+      const SHOW_AFTER_PX = 400;
+
+      function syncBackToTop() {
+        const button = document.querySelector('[data-back-to-top]');
+        if (!(button instanceof HTMLElement)) return;
+        button.classList.toggle('hidden', window.scrollY < SHOW_AFTER_PX);
+      }
+
+      // 换页那一步 astro 自己会把窗口弹回顶部，但那一趟不一定抛 scroll 事件，所以跟着换页事件补量一次
+      window.addEventListener('scroll', syncBackToTop, { passive: true });
+      document.addEventListener('astro:page-load', syncBackToTop);
+      syncBackToTop();
+
+      // 语言那两条链接的 href 要跟着现页走。页头挂了 transition:persist ⇒ 换页时这一格整块留着原节点，
+      // 服务端算出来的那一份就停在第一次载入的那一页上（从首页点进 /en/product/5 再切语言会被带回 /）。
+      // 所以每次换页按当前 URL 现算：剥掉头一段语种（只认 LOCALES 里那几档的码，/product/en 那种不会被动到）、
+      // 拼到对方那一档，查询串原样带着。语种本身不会在换页里变（真切换是整页载入），故档名不用跟着改。
+      function syncLangLinks() {
+        const menu = document.querySelector('[data-lang-default]');
+        if (!(menu instanceof HTMLElement)) return;
+        const anchors = [...menu.querySelectorAll<HTMLAnchorElement>('[data-lang-target]')];
+        const codes = anchors.map((one) => one.dataset.langTarget).filter(Boolean);
+        const segments = location.pathname.split('/');
+        if (codes.includes((segments[1] ?? '').toLowerCase())) segments.splice(1, 1);
+        const path = segments.join('/') || '/';
+        for (const one of anchors) {
+          const code = one.dataset.langTarget;
+          if (!code) continue;
+          one.href =
+            code === menu.dataset.langDefault
+              ? path + location.search
+              : `/${code}${path}${location.search}`;
+        }
+      }
+
+      document.addEventListener('astro:page-load', syncLangLinks);
+      syncLangLinks();
+
+      // 点击照昼夜那颗的写法：绑在 document 上按属性认领，节点被换掉也不影响
+      document.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element) || !target.closest('[data-back-to-top]')) return;
+        scrollToTop();
+      });
+
+      /**
+       * 移动端那条菜单的开合：只改 nav 那一格的 data-open，剩下的全是 CSS 的事（见页头那一段注释）。
+       * 每次现查节点、绑在 document 上按属性认领 —— 和昼夜、回到顶部同一条写法：换页时手里那份引用不一定还认得新节点。
+       */
+      function setMenuOpen(open: boolean) {
+        const nav = document.querySelector<HTMLElement>('[data-site-nav]');
+        if (!nav) return;
+        nav.dataset.open = open ? 'true' : 'false';
+        const toggle = nav.querySelector<HTMLElement>('[data-site-menu-toggle]');
+        if (!toggle) return;
+        toggle.setAttribute('aria-expanded', String(open));
+        // 两颗说法从按钮自己的 data-label-* 上读（页头那段模板按当前语种写进去的）：这一份 <script> 拿不到文案表，
+        // 语种又只在服务端那一趟知道，所以走 DOM 递一手
+        toggle.setAttribute('aria-label', open ? (toggle.dataset.labelClose ?? '') : (toggle.dataset.labelOpen ?? ''));
+      }
+
+      // 挡重绑用 window 上的一格，不用模块里的一格：astro 换页会重跑这份脚本，模块变量每次都从 0 开始
+      const flaggedWindow = window as Window & { __shopMenuBound?: boolean };
+      if (!flaggedWindow.__shopMenuBound) {
+        flaggedWindow.__shopMenuBound = true;
+        document.addEventListener('click', (event) => {
+          const target = event.target;
+          if (!(target instanceof Element)) return;
+          if (target.closest('[data-site-menu-toggle]')) {
+            setMenuOpen(document.querySelector<HTMLElement>('[data-site-nav]')?.dataset.open !== 'true');
+            return;
+          }
+          // 点菜单里那三条之一：当场收起来，不等换页那一趟 —— 窄屏上点完还挂着一条展开的菜单，会挡着内容
+          if (target.closest('#site-menu a')) setMenuOpen(false);
+        });
+        // 换页（含浏览器前进后退落回本页）一律按收着起
+        document.addEventListener('astro:page-load', () => setMenuOpen(false));
+      }
+
+      /**
+       * 回顶自己插值，没用 window.scrollTo({behavior:'smooth'})：那一条在系统关了动效时会被浏览器按 auto 处理
+       * （规范里写着 scrolling box 命中 prefers-reduced-motion: reduce 就把 smooth 降级），这台机器实测 reduce=true，
+       * 所以点上去就是一下跳到顶。和换页淡入淡出绕开 view transition 是同一条理由、同一个办法（自己一帧帧推）。
+       */
+      const SCROLL_MS = 420;
+      let scrollFrame = 0;
+
+      function stopScrollAnimation() {
+        if (!scrollFrame) return;
+        cancelAnimationFrame(scrollFrame);
+        scrollFrame = 0;
+      }
+
+      function scrollToTop() {
+        const from = window.scrollY;
+        // 页面在后台时 rAF 根本不跑，动画就永远停在第一帧 —— 那种场合直接落顶，别拖着一屏不动
+        if (from <= 0 || document.hidden) {
+          window.scrollTo(0, 0);
+          return;
+        }
+        stopScrollAnimation();
+        const startedAt = performance.now();
+        // 不接 rAF 回调那个时间戳参数：这一段的 <script> 被 astro check 当 JS 查，参数上没法标类型（隐式 any 直接报错）；
+        // rAF 给的时间戳和 performance.now() 同一个钟，这里自己取一模一样的值
+        const step = () => {
+          const t = Math.min(1, (performance.now() - startedAt) / SCROLL_MS);
+          const eased = 1 - (1 - t) ** 3;
+          window.scrollTo(0, Math.round(from * (1 - eased)));
+          scrollFrame = t < 1 ? requestAnimationFrame(step) : 0;
+          syncBackToTop();
+        };
+        scrollFrame = requestAnimationFrame(step);
+      }
+
+      // 动画途中用户自己滚（滚轮、触屏、键盘）就别再跟他抢，立刻收手
+      for (const type of ['wheel', 'touchstart', 'keydown']) {
+        window.addEventListener(type, stopScrollAnimation, { passive: true });
+      }
+    </script>
+  </body>
+</html>

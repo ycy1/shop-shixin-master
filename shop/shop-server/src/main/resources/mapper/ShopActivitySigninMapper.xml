@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopActivitySigninMapper">
+
+    <!-- 自定义 SQL 不走全局逻辑删除，下面那几处 t.is_deleted = 0 必须手写（写法同积分账户那一页）。
+         这张表存的是"一人一天一行"的原始记录，列表那一行上的几个数是 GROUP BY user_id 现算出来的：
+         签到没有"当前数"可存（不像积分账户的 balance 要被占），所以口径和活动的曝光量（现算）一致、
+         和积分账户那五个存的数相反。
+
+         连续天数也在这条"现算"的线上，而且这张表上连那一列都删了（原来存 continuous_days）：
+         补签可以补在一段连续日子中间那一天，存着的写法只改那一行、不把之后的行重接，日历上后面的行就全是旧账。
+         所以这里只把日期读出来（selectRecentSignDates），怎么数由 com.shop.utils.SigninUtils 定，两条路共用一份。
+         SUM(sign_type = 2) 那一格靠 MySQL 把布尔表达式当 0/1，所以它数出来的就是"其中补签的那几行"。 -->
+
+    <!-- 昵称和手机号联 sys_user：sys_* 表没有 is_deleted 那一列，联表不带那一刀。
+         不在这张表里冗余快照 —— 昵称改了不该回头刷签到行，但这一行本来就该认出这是哪个人 -->
+    <sql id="signinJoins">
+        FROM shop_activity_signin t
+        LEFT JOIN sys_user u ON u.id = t.user_id
+    </sql>
+
+    <select id="selectSigninPage" resultType="com.shop.entity.ShopActivitySignin">
+        SELECT
+            t.user_id,
+            COUNT(*) AS signCount,
+            SUM(t.sign_type = 2) AS makeupCount,
+            SUM(t.points) AS totalPoints,
+            MAX(t.sign_date) AS lastSignDate,
+            u.nickname AS userName,
+            u.mobile AS mobile
+        <include refid="signinJoins"/>
+        <where>
+            t.is_deleted = 0
+            <if test="q.userId != null">
+                AND t.user_id = #{q.userId}
+            </if>
+            <!-- 关键字三种写法都要能命中：后台的人手上通常只有手机号或登录账号 -->
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (u.nickname LIKE CONCAT('%', #{q.keyword}, '%')
+                OR u.username LIKE CONCAT('%', #{q.keyword}, '%')
+                OR u.mobile LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+        </where>
+        GROUP BY t.user_id, u.nickname, u.mobile
+        <!-- 没有启用/禁用列（不套用 status DESC 那条惯例）。按"最近还签着的人"排前面：
+             这一页要看的是谁在签、谁断了要补；同一天签的按累计天数多的在前，user_id DESC 再兜住翻页不串 -->
+        ORDER BY lastSignDate DESC, signCount DESC, t.user_id DESC
+    </select>
+
+    <!-- 日历弹窗：某个人某个月签过的那几天，一次全带（一个月撑死 31 行，所以不分页）。
+         筛的是 sign_date 不是 sign_time —— 8 月 31 日没签、9 月 2 日补的，这一行要出现在 8 月那一页里。
+         这个月没签过的那几天由前端画成"可补签"的空格子，所以这里不用把日历行补齐。
+         日历那一格上说的"连续几天"不在这几列里（由 service 现算后盖到返回的每一行上，各行同一个数）：
+         连没连是这一本账整体的事，不是某一个月某一天的事 -->
+    <select id="selectMonthRecords" resultType="com.shop.entity.ShopActivitySignin">
+        SELECT
+            t.id,
+            t.user_id,
+            t.sign_date,
+            t.sign_time,
+            t.sign_type,
+            t.points,
+            t.reward_json
+        <include refid="signinJoins"/>
+        <where>
+            t.is_deleted = 0
+            AND t.user_id = #{userId}
+            AND DATE_FORMAT(t.sign_date, '%Y-%m') = #{month}
+        </where>
+        ORDER BY t.sign_date DESC
+    </select>
+
+    <!-- 只把日期读出来给 SigninUtils 数"连着第几天"：这一串不进任何页面，算完一个数就丢，
+         所以不联 sys_user、也不套实体（回 LocalDate 那一列就够了）。
+         走 uk_user_date 的左前缀（user_id 打头）+ sign_date 倒序，LIMIT 就是回看的那几天。
+         7 这个数和 com.shop.utils.SigninUtils#MAX_LOOK_BACK_DAYS 是同一个，改数两处一起改。 -->
+    <select id="selectRecentSignDates" resultType="java.time.LocalDate">
+        SELECT t.sign_date
+        FROM shop_activity_signin t
+        WHERE t.is_deleted = 0
+        AND t.user_id = #{userId}
+        AND t.sign_date &lt;= #{upto}
+        ORDER BY t.sign_date DESC
+        LIMIT 7
+    </select>
+
+    <!-- 签到/补签落库之前那一趟，三个数一次读回来（原来这里是三条 SQL，见 Mapper 接口那段注释）。
+         走 uk_user_date 的左前缀（user_id 打头）扫这个人那几行，COUNT(*) OVER () 在 LIMIT 之前算完，
+         所以 signCount 那一格是"名下总共几行"= 累计签到天数，不受只回 7 行影响。
+
+         两地方看着奇怪但必须保住：
+         1. ORDER BY 第一刀是布尔表达式（MySQL 把 sign_date <= signDate 当 1/0，DESC 就把 1 排前面）：
+            把那一天和它之前的日子拉到最前，于是"第一行正好是 signDate"就等于"那一天已经签过了"——
+            那一天有行的话，它必然是这一堆里最大的那个。比它晚的那些行（补签才会碰到）跟着靠后。
+         2. 只回 7 行：7 和 com.shop.utils.SigninUtils#MAX_LOOK_BACK_DAYS 是同一个数，改数两处一起改。
+            这一趟在新行落库前读，所以少 signDate 自己那一格，由服务层接回最前面（凑起来还是 7 格）。
+
+         is_deleted = 0 必须手写：自定义 SQL 不走全局逻辑删除（同上面那几条）。 -->
+    <select id="selectSignDatesAround" resultType="com.shop.entity.ShopActivitySignin">
+        SELECT
+            t.sign_date AS signDate,
+            COUNT(*) OVER () AS signCount
+        FROM shop_activity_signin t
+        WHERE t.is_deleted = 0
+        AND t.user_id = #{userId}
+        ORDER BY (t.sign_date &lt;= #{signDate}) DESC, t.sign_date DESC
+        LIMIT 7
+    </select>
+
+</mapper>

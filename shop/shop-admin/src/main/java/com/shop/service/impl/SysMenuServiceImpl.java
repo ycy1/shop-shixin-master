@@ -19,20 +19,63 @@ import java.util.stream.Collectors;
 public class SysMenuServiceImpl extends ServiceImpl<SysMenuMapper, SysMenu> implements SysMenuService {
 
     @Override
-    public List<SysMenu> getMenuTree() {
-        // 获取所有菜单
-        List<SysMenu> menus = list(new LambdaQueryWrapper<SysMenu>()
-                .orderByAsc(SysMenu::getSort));
-        
-        // 构建树形结构
+    public List<SysMenu> getMenuTree(SysMenu query) {
+        String title = query == null ? null : query.getTitle();
+        List<SysMenu> menus = list(new LambdaQueryWrapper<SysMenu>().orderByAsc(SysMenu::getSort));
+        // 父级不留：命中的那一条会被 buildMenuTree 顶到第一层，收起着也能看见
+        if (StringUtils.isNotBlank(title)) {
+            menus = keepMatchedWithSubtree(menus, title);
+        }
+        return buildMenuTree(menus);
+    }
+
+    /**
+     * 留下菜单名称命中的那些行，外加它们名下的整棵子树（子树不参与匹配，是为了展开还能看到下级）
+     */
+    private List<SysMenu> keepMatchedWithSubtree(List<SysMenu> menus, String keyword) {
+        Map<Integer, List<SysMenu>> childrenMap = new HashMap<>();
+        for (SysMenu menu : menus) {
+            if (menu.getParentId() != null && menu.getParentId() != 0) {
+                childrenMap.computeIfAbsent(menu.getParentId(), key -> new ArrayList<>()).add(menu);
+            }
+        }
+
+        Set<Integer> keptIds = new HashSet<>();
+        Deque<Integer> pending = new ArrayDeque<>();
+        menus.stream()
+                .filter(menu -> StringUtils.containsIgnoreCase(menu.getTitle(), keyword))
+                .forEach(menu -> pending.add(menu.getId()));
+        while (!pending.isEmpty()) {
+            Integer id = pending.poll();
+            if (!keptIds.add(id)) {
+                continue;
+            }
+            List<SysMenu> children = childrenMap.get(id);
+            if (children != null) {
+                children.forEach(child -> pending.add(child.getId()));
+            }
+        }
+        return menus.stream().filter(menu -> keptIds.contains(menu.getId())).collect(Collectors.toList());
+    }
+
+    /**
+     * 根据扁平菜单列表构建树形结构（根节点：无父节点或父节点不在当前结果集中）
+     * 后者是筛选要的后果：搜「销售单」时上级「进销存管理」没命中，命中的这一行得顶到第一层才看得到
+     */
+    private List<SysMenu> buildMenuTree(List<SysMenu> menus) {
+        if (menus == null || menus.isEmpty()) {
+            return Collections.emptyList();
+        }
         Map<Integer, List<SysMenu>> childrenMap = menus.stream()
-                .filter(menu -> menu.getParentId() != 0)
+                .filter(menu -> menu.getParentId() != null && menu.getParentId() != 0)
                 .collect(Collectors.groupingBy(SysMenu::getParentId));
 
         menus.forEach(menu -> menu.setChildren(childrenMap.get(menu.getId())));
 
+        Set<Integer> keptIds = menus.stream().map(SysMenu::getId).collect(Collectors.toSet());
         return menus.stream()
-                .filter(menu -> menu.getParentId() == 0)
+                .filter(menu -> menu.getParentId() == null || menu.getParentId() == 0
+                        || !keptIds.contains(menu.getParentId()))
                 .collect(Collectors.toList());
     }
 

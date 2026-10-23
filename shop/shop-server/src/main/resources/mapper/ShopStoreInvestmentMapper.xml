@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopStoreInvestmentMapper">
+
+    <!-- 公共查询列：表加了列只改这一处（别名固定是 i，和下面的 FROM 对应）。
+         专员昵称不在这里联 sys_user —— 详情走 BaseMapper 的 getById，两条路共用服务层那一次回填才对得上口径 -->
+    <sql id="investmentColumns">
+        i.id,
+        i.investment_no,
+        i.user_id,
+        i.applicant_name,
+        i.applicant_phone,
+        i.intent_type,
+        i.contract_file,
+        i.budget_amount,
+        i.has_experience,
+        i.source,
+        i.remark,
+        i.status,
+        i.sign_time,
+        i.expiry_time,
+        i.area_code,
+        i.area_zh,
+        i.longitude,
+        i.latitude,
+        i.address,
+        i.create_by,
+        i.update_by,
+        i.create_time,
+        i.update_time
+    </sql>
+
+    <!-- 自定义 SQL 不走全局逻辑删除，is_deleted = 0 必须手写 -->
+    <select id="selectInvestmentPage" resultType="com.shop.entity.ShopStoreInvestment">
+        SELECT
+            <include refid="investmentColumns"/>
+        FROM shop_store_investment i
+        <where>
+            i.is_deleted = 0
+            <!-- 一个输入框搜编号、申请人和电话，括号内 OR 不会串到上面的筛选 -->
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (i.investment_no LIKE CONCAT('%', #{q.keyword}, '%')
+                OR i.applicant_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR i.applicant_phone LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+            <if test="q.intentType != null">
+                AND i.intent_type = #{q.intentType}
+            </if>
+            <if test="q.source != null">
+                AND i.source = #{q.source}
+            </if>
+            <if test="q.status != null">
+                AND i.status = #{q.status}
+            </if>
+            <!-- 刻意没有 user_id 那一刀：招商专员是平台账号(account_type=0)，这张表按项目惯例
+                 只对门店/供应商/ERP 那几档账号收窄，平台档看全部（2026-09-24 他定的口径） -->
+            <!-- 时间区间筛的是 sign_time（签约时间），不是 create_time：这一页要找"哪段时间签的约"，
+                 没签约的行 sign_time 是 NULL，加了区间就自然被排除 -->
+            <if test="q.beginTime != null and q.beginTime != ''">
+                AND i.sign_time &gt;= #{q.beginTime}
+            </if>
+            <if test="q.endTime != null and q.endTime != ''">
+                AND i.sign_time &lt;= #{q.endTime}
+            </if>
+        </where>
+        <!-- status 这里是流转状态（0待审核…3已失效）不是启用/禁用，所以不打头排序，最新一条在前 -->
+        ORDER BY i.id DESC
+    </select>
+
+</mapper>

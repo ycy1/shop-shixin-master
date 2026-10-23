@@ -1,5 +1,19 @@
 <template>
   <div class="menu-container">
+    <!-- 搜索表单：这一排只有一个输入框、没有提交按钮，回车会被浏览器隐式提交这个 <form> 刷掉页面，
+         所以 el-form 上挡掉 submit 并当成搜索 -->
+    <div class="search-wrapper">
+      <el-form :model="queryParams" :inline="true" class="search-form" @submit.prevent="handleQuery">
+        <el-form-item label="菜单名称" prop="title">
+          <el-input v-model="queryParams.title" placeholder="请输入菜单名称" clearable />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" icon="Search" @click="handleQuery">搜索</el-button>
+          <el-button icon="Refresh" @click="resetQuery">重置</el-button>
+        </el-form-item>
+      </el-form>
+    </div>
+
     <el-card class="box-card">
       <template #header>
         <div class="card-header">
@@ -13,7 +27,7 @@
           </ButtonGroup>
         </div>
       </template>
-      <!-- 表格区域 -->
+      <!-- 表格区域（命中那条的下级由服务端一起带出来，默认收起，自己点开看） -->
       <el-table
         v-loading="loading"
         :data="menuList"
@@ -213,6 +227,11 @@ const menuFormRef = ref<FormInstance>()
 const showIconSelect = ref(false)
 const submitLoading = ref(false)
 
+// 筛选条件：只按菜单名称模糊查（服务端 LIKE）
+const queryParams = reactive({
+  title: ''
+})
+
 // 表单校验规则
 const rules = {
   parentId: [
@@ -264,10 +283,12 @@ const menuOptions = ref<any>([])
 const getList = async () => {
   loading.value = true
   try {
-    const { data } = await getMenuListApi()
+    const { data } = await getMenuListApi(queryParams.title ? { title: queryParams.title } : {})
     menuList.value = data
-    const topMenu = {id: 0,title: '顶级菜单',  children: data}
-    menuOptions.value.push(topMenu)
+    // 「上级菜单」候选要的是完整树：只在没筛选的那一次拉取里覆盖，否则搜一次之后弹窗里就选不到被筛掉的父级了
+    if (!queryParams.title) {
+      menuOptions.value = [{ id: 0, title: '顶级菜单', children: data }]
+    }
   } catch (error) {
   }
   loading.value = false
@@ -325,6 +346,11 @@ const handleDelete = (row: any) => {
 const handleQuery = () => {
   getList()
 }
+// 重置筛选条件
+const resetQuery = () => {
+  queryParams.title = ''
+  getList()
+}
 // 重置表单
 const resetForm = () => {
   menuForm.id = undefined
@@ -378,3 +404,31 @@ const formatIconName = (icon: string) => {
   return icon.charAt(0).toUpperCase() + icon.slice(1)
 }
 </script>
+
+<style scoped lang="scss">
+/* 筛选表单保持在一行 */
+.search-form {
+  display: flex;
+  flex-wrap: nowrap;
+
+  :deep(.el-form-item) {
+    flex: 1 1 0;
+    min-width: 0;
+    margin-right: 16px;
+
+    &:last-child {
+      flex: 0 0 auto;
+      margin-right: 0;
+    }
+  }
+
+  :deep(.el-form-item .el-form-item__content) {
+    min-width: 0;
+  }
+
+  :deep(.el-form-item .el-input),
+  :deep(.el-form-item .el-select) {
+    width: 100% !important;
+  }
+}
+</style>

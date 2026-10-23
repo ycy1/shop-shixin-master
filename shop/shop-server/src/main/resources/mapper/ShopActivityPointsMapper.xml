@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopActivityPointsMapper">
+
+    <!-- 公共查询列（表加了列只改这一处，别名固定是 t，和下面的 FROM 对应）。
+         自定义 SQL 不走全局逻辑删除，下面 where 里那句 t.is_deleted = 0 必须手写。
+         五个积分数字读本表存的那五格，不做减法也不联流水现算 —— 这一页是"占额度"的账，
+         算出来的数和存着的数不一样就说明有人改账没记流水（口径同优惠券的发行总量/已发放） -->
+    <sql id="pointsColumns">
+        t.id,
+        t.user_id,
+        t.total_points,
+        t.used_points,
+        t.balance,
+        t.frozen_points,
+        t.expire_points,
+        t.create_by,
+        t.update_by,
+        t.create_time,
+        t.update_time
+    </sql>
+
+    <!-- 昵称和手机号联 sys_user：sys_* 表没有 is_deleted 那一列（和 shop_* 这套是相反的），联表不带那一刀。
+         不在这张表里冗余快照 —— 昵称改了不该回头刷账，但账本来就该认出这是哪个人（同用户券发放记录） -->
+    <sql id="pointsJoins">
+        FROM shop_activity_points t
+        LEFT JOIN sys_user u ON u.id = t.user_id
+    </sql>
+
+    <select id="selectPointsPage" resultType="com.shop.entity.ShopActivityPoints">
+        SELECT
+            <include refid="pointsColumns"/>,
+            u.nickname AS userName,
+            u.mobile AS mobile
+        <include refid="pointsJoins"/>
+        <where>
+            t.is_deleted = 0
+            <if test="q.userId != null">
+                AND t.user_id = #{q.userId}
+            </if>
+            <!-- 关键字三种写法都要能命中：后台的人手上通常只有手机号或登录账号 -->
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (u.nickname LIKE CONCAT('%', #{q.keyword}, '%')
+                OR u.username LIKE CONCAT('%', #{q.keyword}, '%')
+                OR u.mobile LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+        </where>
+        <!-- 没有启用/禁用列（不套用 status DESC 那条惯例）。按可用积分多的排前面：
+             这一页是来看谁的积分多、要被积分那一档活动盯上的，idx_balance 就是为这一排建的；
+             同分时 id DESC 兜住（新开的账在后面），翻页才不会串 -->
+        ORDER BY t.balance DESC, t.id DESC
+    </select>
+
+    <!-- ================= 积分账户的七拍（下单冻结/解冻/结转/退回 + 送分 + 管理员扣减 + 退货收回送分；
+         都是条件增量，判据压在 WHERE 里，写法同库存那两条 lockStock/unlockStock）。
+         五个数字全在这一条语句里加加减减，所以不读回来再 updateById：两笔并发的账互相覆盖过一次，
+         balance = total − used − frozen 这条恒等式就再也对不上了，而这一页读的就是存着的这五个数。
+         update_time 靠库的 ON UPDATE CURRENT_TIMESTAMP 自己走。每一笔都要和流水表那一行同事务写完。 ================= -->
+
+    <!-- 下单冻结：可用积分 → 冻结积分。balance >= 这一笔 是"同一批分不能占两回"那道闸，
+         抢不到的那一趟返回 0 行，由调用方报错让整单回滚 -->
+    <update id="freezePoints">
+        UPDATE shop_activity_points
+        SET balance = balance - #{points},
+            frozen_points = frozen_points + #{points}
+        WHERE user_id = #{userId}
+          AND is_deleted = 0
+          AND balance >= #{points}
+    </update>
+
+    <!-- 取消订单解冻：冻结积分 → 可用积分（freezePoints 的原路退回，单没成交，分该整个还回去） -->
+    <update id="unfreezePoints">
+        UPDATE shop_activity_points
+        SET frozen_points = frozen_points - #{points},
+            balance = balance + #{points}
+        WHERE user_id = #{userId}
+          AND is_deleted = 0
+          AND frozen_points >= #{points}
+    </update>
+
+    <!-- 支付结转：冻结积分 → 累计消耗积分。balance 一分不动（下单冻结那一步已经从里面减掉了），
+         这一条只是把"占着"改成"花掉了"，所以这一拍不写流水 -->
+    <update id="consumeFrozenPoints">
+        UPDATE shop_activity_points
+        SET frozen_points = frozen_points - #{points},
+            used_points = used_points + #{points}
+        WHERE user_id = #{userId}
+          AND is_deleted = 0
+          AND frozen_points >= #{points}
+    </update>
+
+    <!-- 退款退回抵扣：累计消耗积分 → 可用积分。退的是按退款件数摊出来的那一部分，
+         所以一张单分几批退完，这一条就会走几次；used >= 这一笔 是防退超（退的分比当初花的还多） -->
+    <update id="giveBackUsedPoints">
+        UPDATE shop_activity_points
+        SET used_points = used_points - #{points},
+            balance = balance + #{points}
+        WHERE user_id = #{userId}
+          AND is_deleted = 0
+          AND used_points >= #{points}
+    </update>
+
+    <!-- 购物送分：累计获得积分 + 可用积分一起加（这一笔之后什么时候过期记在流水行的 expire_time 上）。
+         没有余额闸门：加分不需要判够不够。账户还没第一行账时这里返回 0 行，由调用方先把账建出来 -->
+    <update id="gainPoints">
+        UPDATE shop_activity_points
+        SET total_points = total_points + #{points},
+            balance = balance + #{points}
+        WHERE user_id = #{userId}
+          AND is_deleted = 0
+    </update>
+
+    <!-- 管理员扣减（后台「积分管理 → 修改」）：可用积分 → 累计消耗积分，和 giveBackUsedPoints 正好反向。
+         扣掉的那一份记 used 不记 total：恒等式 balance = total − used − frozen 要守住，
+         而减 total 等于说这些分从来没给过，流水里那几笔获取行还挂着，账和流水就对不上了。
+         balance >= 这一笔 挡的是超扣（和这个人同时下单冻结抢同一批分时，只有一趟改得动） -->
+    <update id="deductBalancePoints">
+        UPDATE shop_activity_points
+        SET balance = balance - #{points},
+            used_points = used_points + #{points}
+        WHERE user_id = #{userId}
+          AND is_deleted = 0
+          AND balance >= #{points}
+    </update>
+
+    <!-- 退货收回送分（gainPoints 的反向）：累计获得和可用一起减同一笔 —— 这一笔分是当初买这件货送的，
+         货退回去，这份赠送就算没发生过（缩 total，不记消耗：记成 used 等于说他花掉了，那是两回事）。
+         减的是 LEAST(balance, 这一笔)：这个人多半已经把送的分花掉一部分，收不满就收到可用为 0 ——
+         退款那一条链不该为收回积分而卡住，更不该把 balance 扣成负数（账就成了负的，恒等式也破了）。
+         ⚠ 两句 SET 的顺序不能换：MySQL 是从左往右算的，后面的表达式读的是前面已经改过的新值，
+         把 balance 那一行放前面的话，total 就会拿"减过之后"的可用去算，两个数减得不一样多，账立刻不平。
+         没有 >= 闸门，所以返回 0 行 = 可用本来就是 0（或账户行没了），真收到多少由调用方重读账户算 -->
+    <update id="reclaimGainPoints">
+        UPDATE shop_activity_points
+        SET total_points = total_points - LEAST(balance, #{points}),
+            balance = balance - LEAST(balance, #{points})
+        WHERE user_id = #{userId}
+          AND is_deleted = 0
+          AND balance > 0
+    </update>
+
+</mapper>

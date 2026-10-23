@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopErpSaleOutboundItemMapper">
+
+    <!-- 明细只跟着单走：一单的明细最多几十行，不分页 -->
+    <sql id="itemColumns">
+        i.id,
+        i.outbound_id,
+        i.order_item_id,
+        i.warehouse_id,
+        i.sku_id,
+        i.quantity,
+        i.outbound_quantity,
+        i.cost_price,
+        i.amount,
+        pr.product_name AS productName,
+        pr.product_code AS productCode,
+        w.warehouse_name AS warehouseName,
+        <!-- 仓库状态跟着一起带：2 盘点中 / 3 调拨中 的这一行出不了货，弹窗里那格要说清是哪一档 -->
+        w.status AS warehouseStatus,
+        <!-- 规格文本优先用订单明细上那份下单快照（历史出库单不该跟着商品后来改规格文案一起变）；
+             只有 3 采购退货 那一路没有 order_item_id、快照取不到，才退回联 SKU 现取当前文本 -->
+        COALESCE(oi.spec_text, sk.spec_text) AS specText,
+        <!-- 该仓可用库存只当「本次出库数」的上限提示，真正的闸门在出库那条 UPDATE 的 WHERE 上；
+             没库存行（从没入过库）时这里是 NULL，前端按"无货"显示 -->
+        (inv.stock - inv.locked_stock) AS availableStock
+    </sql>
+
+    <!-- 商品名/编码要两跳：明细行上只有 sku_id，所属商品挂在 shop_product_sku 那一行，所以先联 sk 再联 pr
+         （口径同库存列表）。库存行按 (SKU, 仓库) 唯一（uk_sku_warehouse），所以这条 LEFT JOIN
+         不会把明细行乘出来 —— 一行明细对着一仓一个规格，本来就只能对上一行库存 -->
+    <sql id="itemJoins">
+        FROM shop_erp_sale_outbound_item i
+        LEFT JOIN shop_product_sku sk ON sk.id = i.sku_id AND sk.is_deleted = 0
+        LEFT JOIN shop_product pr ON pr.id = sk.product_id AND pr.is_deleted = 0
+        LEFT JOIN shop_erp_warehouse w ON w.id = i.warehouse_id AND w.is_deleted = 0
+        <!-- 3 采购退货 那一路的行没有 order_item_id（退的是采购单进来的货，对不上订单明细），
+             NULL 在这条 LEFT JOIN 上就是"联不到"，规格文本退回上面 sk 那一份，不会串到别的明细行上 -->
+        LEFT JOIN shop_order_item oi ON oi.id = i.order_item_id AND oi.is_deleted = 0
+        LEFT JOIN shop_erp_inventory inv ON inv.sku_id = i.sku_id
+            AND inv.warehouse_id = i.warehouse_id
+            AND inv.is_deleted = 0
+    </sql>
+
+    <select id="selectItemsByOutboundId" resultType="com.shop.entity.ShopErpSaleOutboundItem">
+        SELECT
+            <include refid="itemColumns"/>
+        <include refid="itemJoins"/>
+        WHERE i.outbound_id = #{outboundId}
+          AND i.is_deleted = 0
+        ORDER BY i.id ASC
+    </select>
+
+    <!-- 几张出库单的明细一次捞（「销售单」页那颗「出库单」弹窗）：按 outbound_id, id 排，
+         调用方分组之后每单的行序和上面那条单查的一致 -->
+    <select id="selectItemsByOutboundIds" resultType="com.shop.entity.ShopErpSaleOutboundItem">
+        SELECT
+            <include refid="itemColumns"/>
+        <include refid="itemJoins"/>
+        WHERE i.outbound_id IN
+        <foreach collection="outboundIds" item="outboundId" open="(" separator="," close=")">
+            #{outboundId}
+        </foreach>
+          AND i.is_deleted = 0
+        ORDER BY i.outbound_id ASC, i.id ASC
+    </select>
+
+</mapper>

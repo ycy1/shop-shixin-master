@@ -77,6 +77,14 @@ public interface SysUserService extends IService<SysUser> {
     void updateProfile(SysUser user);
 
     /**
+     * 改自己名下的基本信息（后台「个人信息」那一页那颗「修改」）
+     *
+     * 只认昵称/手机号/邮箱/性别/头像/地区/详细地址/经纬度/个性这几格，id 由服务端钉成登录 id，
+     * 只要登录就能调、不压 sys:user:update —— 字段窄化和钉 id 是这条能免权限的两条前提。
+     */
+    void updateMyProfile(SysUser form);
+
+    /**
      * 锁屏界面验证密码
      * @param password
      * @return

@@ -365,6 +365,15 @@ html.dark {
   }
 }
 
+/* 弹窗标题行：标题在左、按钮在右。EP 的关闭叉是右上角 48×48 的绝对定位按钮，
+   右边留 44px 免得按钮压在它下面（两边都点不着） */
+.dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 44px;
+}
+
 .dialog-footer {
   display: flex;
   justify-content: flex-end;

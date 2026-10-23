@@ -6,6 +6,7 @@ import org.springframework.boot.autoconfigure.data.redis.LettuceClientConfigurat
 import org.springframework.context.annotation.Bean;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -226,6 +227,37 @@ public class RedisUtil {
      */
     public Set<Object> zRangeByScore(String key, double min, double max) {
         return redisTemplate.opsForZSet().rangeByScore(key, min, max);
+    }
+
+    /**
+     * ZSet里某个成员加分（成员本来不在就以delta起）
+     */
+    public Double zIncrBy(String key, Object value, double delta) {
+        return redisTemplate.opsForZSet().incrementScore(key, value, delta);
+    }
+
+    /**
+     * 从分数高的一端往后取ZSet成员和分值（start/end 是名次，从0起、含end；end给-1取到尾）
+     *
+     * 只回成员的 reverseRange 没包：它给回来的 Set 里是个 HashSet，名次在那一步就丢了，
+     * 要排名只能取带分值这一版再自己排。
+     */
+    public Set<ZSetOperations.TypedTuple<Object>> zReverseRangeWithScores(String key, long start, long end) {
+        return redisTemplate.opsForZSet().reverseRangeWithScores(key, start, end);
+    }
+
+    /**
+     * ZSet里成员数
+     */
+    public Long zSize(String key) {
+        return redisTemplate.opsForZSet().size(key);
+    }
+
+    /**
+     * 按名次删ZSet成员（名次从分数低的一端数起，用来裁掉超出上限的那一截尾巴）
+     */
+    public Long zRemoveRangeByRank(String key, long start, long end) {
+        return redisTemplate.opsForZSet().removeRange(key, start, end);
     }
 
     /**

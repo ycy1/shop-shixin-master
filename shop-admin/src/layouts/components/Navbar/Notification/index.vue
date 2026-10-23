@@ -33,18 +33,18 @@
                   v-for="notification in unreadNotifications" 
                   :key="notification.id"
                   class="notification-item"
-                  :class="{ unread: !notification.read }"
+                  :class="{ unread: notification.isRead !== 1 }"
                   @click="handleNotificationClick(notification)"
                 >
                   <div class="notification-icon">
-                    <el-icon :class="notification.type">
-                      <component :is="getIcon(notification.type)" />
+                    <el-icon :class="notification.category === 2 ? 'success' : 'info'">
+                      <component :is="getIcon(notification)" />
                     </el-icon>
                   </div>
                   <div class="notification-content">
                     <div class="notification-title">{{ notification.title }}</div>
                     <div class="notification-message">{{ notification.message }}</div>
-                    <div class="notification-time">{{ formatTime(notification.time) }}</div>
+                    <div class="notification-time">{{ formatTime(notification.createTime) }}</div>
                   </div>
                 </div>
               </template>
@@ -59,18 +59,18 @@
                   v-for="notification in notifications" 
                   :key="notification.id"
                   class="notification-item"
-                  :class="{ unread: !notification.read }"
+                  :class="{ unread: notification.isRead !== 1 }"
                   @click="handleNotificationClick(notification)"
                 >
                   <div class="notification-icon">
-                    <el-icon :class="notification.type">
-                      <component :is="getIcon(notification.type)" />
+                    <el-icon :class="notification.category === 2 ? 'success' : 'info'">
+                      <component :is="getIcon(notification)" />
                     </el-icon>
                   </div>
                   <div class="notification-content">
                     <div class="notification-title">{{ notification.title }}</div>
                     <div class="notification-message">{{ notification.message }}</div>
-                    <div class="notification-time">{{ formatTime(notification.time) }}</div>
+                    <div class="notification-time">{{ formatTime(notification.createTime) }}</div>
                   </div>
                 </div>
               </template>
@@ -85,98 +85,119 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { Bell, InfoFilled, SuccessFilled, Warning } from '@element-plus/icons-vue'
+import { Bell, InfoFilled, SuccessFilled } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import 'dayjs/locale/zh-cn'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useSettingsStore } from '@/store/modules/settings'
+import {
+  getMyNotificationListApi,
+  getMyNotificationUnreadApi,
+  readMyNotificationApi,
+  readAllMyNotificationApi,
+  deleteMyNotificationApi
+} from '@/api/message/notification'
 
 const settingsStore = useSettingsStore()
 
 dayjs.extend(relativeTime)
 dayjs.locale('zh-cn')
 
+/** 收件箱里的一条（服务端 NotificationsListVo 的那几格；跳转各端按 businessType + businessId 自己拼，link 那一格服务端刻意留空） */
 interface Notification {
   id: number
   title: string
   message: string
-  type: 'info' | 'success' | 'warning' | 'error'
-  time: Date
-  read: boolean
+  businessType: string
+  category: number
+  isRead: number
+  createTime: string
 }
+
+/** 下拉里没有翻页，一次捞这么多条：未读的排在前头，够把红点那些点干净 */
+const PAGE_SIZE = 50
 
 const isOpen = ref(false)
 const activeTab = ref('unread')
-const notifications = ref<Notification[]>([
-  {
-    id: 1,
-    title: '系统通知',
-    message: '欢迎使用通知中心',
-    type: 'info',
-    time: new Date(),
-    read: false
-  },
-  {
-    id: 2,
-    title: '更新提醒',
-    message: '系统已更新到最新版本，新增多项功能优化',
-    type: 'success',
-    time: new Date(Date.now() - 1000 * 60 * 30), // 30分钟前
-    read: false
-  },
-  {
-    id: 3,
-    title: '安全提醒',
-    message: '检测到您的账号在新设备上登录',
-    type: 'warning',
-    time: new Date(Date.now() - 1000 * 60 * 60), // 1小时前
-    read: false
-  },
-  {
-    id: 4,
-    title: '安全提醒',
-    message: '检测到您的账号在新设备上登录',
-    type: 'warning',
-    time: new Date(Date.now() - 1000 * 60 * 60), // 1小时前
-    read: false
-  }
-])
+const notifications = ref<Notification[]>([])
+/** 红点读的是服务端那条汇总的 total，不是这一页里数出来的未读条数 —— 未读超过一页时这一页是截断过的 */
+const unreadCount = ref(0)
 
 const unreadNotifications = computed(() => {
-  return notifications.value.filter(n => !n.read)
+  return notifications.value.filter(n => n.isRead !== 1)
 })
 
-const unreadCount = computed(() => unreadNotifications.value.length)
+const loadUnread = async () => {
+  const res: any = await getMyNotificationUnreadApi()
+  unreadCount.value = Number(res?.data?.total ?? 0)
+}
 
-const toggleNotification = () => {
+const loadList = async () => {
+  const res: any = await getMyNotificationListApi({ pageNum: 1, pageSize: PAGE_SIZE })
+  notifications.value = res?.data?.records ?? []
+  await loadUnread()
+}
+
+// 打开下拉才拉，不轮询：库在公网那台，每多一次定时请求就是给全站添一趟往返
+const toggleNotification = async () => {
   isOpen.value = !isOpen.value
-}
-
-const getIcon = (type: string) => {
-  const icons = {
-    info: InfoFilled,
-    success: SuccessFilled,
-    warning: Warning,
-    error: Warning
+  if (isOpen.value) {
+    await loadList()
   }
-  return icons[type] || InfoFilled
 }
 
-const formatTime = (time: Date) => {
-  return dayjs(time).fromNow()
+const getIcon = (notification: Notification) => {
+  // 互动那档（有人回复、有人点赞）用绿色，系统那档（公告 / 活动 / 培训 / 签收 / 徽章）用蓝色
+  return notification.category === 2 ? SuccessFilled : InfoFilled
 }
 
-const handleNotificationClick = (notification: Notification) => {
-  notification.read = true
-  // 这里可以添加点击通知后的处理逻辑
+const formatTime = (time: string) => {
+  return time ? dayjs(time).fromNow() : ''
 }
 
-const markAllRead = () => {
-  notifications.value.forEach(n => n.read = true)
+const handleNotificationClick = async (notification: Notification) => {
+  if (notification.isRead === 1) {
+    return
+  }
+  await readMyNotificationApi(notification.id)
+  notification.isRead = 1
+  await loadUnread()
 }
 
-const clearAll = () => {
+const markAllRead = async () => {
+  if (!unreadNotifications.value.length) {
+    return
+  }
+  await readAllMyNotificationApi()
+  await loadList()
+  ElMessage.success('已全部标记为已读')
+}
+
+/**
+ * 清空全部：把这一页名下的逐条删掉。
+ * 「删」在这里只是对自己隐藏（receiver 那一行 is_deleted=1），消息本身还在、别人照样看得见，
+ * 而且是一条条撤不掉回来 —— 所以点下去之前问一句。
+ */
+const clearAll = async () => {
+  if (!notifications.value.length) {
+    return
+  }
+  try {
+    await ElMessageBox.confirm('清空后这些消息只对你隐藏，其他收件人照样能看到，确定清空吗？', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+  } catch {
+    return
+  }
+  for (const id of notifications.value.map(n => n.id)) {
+    await deleteMyNotificationApi(id)
+  }
   notifications.value = []
+  unreadCount.value = 0
+  ElMessage.success('已清空')
 }
 
 // 添加关闭通知的方法

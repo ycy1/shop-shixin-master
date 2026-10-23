@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopErpSaleItemMapper">
+
+    <!-- 明细只跟着单走：一单的明细最多几十行，不分页，所以只有一个 select 语句。
+         名称/编码要两跳才够得着：明细行上只有 sku_id，所属商品挂在 shop_product_sku 那一行，
+         所以先联 sk 再联 pr（口径同库存列表）。两条都用 LEFT，SKU 或商品被删过的历史明细行也得查得出来，
+         查不到就是空名称，由前端显示占位，不能把这一行从单子里弄丢 -->
+    <select id="selectItemsBySaleId" resultType="com.shop.entity.ShopErpSaleItem">
+        SELECT i.id,
+               i.sale_id,
+               i.sku_id,
+               i.quantity,
+               i.shipped_quantity,
+               i.price,
+               i.amount,
+               pr.product_name AS productName,
+               pr.product_code AS productCode,
+               sk.spec_text AS specText
+        FROM shop_erp_sale_item i
+                 LEFT JOIN shop_product_sku sk ON sk.id = i.sku_id AND sk.is_deleted = 0
+                 LEFT JOIN shop_product pr ON pr.id = sk.product_id AND pr.is_deleted = 0
+        WHERE i.sale_id = #{saleId}
+          AND i.is_deleted = 0
+        ORDER BY i.id ASC
+    </select>
+
+</mapper>

@@ -1,0 +1,146 @@
+/*
+ * 公共打印样式：给 templates/print.html 那个外壳用，屏幕上是「一张 A4 摆在看板里」，
+ * 打印时把背景/留白/分页按 @page 重排。任何单据模板都可直接复用这一份。
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 16px;
+  background: #f2f3f5;
+  color: #1f2329;
+  font: 12px/1.6 'Microsoft YaHei', 'PingFang SC', Arial, sans-serif;
+}
+
+/* 屏上的「打印 / 关闭」两颗按钮 */
+.toolbar {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.toolbar button {
+  padding: 6px 18px;
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid #d0d3d6;
+  border-radius: 3px;
+  background: #fff;
+}
+
+.toolbar button:hover {
+  border-color: #409eff;
+  color: #409eff;
+}
+
+/* 一张单据 = 一页 A4（屏上按 210×297mm 画出来给人看） */
+.sheet {
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto 12px;
+  padding: 14mm 12mm;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+
+.sheet h1 {
+  margin: 0 0 14px;
+  font-size: 20px;
+  font-weight: 600;
+  text-align: center;
+  letter-spacing: 2px;
+}
+
+.sheet h2 {
+  margin: 18px 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+th,
+td {
+  border: 1px solid #909399;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 400;
+  word-break: break-all;
+}
+
+/* 单头那张 label/value 表：左边一列是字段名 */
+.head th {
+  width: 90px;
+  background: #f5f7fa;
+  text-align: center;
+}
+
+.head td {
+  text-align: left;
+}
+
+/* 明细表 */
+.items thead th {
+  background: #f5f7fa;
+  text-align: center;
+  font-weight: 600;
+}
+
+.items .c {
+  text-align: center;
+}
+
+.items .r {
+  text-align: right;
+}
+
+.items .empty {
+  color: #909399;
+  padding: 14px 0;
+}
+
+@page {
+  size: A4 portrait;
+  margin: 12mm;
+}
+
+@media print {
+  body {
+    margin: 0;
+    padding: 0;
+    background: none;
+  }
+
+  .toolbar {
+    display: none;
+  }
+
+  .sheet {
+    width: auto;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    box-shadow: none;
+  }
+
+  /* 明细跨页时表头跟着重复，行本身不拆 */
+  thead {
+    display: table-header-group;
+  }
+
+  tr {
+    page-break-inside: avoid;
+  }
+
+  .sheet + .sheet {
+    page-break-before: always;
+  }
+}

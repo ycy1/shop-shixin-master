@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopConsumerFavoriteMapper">
+
+    <!--
+      注意：自定义 XML SQL 不会被 MyBatis-Plus 的全局逻辑删除自动接管，
+      所以下面每个查询都要手写 is_deleted = 0，否则会把已删除的收藏行查出来。
+      一个 target_id 按 target_type 指向三张不同的表，所以三个联表都把类型判断写在 ON 上：
+      每行最多只会命中其中一张，另一张必然是 NULL，target_name 再用 CASE 按类型挑。
+      对象被删掉时这条收藏本身还要能在列表里看到，所以一律 LEFT JOIN、过滤条件不写在 WHERE 上。
+    -->
+    <sql id="favoriteColumns">
+        f.id,
+        f.user_id,
+        f.target_type,
+        f.target_id,
+        f.favorite_time,
+        f.create_by,
+        f.update_by,
+        f.create_time,
+        f.update_time,
+        CASE f.target_type
+        WHEN 1 THEN p.product_name
+        WHEN 2 THEN st.store_name
+        WHEN 3 THEN b.brand_name
+        END AS target_name,
+        u.nickname,
+        u.username
+    </sql>
+
+    <sql id="favoriteJoins">
+        FROM shop_consumer_favorite f
+        LEFT JOIN shop_product p ON p.id = f.target_id AND f.target_type = 1 AND p.is_deleted = 0
+        LEFT JOIN shop_store st ON st.id = f.target_id AND f.target_type = 2 AND st.is_deleted = 0
+        LEFT JOIN shop_brand b ON b.id = f.target_id AND f.target_type = 3 AND b.is_deleted = 0
+        LEFT JOIN sys_user u ON u.id = f.user_id
+    </sql>
+
+    <select id="selectFavoritePage" resultType="com.shop.vo.favorite.ShopFavoriteVo">
+        SELECT
+        <include refid="favoriteColumns"/>
+        <include refid="favoriteJoins"/>
+        <where>
+            f.is_deleted = 0
+            <!-- 关键字跨三张表搜：一行只会命中其中一张，所以 OR 起来不会误命中 -->
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (p.product_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR p.product_code LIKE CONCAT('%', #{q.keyword}, '%')
+                OR st.store_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR b.brand_name LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+            <if test="q.userId != null">
+                AND f.user_id = #{q.userId}
+            </if>
+            <if test="q.targetType != null">
+                AND f.target_type = #{q.targetType}
+            </if>
+            <!-- 详情页那颗收藏按钮问的是「我有没有收藏过这一个」，所以类型和对象两格一起点 -->
+            <if test="q.targetId != null">
+                AND f.target_id = #{q.targetId}
+            </if>
+            <!-- 收藏时间筛的是 favorite_time 那一格（列表印的也是它），不是建行时间 —— 口径同浏览足迹按 browse_time 筛 -->
+            <if test="q.beginTime != null and q.beginTime != ''">
+                AND f.favorite_time &gt;= #{q.beginTime}
+            </if>
+            <if test="q.endTime != null and q.endTime != ''">
+                AND f.favorite_time &lt;= #{q.endTime}
+            </if>
+        </where>
+        ORDER BY f.favorite_time DESC, f.id DESC
+    </select>
+
+    <select id="selectFavoriteById" resultType="com.shop.vo.favorite.ShopFavoriteVo">
+        SELECT
+        <include refid="favoriteColumns"/>
+        <include refid="favoriteJoins"/>
+        WHERE f.is_deleted = 0 AND f.id = #{id}
+    </select>
+
+    <!--
+      前台那颗收藏按钮的两条写，都按 (消费者, 类型, 对象) 这一对点，不走 id：
+      页面上只有「这个人有没有收藏过这一个」这一个事实，id 是列表那一路才拿得到的东西。
+      update_time 手写 NOW()：这里是绕过 MP 的直接 UPDATE，MyMetaObjectHandler 不会插手。
+      create_time / create_by 两条都不动 —— 那是「这一对第一次是谁、什么时候建上行」的留痕。
+    -->
+    <update id="deleteByTarget">
+        UPDATE shop_consumer_favorite
+        SET is_deleted  = 1,
+            update_by   = #{updateBy},
+            update_time = NOW()
+        WHERE user_id = #{userId}
+          AND target_type = #{targetType}
+          AND target_id = #{targetId}
+          AND is_deleted = 0
+    </update>
+
+    <!--
+      WHERE 上没有 is_deleted —— uk_user_target 不含这一列，删掉的行也还占着这个键，
+      所以「取消收藏后又收藏回同一个对象」必须把那一行复活而不是插第二条（口径同浏览足迹的 markBrowsed）。
+      复活时要刷 favorite_time：列表上那格「收藏时间」读的就是这一列，不刷的话重新收藏的那条还挂着第一次的旧时间。
+      favorite_time 分两档：前台那颗按钮不传时间（NULL ⇒ NOW()，按点按钮这一刻记），
+      后台「新增」代客补录会把页面上填的时间带进来，所以这里判空而不是写死 NOW()。
+    -->
+    <update id="reviveByTarget">
+        UPDATE shop_consumer_favorite
+        SET is_deleted = 0,
+        <choose>
+            <when test="favoriteTime != null">
+                favorite_time = #{favoriteTime},
+            </when>
+            <otherwise>
+                favorite_time = NOW(),
+            </otherwise>
+        </choose>
+            update_by   = #{updateBy},
+            update_time = NOW()
+        WHERE user_id = #{userId}
+          AND target_type = #{targetType}
+          AND target_id = #{targetId}
+    </update>
+
+</mapper>

@@ -3,12 +3,16 @@
 <mapper namespace="com.shop.mapper.SysRefundMapper">
     <!-- 可以在这里添加自定义的复杂SQL查询 -->
 
-    <!-- 通用查询列：与 sys_user 同名的列必须带表前缀，否则 join 后报 ambiguous -->
+    <!-- 通用查询列：与 sys_user 同名的列必须带表前缀，否则 join 后报 ambiguous
+         （user_name / mobile 这里不列，两个 select 各自 COALESCE 回显当前值）
+         extra 这次补进来：退款单的行级申请内容（退哪几行、各退几件）就存在这一列的 JSON 里，
+         后台退款详情要按它列出商品行，之前没查出来过 -->
     <sql id="Base_Column_List">
         r.id, r.refund_no, r.order_id, r.order_no, r.user_id, r.refund_type,
         r.refund_reason, r.refund_amount, r.actual_refund_amount, r.currency, r.status, r.refund_channel,
+        r.address_id,
         r.third_refund_no, r.apply_time, r.audit_time, r.auditor_id, r.audit_remark, r.refund_time,
-        r.fail_reason, r.remark, r.create_time, r.update_time, r.is_deleted
+        r.fail_reason, r.remark, r.extra, r.create_time, r.update_time, r.is_deleted
     </sql>
 
     <select id="selectRefundPage" parameterType="com.shop.entity.SysRefund" resultType="com.shop.entity.SysRefund">
@@ -72,5 +76,24 @@
             </if>
         </where>
         ORDER BY r.create_time DESC, r.id DESC
+    </select>
+
+    <!--
+      一张订单名下的全部退款单：后台「我的订单 → 退款单」弹窗那一张表。
+      列只挑这一张弹窗要看的（币种、渠道、第三方单号这些不回），审核人那一格是这里唯一多联的一张表。
+      extra 必须捞：它装着"这次退的是哪几行、各退几件、各退多少钱"，服务层解析完就丢（VO 上那一格 @JsonIgnore），
+      所以不能借上面那份 Base_Column_List（它带的是整套列，会把不该出接口的字段一起带回来）。
+      自定义 SQL 不走全局逻辑删除，is_deleted = 0 手写；按 id 正序，最新一张在列表末尾。
+    -->
+    <select id="selectRefundVoByOrderId" resultType="com.shop.vo.refund.ShopOrderRefundVo">
+        SELECT r.id, r.refund_no, r.refund_type, r.refund_reason,
+               r.refund_amount, r.actual_refund_amount, r.status,
+               r.apply_time, r.audit_time, r.audit_remark, r.refund_time, r.fail_reason,
+               r.extra,
+               au.nickname AS auditorName
+        FROM sys_refund r
+        LEFT JOIN sys_user au ON au.id = r.auditor_id
+        WHERE r.is_deleted = 0 AND r.order_id = #{orderId}
+        ORDER BY r.id ASC
     </select>
 </mapper>

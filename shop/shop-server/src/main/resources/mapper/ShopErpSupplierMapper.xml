@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopErpSupplierMapper">
+
+    <!-- 公共查询列：表加了列只改这一处（别名固定是 s，和下面的 FROM 对应） -->
+    <sql id="supplierColumns">
+        s.id,
+        s.supplier_code,
+        s.supplier_name,
+        s.contact_name,
+        s.contact_phone,
+        s.area_code,
+        s.area_zh,
+        s.address,
+        s.longitude,
+        s.latitude,
+        s.bank_name,
+        s.bank_account,
+        s.tax_no,
+        s.status,
+        s.user_id,
+        s.create_by,
+        s.update_by,
+        s.create_time,
+        s.update_time
+    </sql>
+
+    <!-- 自定义 SQL 不走全局逻辑删除，is_deleted = 0 必须手写 -->
+    <select id="selectSupplierPage" resultType="com.shop.entity.ShopErpSupplier">
+        SELECT
+            <include refid="supplierColumns"/>
+        FROM shop_erp_supplier s
+        <where>
+            s.is_deleted = 0
+            <!-- 一个输入框搜名称、编码、联系人和电话，括号内 OR 不会串到上面的筛选 -->
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (s.supplier_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR s.supplier_code LIKE CONCAT('%', #{q.keyword}, '%')
+                OR s.contact_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR s.contact_phone LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+            <if test="q.status != null">
+                AND s.status = #{q.status}
+            </if>
+            <!-- 供应商账号只看自己那条：userId 由服务层覆盖成登录 id，前端传什么都不认 -->
+            <if test="q.userId != null">
+                AND s.user_id = #{q.userId}
+            </if>
+        </where>
+        <!-- 启用在前（status：1启用 0禁用），同状态内按 id 倒序 -->
+        ORDER BY s.status DESC, s.id DESC
+    </select>
+
+</mapper>

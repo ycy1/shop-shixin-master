@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopActivityCouponUserMapper">
+
+    <!-- 自定义 SQL 不走全局逻辑删除，c.is_deleted = 0 必须手写。
+         面额那几格读本表自己的快照，不联 shop_activity_coupon —— 联了就会把模板后来改过的面额
+         显示到已经发出去的券上，而这一张表本来就是"当时那张券是什么值"的凭证（同库存流水的变动前后数）。
+         sys_user 没有 is_deleted 那一列（sys_* 表和 shop_* 表这套是相反的），昵称那一条联表不带这一刀 -->
+    <select id="selectRecordPage" resultType="com.shop.entity.ShopActivityCouponUser">
+        SELECT
+            c.id,
+            c.coupon_id,
+            c.coupon_code,
+            c.user_id,
+            c.order_id,
+            c.order_no,
+            c.coupon_name,
+            c.coupon_type,
+            c.face_value,
+            c.threshold_amount,
+            c.max_discount,
+            c.scope_type,
+            c.status,
+            c.receive_time,
+            c.use_time,
+            c.expire_time,
+            c.get_way,
+            c.remark,
+            c.create_by,
+            c.update_by,
+            c.create_time,
+            c.update_time,
+            u.nickname AS userName,
+            u.mobile AS mobile
+        FROM shop_activity_coupon_user c
+        LEFT JOIN sys_user u ON u.id = c.user_id
+        <where>
+            c.is_deleted = 0
+            <!-- 弹窗是从某一张券点进来的，couponId 恒有值；这一格留空就当"看全部券的发放记录"。
+                 数据范围分账号类型两档（由服务层往 q.userId 上压，这里只认字段）：平台/门店/ERP 账号看全部 ——
+                 发到谁手上是运营的动作，按登录账号一收窄就会出现"别人发出去的那几张在这份明细里凭空消失"；
+                 消费者账号只看自己名下那几张（「个人信息」那页的优惠券 tab 走的就是这一条） -->
+            <if test="q.couponId != null">
+                AND c.coupon_id = #{q.couponId}
+            </if>
+            <if test="q.status != null">
+                AND c.status = #{q.status}
+            </if>
+            <!-- 前台「优惠券」那一格按券类型筛（满减/折扣/免邮/代金）：读本表那一格快照，不联模板 -->
+            <if test="q.couponType != null">
+                AND c.coupon_type = #{q.couponType}
+            </if>
+            <if test="q.userId != null">
+                AND c.user_id = #{q.userId}
+            </if>
+            <if test="q.couponCode != null and q.couponCode != ''">
+                AND c.coupon_code = #{q.couponCode}
+            </if>
+        </where>
+        <!-- id DESC 就是时间倒序（一批发放是连着插进来的，按 id 排比按秒级的 receive_time 排稳定） -->
+        ORDER BY c.id DESC
+    </select>
+
+    <!-- 核销：这一张券被统一下单用掉了。status = 0 压在 WHERE 里就是并发那道闸
+        （同一张券同时进两笔订单，后到的那条一行都更新不到，服务层按返回 0 报"刚被别的订单用掉"、整单回滚）。
+         面额那几格一个都不动：这一行留的是"当时那张券是什么值"的凭证，用了多少抵多少已经摊进 shop_order_item 的优惠列了。
+         update_time 靠库的 ON UPDATE CURRENT_TIMESTAMP 自己走 -->
+    <update id="redeem">
+        UPDATE shop_activity_coupon_user
+        SET status = 1,
+            order_id = #{orderId},
+            order_no = #{orderNo},
+            use_time = #{useTime}
+        WHERE id = #{id}
+          AND is_deleted = 0
+          AND status = 0
+    </update>
+
+    <!-- 反核销（订单取消退券）：redeem 那一条的原路退回，用在哪个订单上那三格一起清空，
+         这张券回到买家手上还能接着用（面额那几格本来就是发放时定格的快照，一个都不动）。
+         status = 1 和 order_id 都压在 WHERE 里：前者是并发那道闸（同一单被并发改两次，第二次一行都更新不到），
+         后者是防"照着 id 就把别人那一单的券退给自己这单"—— 两个条件一起才是"这张券确实是这一单用掉的"。
+         update_time 靠库的 ON UPDATE CURRENT_TIMESTAMP 自己走 -->
+    <update id="giveBack">
+        UPDATE shop_activity_coupon_user
+        SET status = 0,
+            order_id = NULL,
+            order_no = NULL,
+            use_time = NULL
+        WHERE id = #{id}
+          AND is_deleted = 0
+          AND status = 1
+          AND order_id = #{orderId}
+    </update>
+
+</mapper>

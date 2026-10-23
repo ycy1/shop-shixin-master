@@ -23,8 +23,8 @@ public class SysMenuController {
 
     @GetMapping("/tree")
     @ApiOperation(value = "获取菜单树列表")
-    public Result<List<SysMenu>> getMenuTree() {
-        return Result.success(sysMenuService.getMenuTree());
+    public Result<List<SysMenu>> getMenuTree(SysMenu menu) {
+        return Result.success(sysMenuService.getMenuTree(menu));
     }
 
     @PostMapping

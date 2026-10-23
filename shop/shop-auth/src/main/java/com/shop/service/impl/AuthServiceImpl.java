@@ -132,10 +132,24 @@ public class AuthServiceImpl implements AuthService {
         String tokenValue = StpUtil.getTokenValue();
 
         // 返回用户信息
-        LoginUserInfo loginUserInfo = BeanCopyUtil.copyObj(user, LoginUserInfo.class);
+        LoginUserInfo loginUserInfo = copyLoginUserInfo(user);
         loginUserInfo.setToken(tokenValue);
 
         StpUtil.getSession().set(Constants.CURRENT_USER, loginUserInfo);
+        return loginUserInfo;
+    }
+
+    /**
+     * 从 sys_user 那行做一份登录快照。
+     *
+     * id 必须手动搬：SysUser.id 是 Integer（老表），快照里那一格是 Long（和业务表的 user_id 同宽），
+     * 而 BeanCopyUtil 走的是 Spring 的 BeanUtils —— 它遇到类型不匹配的属性是静默跳过，不报错也不日志。
+     * 少这一句就是"登录成功、token 照发，但快照里没有 user id"：
+     * LoginUserUtils.requireLoginUser 会当成没登录，购物车 / 积分 / 签到那几处按 user_id 收窄的读写全落空。
+     */
+    private LoginUserInfo copyLoginUserInfo(SysUser user) {
+        LoginUserInfo loginUserInfo = BeanCopyUtil.copyObj(user, LoginUserInfo.class);
+        loginUserInfo.setId(user.getId() == null ? null : user.getId().longValue());
         return loginUserInfo;
     }
 
@@ -336,7 +350,7 @@ public class AuthServiceImpl implements AuthService {
         }
 
         SysUser user = getCurrentSysUser();
-        LoginUserInfo loginUserInfo = BeanCopyUtil.copyObj(user, LoginUserInfo.class);
+        LoginUserInfo loginUserInfo = copyLoginUserInfo(user);
 
         // 用 createLoginSession 而不是 login：这个请求是 App 发起的，login 会把新 token
         // 注入到 App 自己的请求上下文里，污染 App 的会话。createLoginSession 不碰当前上下文，
@@ -521,7 +535,7 @@ public class AuthServiceImpl implements AuthService {
             }
         }
 
-        LoginUserInfo loginUserInfo = BeanCopyUtil.copyObj(user, LoginUserInfo.class);
+        LoginUserInfo loginUserInfo = copyLoginUserInfo(user);
 
         StpUtil.login(loginUserInfo.getId());
         StpUtil.getSession().set(Constants.CURRENT_USER, loginUserInfo);
@@ -569,7 +583,7 @@ public class AuthServiceImpl implements AuthService {
             //添加用户角色信息
             this.insertRole(user);
         }
-        LoginUserInfo loginUserInfo = BeanCopyUtil.copyObj(user, LoginUserInfo.class);
+        LoginUserInfo loginUserInfo = copyLoginUserInfo(user);
         StpUtil.login(loginUserInfo.getId());
         StpUtil.getSession().set(Constants.CURRENT_USER, loginUserInfo);
         loginUserInfo.setToken(StpUtil.getTokenValue());

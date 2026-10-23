@@ -2,11 +2,13 @@ import request from '@/utils/request'
 
 /**
  * 获取菜单列表
+ * @param params 筛选条件，目前只有 title（菜单名称模糊匹配，命中的连下级一起返回）。不传就是完整树
  */
-export function getMenuListApi() {
+export function getMenuListApi(params?: any) {
   return request({
     url: '/sys/menu/tree',
-    method: 'get'
+    method: 'get',
+    params
   })
 }
 

@@ -122,4 +122,9 @@ public class RedisConstants {
      * 网站配置
      */
     public static final String WEB_CONFIG_KEY = "sys_webconfig";
+
+    /**
+     * 首页那一排热搜（一整个 ZSet：成员=关键字，分值=这个关键字被搜的次数）
+     */
+    public static final String SEARCH_HOT_KEY = "search_hot";
 }

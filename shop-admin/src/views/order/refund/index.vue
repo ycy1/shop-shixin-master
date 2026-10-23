@@ -14,7 +14,7 @@
           <template #label>
             申请人&nbsp;&nbsp;&nbsp;
           </template>
-          <UserSelect v-model="queryParams.userId" style="width: 240px" />
+          <UserSelect v-model="queryParams.userId" :account-type="3" style="width: 240px" />
         </el-form-item>
         <el-form-item label="手机号" prop="mobile">
           <template #label>
@@ -98,7 +98,7 @@
         <el-table-column label="操作" align="center" width="200" fixed="right">
           <template #default="scope">
             <TableMoreActions :actions="[
-              { label: '审核', icon: 'Checked', disabled: scope.row.status !== 0, command: { type: 'audit', row: scope.row } },
+              { label: '审核', icon: 'Checked', hidden: scope.row.status !== 0, command: { type: 'audit', row: scope.row } },
               { label: '编辑', icon: 'Edit', command: { type: 'edit', row: scope.row } },
               { label: '删除', type: 'danger', icon: 'Delete', command: { type: 'delete', row: scope.row } }
             ]" @command="handleActionCommand" />
@@ -125,17 +125,17 @@
         <el-form ref="auditFormRef" :model="auditForm" :rules="auditRules" label-width="120px">
           <el-form-item label="审核结果" prop="status">
             <el-radio-group v-model="auditForm.status">
-              <el-radio :value="1">审核通过</el-radio>
-              <el-radio :value="2">审核拒绝</el-radio>
+              <el-radio :value="AUDIT_PASS">审核通过</el-radio>
+              <el-radio :value="AUDIT_REJECT">审核拒绝</el-radio>
             </el-radio-group>
           </el-form-item>
-          <el-form-item v-if="auditForm.status === 1" label="实际退款金额" prop="actualRefundAmount">
+          <el-form-item v-if="auditForm.status === AUDIT_PASS" label="实际退款金额" prop="actualRefundAmount">
             <el-input-number v-model="auditForm.actualRefundAmount" :min="0" :max="auditForm.refundAmount"
               :precision="2" controls-position="right" style="width: 100%" />
           </el-form-item>
           <el-form-item label="审核备注" prop="auditRemark">
             <el-input v-model="auditForm.auditRemark" type="textarea" :rows="3" maxlength="200" show-word-limit
-              :placeholder="auditForm.status === 1 ? '请输入审核备注' : '请输入拒绝原因'" />
+              :placeholder="auditForm.status === AUDIT_PASS ? '请输入审核备注' : '请输入拒绝原因'" />
           </el-form-item>
         </el-form>
         <template #footer>
@@ -190,8 +190,8 @@
           <el-row :gutter="20">
             <el-col :span="12">
               <el-form-item label="申请人" prop="userId">
-                <UserSelect v-model="form.userId" :label="form.userName" style="width: 100%" @select="handleUserSelect"
-                  @clear="handleUserClear" />
+                <UserSelect v-model="form.userId" :label="form.userName" :account-type="3" style="width: 100%"
+                  @select="handleUserSelect" @clear="handleUserClear" />
               </el-form-item>
             </el-col>
             <el-col :span="12">
@@ -316,6 +316,13 @@ const REFUND_CHANNEL_OPTIONS: Option[] = [
 /** 退款状态走字典 */
 const dict = useDict('refund_status')
 
+/**
+ * 审核结果直接就是这一单被改成的退款状态：通过 → 3 退款中（等退款回调登记 4/5），拒绝 → 2 审核拒绝。
+ * 后端 SysRefundServiceImpl#audit 认的就是这两个值，别的档一律不收。
+ */
+const AUDIT_PASS = 3
+const AUDIT_REJECT = 2
+
 const labelOf = (options: Option[], value: any) =>
   options.find(item => item.value === Number(value))?.label || '-'
 const refundTypeTag = (value: any): TagType => (Number(value) === 2 ? 'warning' : 'primary')
@@ -401,7 +408,7 @@ const auditForm = reactive({
   userName: '',
   refundAmount: 0,
   refundReason: '',
-  status: 1,
+  status: AUDIT_PASS,
   actualRefundAmount: 0,
   auditRemark: ''
 })
@@ -527,7 +534,7 @@ const handleAudit = (row: any) => {
   auditForm.userName = row.userName
   auditForm.refundAmount = Number(row.refundAmount) || 0
   auditForm.refundReason = row.refundReason
-  auditForm.status = 1
+  auditForm.status = AUDIT_PASS
   auditForm.actualRefundAmount = Number(row.refundAmount) || 0
   auditForm.auditRemark = ''
   auditFormRef.value?.clearValidate()
@@ -547,9 +554,9 @@ const submitAudit = async () => {
       status: auditForm.status,
       auditRemark: auditForm.auditRemark,
       // 拒绝时不传金额，避免写入无效数据
-      actualRefundAmount: auditForm.status === 1 ? auditForm.actualRefundAmount : undefined
+      actualRefundAmount: auditForm.status === AUDIT_PASS ? auditForm.actualRefundAmount : undefined
     })
-    ElMessage.success(auditForm.status === 1 ? '已审核通过' : '已拒绝')
+    ElMessage.success(auditForm.status === AUDIT_PASS ? '已审核通过' : '已拒绝')
     auditOpen.value = false
     getList()
   } catch (error) {

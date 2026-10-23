@@ -12,7 +12,7 @@
             <span>用&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;户</span>
           </template>
           <template #default="scope">
-            <UserSelect v-model="queryParams.userId" style="width: 240px" />
+            <UserSelect v-model="queryParams.userId" :account-type="3" style="width: 240px" />
           </template>
         </el-form-item>
         <el-form-item label="手机号" prop="mobile">
@@ -155,8 +155,8 @@
           <el-row :gutter="20">
             <el-col :span="12">
               <el-form-item label="下单用户" prop="userId">
-                <UserSelect v-model="form.userId" :label="form.userName" style="width: 100%" @select="handleUserSelect"
-                  @clear="handleUserClear" />
+                <UserSelect v-model="form.userId" :label="form.userName" :account-type="3" style="width: 100%"
+                  @select="handleUserSelect" @clear="handleUserClear" />
               </el-form-item>
             </el-col>
             <el-col :span="12">

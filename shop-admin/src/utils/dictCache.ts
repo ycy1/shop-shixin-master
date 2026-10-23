@@ -67,8 +67,9 @@ const buildEntry = (raw?: { defaultValue?: string | null; list?: DictItem[] }): 
  * 请求失败不会写缓存，下次调用会重试
  */
 export const ensureDicts = async (types: string[]): Promise<void> => {
+  // 当前待加载的字典类型 不存在与dictCache中并且 不存在于pending中
   const todo = Array.from(new Set(types)).filter(type => type && !dictCache[type] && !pending.has(type))
-  if (!todo.length) return
+  if (!todo.length) return // 无需加载
 
   todo.forEach(type => {
     pending.add(type)
@@ -122,9 +123,8 @@ export const dictDefaultValue = (type: string, fallback: any = undefined): any =
  * 需要 sys:dict:update 权限
  */
 export const refreshDicts = async (types: string[]): Promise<void> => {
-  await refreshDictCacheApi(types)
   types.forEach(type => delete dictCache[type])
-  await ensureDicts(types)
+  await ensureDicts(types) // 重新拉取字典
 }
 
 /** 清空本地缓存（如退出登录时调用），不传类型则全部清空 */
@@ -142,7 +142,7 @@ export const clearDictCache = (types?: string[]): void => {
  * dict.tag('order_status', row.status)
  */
 export const useDict = (...types: string[]) => {
-  ensureDicts(types)
+  ensureDicts(types) // 页面初始化时加载字典
 
   return {
     list: (type: string) => dictList(type),

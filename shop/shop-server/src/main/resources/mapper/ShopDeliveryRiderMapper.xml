@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopDeliveryRiderMapper">
+
+    <!-- 公共查询列：表加了列只改这一处（别名固定是 r，和下面的 FROM 对应） -->
+    <sql id="riderColumns">
+        r.id,
+        r.rider_code,
+        r.user_id,
+        r.rider_name,
+        r.phone,
+        r.avatar,
+        r.logistics_company_id,
+        r.resident_address,
+        r.resident_lng,
+        r.resident_lat,
+        r.id_card,
+        r.id_card_front,
+        r.id_card_back,
+        r.health_cert,
+        r.health_cert_expire,
+        r.vehicle_type,
+        r.vehicle_no,
+        r.service_city,
+        r.service_area,
+        r.max_order_count,
+        r.online_status,
+        r.work_status,
+        r.status,
+        r.total_order_count,
+        r.total_income,
+        r.rating,
+        r.create_by,
+        r.update_by,
+        r.create_time,
+        r.update_time
+    </sql>
+
+    <!-- 自定义 SQL 不走全局逻辑删除，is_deleted = 0 必须手写 -->
+    <select id="selectRiderPage" resultType="com.shop.entity.ShopDeliveryRider">
+        SELECT
+            <include refid="riderColumns"/>
+        FROM shop_delivery_rider r
+        <where>
+            r.is_deleted = 0
+            <!-- 按所属物流公司筛选（前端传 logisticsCompanyId，不传即不限）。
+                 这是送货员唯一的归属线：表上的 store_id 已经删了，列表也不再按账号类型收窄 -->
+            <if test="q.logisticsCompanyId != null">
+                AND r.logistics_company_id = #{q.logisticsCompanyId}
+            </if>
+            <if test="q.vehicleType != null">
+                AND r.vehicle_type = #{q.vehicleType}
+            </if>
+            <if test="q.onlineStatus != null">
+                AND r.online_status = #{q.onlineStatus}
+            </if>
+            <if test="q.workStatus != null">
+                AND r.work_status = #{q.workStatus}
+            </if>
+            <if test="q.status != null">
+                AND r.status = #{q.status}
+            </if>
+            <!-- 一个输入框搜姓名、编码和手机号，括号内 OR 不会串到上面的筛选 -->
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (r.rider_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR r.rider_code LIKE CONCAT('%', #{q.keyword}, '%')
+                OR r.phone LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+        </where>
+        <!-- 启用在前（status：1启用 0禁用），同状态内仍按 id 倒序 -->
+        ORDER BY r.status DESC, r.id DESC
+    </select>
+
+</mapper>

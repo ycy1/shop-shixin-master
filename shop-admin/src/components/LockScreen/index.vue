@@ -339,12 +339,10 @@ defineExpose({
 </style>
 
 <style>
-/* 全局样式，确保消息能显示在锁屏之上 */
+/* 只抬锁屏自己那一条提示（调用处传了 customClass）：
+   不能写成 .el-message，那是全站提示，会把 EP 动态算出来的层级钉死成 2100，
+   而弹窗的层级是每开一个就往上加的，加过 2100 之后提示就躲到遮罩后面去了 */
 .lock-screen-message {
-  z-index: 2100 !important;
-}
-
-.el-message {
   z-index: 2100 !important;
 }
 </style> 

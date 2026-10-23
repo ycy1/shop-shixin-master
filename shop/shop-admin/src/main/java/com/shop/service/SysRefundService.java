@@ -26,7 +26,7 @@ public interface SysRefundService extends IService<SysRefund> {
     boolean update(SysRefund sysRefund);
 
     /**
-     * 审核退款：待审核 → 审核通过 / 审核拒绝
+     * 审核退款：入参 status 就是审核完要落的那一档 —— 3 退款中（通过）/ 2 审核拒绝（拒绝）
      */
     boolean audit(SysRefund sysRefund);
 

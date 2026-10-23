@@ -45,7 +45,7 @@ export function updateSysRefundApi(data: any) {
 
 
 /**
- * 审核退款：status 传 1-审核通过 / 2-审核拒绝
+ * 审核退款：status 直接传审核完要落的那一档 —— 3-退款中（通过）/ 2-审核拒绝（拒绝）
  */
 export function auditSysRefundApi(data: any) {
     return request({

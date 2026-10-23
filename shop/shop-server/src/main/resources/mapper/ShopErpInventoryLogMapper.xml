@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopErpInventoryLogMapper">
+
+    <!-- 公共查询列（表加了列只改这一处，别名固定是 l，和下面的 FROM 对应）。
+         流水表没有生成列，本表列一律照实体映射；名称类都是联表列，见下面 logColumns 之外的部分 -->
+    <sql id="logColumns">
+        l.id,
+        l.sku_id,
+        l.warehouse_id,
+        l.user_id,
+        l.change_type,
+        l.change_quantity,
+        l.before_stock,
+        l.after_stock,
+        l.biz_id,
+        l.biz_no,
+        l.remark,
+        l.create_by,
+        l.update_by,
+        l.create_time,
+        l.update_time
+    </sql>
+
+    <!-- 商品名/编码、规格文本、仓库名、操作人昵称一律联表现取：流水是历史凭证，但名称跟着主数据走，
+         商品改了名不该回头去刷已经记下去的流水（同 shop_erp_inventory 的口径）。
+         规格文本走 sk 这一跳，商品名/编码再拐一道：本行只记 sku_id，所属商品（SPU）在 SKU 那一行上，
+         所以这里必须先联规格、再拿 sk.product_id 联商品（联法同库存列表，两边都带 is_deleted = 0，
+         规格或商品被软删的流水照样要能翻出来看，只是名称那格空着） -->
+    <sql id="logJoins">
+        FROM shop_erp_inventory_log l
+        LEFT JOIN shop_product_sku sk ON sk.id = l.sku_id AND sk.is_deleted = 0
+        LEFT JOIN shop_product pr ON pr.id = sk.product_id AND pr.is_deleted = 0
+        LEFT JOIN shop_erp_warehouse w ON w.id = l.warehouse_id AND w.is_deleted = 0
+        LEFT JOIN sys_user eu ON eu.id = l.user_id
+    </sql>
+
+    <!-- 自定义 SQL 不走全局逻辑删除，l.is_deleted = 0 必须手写 -->
+    <select id="selectLogPage" resultType="com.shop.entity.ShopErpInventoryLog">
+        SELECT
+            <include refid="logColumns"/>,
+            pr.product_name AS productName,
+            pr.product_code AS productCode,
+            sk.spec_text AS specText,
+            w.warehouse_name AS warehouseName,
+            eu.nickname AS userName
+        <include refid="logJoins"/>
+        <where>
+            l.is_deleted = 0
+            <!-- 这一行流水动的是哪条规格，按规格筛是本位（库存列表那颗「库存日志」就是按行跳进来的）；
+                 按商品筛是宽一档的口径：本表没有商品列，得借 sk.product_id，命中该商品名下所有规格的流水 -->
+            <if test="q.skuId != null">
+                AND l.sku_id = #{q.skuId}
+            </if>
+            <if test="q.productId != null">
+                AND sk.product_id = #{q.productId}
+            </if>
+            <if test="q.warehouseId != null">
+                AND l.warehouse_id = #{q.warehouseId}
+            </if>
+            <if test="q.changeType != null">
+                AND l.change_type = #{q.changeType}
+            </if>
+        </where>
+        <!-- 没有启用/禁用列（不套用 status DESC 那条惯例）；id DESC 就是时间倒序，
+             同一秒插多行（一次入库多商品）时它也稳定 -->
+        ORDER BY l.id DESC
+    </select>
+
+</mapper>

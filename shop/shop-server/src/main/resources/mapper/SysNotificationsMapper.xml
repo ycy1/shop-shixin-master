@@ -2,25 +2,15 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.shop.mapper.SysNotificationsMapper">
 
-    <!-- 推送对象可见性判定：当前用户是否命中 notice_push（user/dept/role） -->
-    <!-- notice_push 为 NULL 或 user/dept/role 三个数组全空 = 全员可见（如公告） -->
-    <!-- 使用 EXISTS 子查询而非 JOIN 主表，天然去重。引用 #{userId}，包含它的语句必须绑定该参数 -->
+    <!-- 可见性判定：全员广播的认主表那一格，定向的认「我名下有这一条的接收人行」。
+         接收人行是发送那一刻由 fanOutReceivers 按 user/dept/role 三档展开铺进来的，
+         所以读这一趟不再碰 notice_push 那串 JSON（原先是三档 JSON_CONTAINS + 两条 EXISTS 子查询，公网库上每条消息都要现算一遍）。 -->
     <sql id="pushVisible">
         (
-            n.notice_push IS NULL
-            OR COALESCE(JSON_LENGTH(n.notice_push -&gt; '$.user'), 0)
-               + COALESCE(JSON_LENGTH(n.notice_push -&gt; '$.dept'), 0)
-               + COALESCE(JSON_LENGTH(n.notice_push -&gt; '$.role'), 0) = 0
-            OR JSON_CONTAINS(n.notice_push, CAST(#{userId} AS JSON), '$.user')
+            n.is_broadcast = 1
             OR EXISTS (
-                SELECT 1 FROM sys_dept_user du
-                WHERE du.user_id = #{userId}
-                  AND JSON_CONTAINS(n.notice_push, CAST(du.dept_id AS JSON), '$.dept')
-            )
-            OR EXISTS (
-                SELECT 1 FROM sys_user_role sur
-                WHERE sur.user_id = #{userId}
-                  AND JSON_CONTAINS(n.notice_push, CAST(sur.role_id AS JSON), '$.role')
+                SELECT 1 FROM sys_notifications_receiver r
+                WHERE r.notification_id = n.id AND r.user_id = #{userId}
             )
         )
     </sql>
@@ -50,13 +40,14 @@
         )
     </sql>
 
-    <!-- App / 门户端：当前用户可见的消息列表（notice_push 判定 + receiver 已读计算） -->
+    <!-- App / 门户端：当前用户可见的消息列表（接收人展开 + receiver 已读计算） -->
     <select id="selectNotificationsPage" resultType="com.shop.vo.notifications.NotificationsListVo">
         select
             n.id,
             n.from_user_id,
             n.business_id,
             n.business_type,
+            n.category,
             n.title,
             n.message,
             n.link,
@@ -64,6 +55,10 @@
             u.nickname as to_nickname,
             u1.nickname as from_nickname,
             COALESCE(e.title, '') as business_title,
+            <!-- 互动消息（comment/like）的 business_id 是那条评论的 id，不是评论挂在哪个商品/门店上；
+                 各端要拼「全部评论」页的路由就得再跳一层才知道，所以这里顺手把源评论的 comment_type + business_id 带出去 -->
+            c.comment_type as comment_type,
+            c.business_id as comment_business_id,
             CASE WHEN EXISTS (
                 SELECT 1 FROM sys_notifications_receiver r
                 WHERE r.notification_id = n.id AND r.user_id = #{userId}
@@ -74,10 +69,14 @@
         left join sys_user u on u.id = <include refid="pushFirstUser"/>
         left join sys_user u1 on n.from_user_id = u1.id
         left join sys_notice e on n.business_id = e.id and n.business_type = 'notice'
+        left join sys_comment c on n.business_id = c.id and n.business_type in ('comment', 'like')
         <where>
             n.del_flag = 0
             and <include refid="pushVisible"/>
             and <include refid="pushNotDeleted"/>
+            <if test="notifications.category != null">
+                and n.category = #{notifications.category}
+            </if>
             <if test="notifications.businessType != null and notifications.businessType != ''">
                 and n.business_type = #{notifications.businessType}
             </if>
@@ -98,13 +97,17 @@
             n.from_user_id,
             n.business_id,
             n.business_type,
+            n.category,
             n.title,
             n.message,
             n.link,
             n.notice_push,
+            <!-- 接收人现在是发送时就一律铺进关联表（未读也有一行），所以这一格必须只数 is_read=1，
+                 不能再像原先那样「有行即已读」—— 那样阅读数会等于接收人数，发出去就全是已读 -->
             (select count(1) from sys_notifications_receiver r
              where r.notification_id = n.id
-               and (r.send_code = n.send_code or r.send_code is null)) as read_count,
+               and (r.send_code = n.send_code or r.send_code is null)
+               and r.is_read = 1 and r.is_deleted = 0) as read_count,
             n.del_flag,
             n.create_time,
             u1.nickname as from_nickname,
@@ -142,6 +145,7 @@
             n.from_user_id,
             n.business_id,
             n.business_type,
+            n.category,
             n.title,
             n.message,
             n.link,
@@ -163,20 +167,12 @@
         where n.id = #{id} and n.del_flag = 0
     </select>
 
-    <!-- 各业务类型未读数（保持 @MapKey("type") 返回 Map<type,{type,num}>） -->
-    <select id="getUnReadNum" resultType="java.util.Map">
-        select n.business_type as type, count(distinct n.id) as num
-        from sys_notifications n
-        where n.del_flag = 0
-          and <include refid="pushVisible"/>
-          and <include refid="pushNotDeleted"/>
-          and <include refid="pushNotRead"/>
-        group by n.business_type
-    </select>
-
-    <!-- 当前用户是否存在未读消息 -->
-    <select id="countMyUnread" resultType="long">
-        select count(distinct n.id)
+    <!-- 未读汇总：一趟把「总数 + 两档各自多少条未读」都算回来（红点只看 total，两档 tab 各看一格） -->
+    <select id="countUnreadSummary" resultType="java.util.Map">
+        select
+            count(1) as total,
+            COALESCE(sum(case when n.category = 1 then 1 else 0 end), 0) as system_num,
+            COALESCE(sum(case when n.category = 2 then 1 else 0 end), 0) as interact_num
         from sys_notifications n
         where n.del_flag = 0
           and <include refid="pushVisible"/>
@@ -193,7 +189,8 @@
         on duplicate key update send_code = values(send_code), is_read = 1, read_time = now(), is_deleted = 0
     </insert>
 
-    <!-- 全部标记已读：把当前用户可见的未读消息批量插入已读记录（带 ODKU，避免管理端设置过 is_read=0 的记录撞唯一键） -->
+    <!-- 全部标记已读：把当前用户可见的未读消息批量补上已读记录（带 ODKU，接收人展开时铺的那些未读行正好在这里被翻成已读）；
+         category 给就只清这一档 —— 消息中心两档 tab 上那颗「全部已读」只管当前这一档 -->
     <insert id="allRead">
         insert into sys_notifications_receiver (notification_id, user_id, send_code, is_read, read_time, is_deleted, create_time)
         select n.id, #{userId}, n.send_code, 1, now(), 0, now()
@@ -202,6 +199,9 @@
           and <include refid="pushVisible"/>
           and <include refid="pushNotDeleted"/>
           and <include refid="pushNotRead"/>
+          <if test="category != null">
+              and n.category = #{category}
+          </if>
         on duplicate key update send_code = values(send_code), is_read = 1, read_time = now(), is_deleted = 0
     </insert>
 
@@ -213,6 +213,37 @@
         where n.id = #{notificationId} and n.del_flag = 0
           and <include refid="pushVisible"/>
         on duplicate key update send_code = values(send_code), is_deleted = 1
+    </insert>
+
+    <!-- 发送时展开接收人：user/dept/role 三档命中的启用账号一趟铺成未读记录（一条 SQL，库在公网、不能按人放大往返）。
+         insert ignore 撞 uk_message_user 就跳过 ⇒ 同一个人既在部门又在角色也只落一行。
+         谓词钉了 status = 1（锁定的账号不投）；开头那句 1 = 0 是闸：三档全空时铺出 0 行，而不是整张 sys_user。 -->
+    <insert id="fanOutReceivers">
+        insert ignore into sys_notifications_receiver (notification_id, send_code, user_id, is_read, read_time, is_deleted, create_time)
+        select #{notificationId}, #{sendCode}, u.id, 0, null, 0, now()
+        from sys_user u
+        where u.status = 1
+          and (
+            1 = 0
+            <if test="userIds != null and userIds.size() > 0">
+                or u.id in
+                <foreach item="id" collection="userIds" open="(" separator="," close=")">#{id}</foreach>
+            </if>
+            <if test="deptIds != null and deptIds.size() > 0">
+                or exists (
+                    select 1 from sys_dept_user du
+                    where du.user_id = u.id and du.dept_id in
+                    <foreach item="id" collection="deptIds" open="(" separator="," close=")">#{id}</foreach>
+                )
+            </if>
+            <if test="roleIds != null and roleIds.size() > 0">
+                or exists (
+                    select 1 from sys_user_role ur
+                    where ur.user_id = u.id and ur.role_id in
+                    <foreach item="id" collection="roleIds" open="(" separator="," close=")">#{id}</foreach>
+                )
+            </if>
+          )
     </insert>
 
     <!-- 管理端：分页查询某消息的阅读记录（关联表 + 阅读人信息）；只展示主表当前发送批次（send_code）对应的记录，可按阅读人搜索 -->

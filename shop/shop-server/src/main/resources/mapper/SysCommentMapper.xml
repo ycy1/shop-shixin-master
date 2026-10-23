@@ -2,59 +2,151 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.shop.mapper.SysCommentMapper">
 
+    <!--
+      这两张表是 sys_ 那一头的老表，但 sys_comment 也有 is_deleted 那一格（后台那颗删除写的就是它），
+      而自定义 XML 不走 MyBatis-Plus 的全局逻辑删除接管 —— 所以下面每一段都要手写 c.is_deleted = 0。
+      sys_comment_like 没有软删列，点赞行是插一条删一条，那些语句里不写这个谓词。
+      business_id 一列指四张表（商品/门店/品牌/广场），id 会互相撞号，所以 comment_type 必须和它一起进谓词。
+    -->
+
+    <!-- 前台那两趟给的列是钉出来的，不写 c.*：sys_comment 上有 ip / 浏览器 / 系统 四格留痕，
+         那是「这条评论从哪儿发出来的」给后台看的，商城前台把访客 IP 印到评论区页面上不成道理。
+         ip_source（归属地，只到省市）可以露 —— 和各家评论区那一句「IP属地」同一个口径。 -->
+    <sql id="commentColumns">
+        c.id,
+        c.business_id,
+        c.comment_type,
+        c.parent_id,
+        c.user_id,
+        c.content,
+        c.like_count,
+        c.is_stick,
+        c.ip_source,
+        c.create_time
+    </sql>
+
+    <!-- 未登录时 userId 传 NULL（/api/** 不鉴权，读接口照样要能翻页），所以 #{userId} 一律钉 jdbcType，
+         否则 MyBatis 给空值挂 OTHER 类型、驱动直接抛错；is_like 那一格此时恒为 0，前端画空心就对了 -->
     <select id="getComments" resultType="com.shop.vo.comment.CommentListVo">
         SELECT
-        c.*,
+        <include refid="commentColumns"/>,
         u.nickname,
         u.avatar,
-        (SELECT COUNT(scl.id) > 0 FROM sys_comment_like scl WHERE scl.comment_id = c.id AND scl.user_id = #{userId}) AS is_like
+        (SELECT COUNT(scl.id) > 0 FROM sys_comment_like scl WHERE scl.comment_id = c.id AND scl.user_id = #{userId,jdbcType=BIGINT}) AS is_like
         FROM sys_comment c
         LEFT JOIN sys_user u ON c.user_id = u.id
-        WHERE c.business_id = #{businessId} and c.parent_id is null
-        <if test="commentType != null">
-            and c.comment_type = #{commentType}
-        </if>
+        WHERE c.is_deleted = 0
+        AND c.parent_id IS NULL
+        AND c.business_id = #{businessId}
+        AND c.comment_type = #{commentType}
         <choose>
             <when test="sortType == 'like'">
-                ORDER BY c.like_count DESC
+                ORDER BY c.is_stick DESC, c.like_count DESC, c.id DESC
             </when>
             <otherwise>
-                ORDER BY c.create_time DESC
+                ORDER BY c.is_stick DESC, c.create_time DESC, c.id DESC
             </otherwise>
         </choose>
     </select>
 
-    <select id="getChildrenComment" resultType="com.shop.vo.comment.CommentListVo">
+    <!--
+      一次把这一页顶层评论名下的整棵子树全捞回来：IN 一批 parent id，而不是逐条查 ——
+      数据库在公网那台，一个来回就是几十毫秒，十条顶层评论逐层往下问会把一页的耗时全花在这上面。
+      回复可以套好几层，所以这里用递归 CTE（MySQL 8 才有，项目本来就用过 COUNT(*) OVER () 那一条）：
+      锚点那一头是这一页顶层的直接回复，递归那一头拿已经进来的行的 id 去接它的下一级，
+      一趟就把各层都收齐，service 再按 parentId 在内存里堆成树。
+      is_deleted = 0 两段都要写：删掉的那一行不该再把名下的回复挂上页面，
+      而且递归只从活着的行往下走，被软删的那一棵整支自然跟着不见。
+      排序按 (parent_id, create_time, id)：同一父行名下从早到晚，归堆后每段的顺序就是它。
+    -->
+    <select id="getDescendantsComment" resultType="com.shop.vo.comment.CommentListVo">
+        WITH RECURSIVE subtree AS (
+            SELECT c.id, c.business_id, c.comment_type, c.parent_id, c.user_id, c.reply_user_id,
+                   c.content, c.like_count, c.is_stick, c.ip_source, c.create_time
+            FROM sys_comment c
+            WHERE c.is_deleted = 0
+            AND c.parent_id IN
+            <foreach collection="ids" item="item" open="(" separator="," close=")">#{item}</foreach>
+            UNION ALL
+            SELECT c.id, c.business_id, c.comment_type, c.parent_id, c.user_id, c.reply_user_id,
+                   c.content, c.like_count, c.is_stick, c.ip_source, c.create_time
+            FROM sys_comment c
+            JOIN subtree s ON c.parent_id = s.id
+            WHERE c.is_deleted = 0
+        )
         SELECT
-            c.*,
+            t.id,
+            t.business_id,
+            t.comment_type,
+            t.parent_id,
+            t.user_id,
+            t.content,
+            t.like_count,
+            t.is_stick,
+            t.ip_source,
+            t.create_time,
             u.nickname,
             u.avatar,
             ru.nickname as replyNickname,
-            (SELECT COUNT(scl.id) > 0 FROM sys_comment_like scl WHERE scl.comment_id = c.id AND scl.user_id = #{userId}) AS is_like
-        FROM sys_comment c
-        LEFT JOIN sys_user u ON c.user_id = u.id
-        LEFT JOIN sys_user ru ON c.reply_user_id = ru.id
-        WHERE c.parent_id = #{id}
-        ORDER BY c.create_time DESC
+            (SELECT COUNT(scl.id) > 0 FROM sys_comment_like scl WHERE scl.comment_id = t.id AND scl.user_id = #{userId,jdbcType=BIGINT}) AS is_like
+        FROM subtree t
+        LEFT JOIN sys_user u ON t.user_id = u.id
+        LEFT JOIN sys_user ru ON t.reply_user_id = ru.id
+        ORDER BY t.parent_id, t.create_time, t.id
     </select>
 
+    <!--
+      删一条评论时连它名下的整棵子树一起收掉，所以先把子孙 id 捞全（口径和上面那趟一样是递归 CTE）。
+      这里不看 is_deleted：已经软删的那一行下面还可能挂着活着的回复，
+      漏了这一支的话它们会变成「父不在了」的行，前台按顶层分页永远翻不出来，不如一并删干净。
+    -->
+    <select id="selectDescendantIds" resultType="java.lang.Integer">
+        WITH RECURSIVE descendants AS (
+            SELECT c.id FROM sys_comment c WHERE c.parent_id = #{id}
+            UNION ALL
+            SELECT c.id FROM sys_comment c JOIN descendants d ON c.parent_id = d.id
+        )
+        SELECT id FROM descendants WHERE id <![CDATA[ <> ]]> #{id}
+    </select>
+
+    <!--
+      后台「评论管理」那一页：除内容之外还要看清这条评论挂在哪个商品/门店/品牌/广场消息上，
+      所以照「用户收藏」那一份的写法，四个联表把类型判断写在 ON 上、businessName 用 CASE 按类型挑。
+      对象被删掉后评论还要能看见，一律 LEFT JOIN、过滤条件不写在 WHERE 上（不写就整条从列表里消失）。
+      广场消息那一档取的是标题：这一格可空（必填的是正文），没标题联上了也是空，前端按 id 显示，
+      和消息被删掉时是同一个表现 —— 这一列只是给后台看清"挂在哪"，不指望它当正文。
+    -->
     <select id="selectPage" resultType="com.shop.vo.comment.SysCommentVO">
         SELECT
             c.id,
+            c.business_id,
             c.comment_type,
             u.avatar,
             u.nickname,
             IF(ru.nickname is null,'无',ru.nickname) as replyNickname,
             c.content,
             c.parent_id,
+            c.reply_user_id,
+            c.is_stick,
             c.like_count,
             c.create_time,
-            c.update_time
+            c.update_time,
+            CASE c.comment_type
+            WHEN 1 THEN p.product_name
+            WHEN 2 THEN st.store_name
+            WHEN 3 THEN b.brand_name
+            WHEN 4 THEN pm.title
+            END AS businessName
         FROM
         sys_comment c
         LEFT JOIN sys_user u ON c.user_id = u.id
         LEFT JOIN sys_user ru ON c.reply_user_id = ru.id
+        LEFT JOIN shop_product p ON p.id = c.business_id AND c.comment_type = 1
+        LEFT JOIN shop_store st ON st.id = c.business_id AND c.comment_type = 2
+        LEFT JOIN shop_brand b ON b.id = c.business_id AND c.comment_type = 3
+        LEFT JOIN shop_plaza_message pm ON pm.id = c.business_id AND c.comment_type = 4
         <where>
+            c.is_deleted = 0
             <if test="query.businessId != null">
                 and c.business_id = #{query.businessId}
             </if>
@@ -68,12 +160,15 @@
                 and c.content like concat('%', #{query.content}, '%')
             </if>
         </where>
-        order by c.create_time desc
+        order by c.is_stick desc, c.create_time desc
     </select>
 
     <select id="selectMyComment" resultType="com.shop.vo.comment.CommentListVo">
         SELECT
             c.id,
+            c.business_id,
+            c.comment_type,
+            c.parent_id,
             c.content,
             c.like_count,
             c.create_time,
@@ -81,13 +176,17 @@
         FROM
             sys_comment c
         WHERE
-            c.user_id = #{userId}
+            c.is_deleted = 0
+            AND c.user_id = #{userId}
         order by c.create_time desc
     </select>
 
     <select id="getMyReply" resultType="com.shop.vo.comment.CommentListVo">
         SELECT
             c.id,
+            c.business_id,
+            c.comment_type,
+            c.parent_id,
             u.nickname as replyNickname,
             c.content,
             c.like_count,
@@ -97,11 +196,12 @@
             sys_comment c
             left join sys_user u on c.reply_user_id = u.id
         WHERE
-            c.user_id = #{userId} and c.reply_user_id is not null
+            c.is_deleted = 0
+            AND c.user_id = #{userId} and c.reply_user_id is not null
         order by c.create_time desc
     </select>
 
-    <!-- 评论点赞 -->
+    <!-- 评论点赞：这一条按 (comment_id, user_id) 有唯一键，同一个人点第二次会被数据库拦下 -->
     <insert id="likeComment">
         INSERT INTO sys_comment_like(comment_id, user_id, comment_type) VALUES (#{commentId}, #{userId}, #{commentType})
     </insert>
@@ -114,7 +214,8 @@
         SELECT COUNT(id) > 0 FROM sys_comment_like WHERE user_id = #{userId} AND comment_id = #{commentId}
     </select>
 
+    <!-- 只给没软删的评论记数：删掉的行留在表里当留痕，不该再被这条刷到 -->
     <update id="updateLikeCount">
-        UPDATE sys_comment SET like_count = GREATEST(IFNULL(like_count, 0) + #{delta}, 0) WHERE id = #{commentId}
+        UPDATE sys_comment SET like_count = GREATEST(IFNULL(like_count, 0) + #{delta}, 0) WHERE id = #{commentId} AND is_deleted = 0
     </update>
 </mapper>

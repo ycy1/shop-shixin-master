@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopErpPurchaseInMapper">
+
+    <!-- 公共查询列：表加了列只改这一处（别名固定是 pi，和下面的 FROM 对应） -->
+    <sql id="purchaseInColumns">
+        pi.id,
+        pi.receipt_no,
+        pi.inbound_source,
+        pi.purchase_id,
+        pi.refund_id,
+        pi.supplier_id,
+        pi.warehouse_id,
+        pi.total_quantity,
+        pi.total_amount,
+        pi.status,
+        pi.receive_time,
+        pi.user_id,
+        pi.remark,
+        pi.create_by,
+        pi.update_by,
+        pi.create_time,
+        pi.update_time
+    </sql>
+
+    <!-- 采购单号/退款单号/供应商名/仓库名/操作员名一律联表现取，不在入库单里冗余快照：
+         改了名不用回头刷单子（同采购单联供应商/操作员）。
+         sys_refund 是这张表唯一的外部"来源单据"另一路：来源=1 线上退货 的入库单不挂采购单，挂退款单 -->
+    <sql id="purchaseInJoins">
+        FROM shop_erp_purchase_in pi
+        LEFT JOIN shop_erp_purchase p ON p.id = pi.purchase_id AND p.is_deleted = 0
+        LEFT JOIN sys_refund rf ON rf.id = pi.refund_id AND rf.is_deleted = 0
+        LEFT JOIN shop_erp_supplier sp ON sp.id = pi.supplier_id AND sp.is_deleted = 0
+        LEFT JOIN shop_erp_warehouse w ON w.id = pi.warehouse_id AND w.is_deleted = 0
+        LEFT JOIN sys_user eu ON eu.id = pi.user_id
+    </sql>
+
+    <!-- 明细的已入库总数：列表不返回明细，但那一列要显示"已入库 / 计划"、还要判断「入库」按钮能不能点，
+         所以用关联子查询汇总（一页十条、一条单子撑死几十行明细，走 idx_receipt，没有代价） -->
+    <sql id="purchaseInReceivedSum">
+        (SELECT IFNULL(SUM(ri.received_quantity), 0)
+        FROM shop_erp_purchase_in_item ri
+        WHERE ri.receipt_id = pi.id AND ri.is_deleted = 0) AS totalReceived
+    </sql>
+
+    <!-- 自定义 SQL 不走全局逻辑删除，pi.is_deleted = 0 必须手写 -->
+    <select id="selectPurchaseInPage" resultType="com.shop.entity.ShopErpPurchaseIn">
+        SELECT
+            <include refid="purchaseInColumns"/>,
+            <include refid="purchaseInReceivedSum"/>,
+            p.purchase_no AS purchaseNo,
+            rf.refund_no AS refundNo,
+            sp.supplier_name AS supplierName,
+            w.warehouse_name AS warehouseName,
+            w.status AS warehouseStatus,
+            eu.nickname AS userName
+        <include refid="purchaseInJoins"/>
+        <where>
+            pi.is_deleted = 0
+            <!-- 一个输入框搜入库单号、备注和来源单据/往来单位的名称，括号内 OR 不会串到上面的筛选
+                 （来源单据有两路：采购单号 p.purchase_no 和退款单号 rf.refund_no） -->
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (pi.receipt_no LIKE CONCAT('%', #{q.keyword}, '%')
+                OR pi.remark LIKE CONCAT('%', #{q.keyword}, '%')
+                OR p.purchase_no LIKE CONCAT('%', #{q.keyword}, '%')
+                OR rf.refund_no LIKE CONCAT('%', #{q.keyword}, '%')
+                OR sp.supplier_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR w.warehouse_name LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+            <if test="q.purchaseId != null">
+                AND pi.purchase_id = #{q.purchaseId}
+            </if>
+            <if test="q.refundId != null">
+                AND pi.refund_id = #{q.refundId}
+            </if>
+            <if test="q.supplierId != null">
+                AND pi.supplier_id = #{q.supplierId}
+            </if>
+            <if test="q.warehouseId != null">
+                AND pi.warehouse_id = #{q.warehouseId}
+            </if>
+            <if test="q.status != null">
+                AND pi.status = #{q.status}
+            </if>
+            <if test="q.userId != null">
+                AND pi.user_id = #{q.userId}
+            </if>
+            <if test="q.beginTime != null and q.beginTime != ''">
+                AND pi.create_time &gt;= #{q.beginTime}
+            </if>
+            <if test="q.endTime != null and q.endTime != ''">
+                AND pi.create_time &lt;= #{q.endTime}
+            </if>
+        </where>
+        <!-- 不按 status 排：这里的 status 是单据流转状态（0待入库→1部分入库→2已入库），
+             不是启用/禁用，按它排会把"待入库"顶到第一页。新单在前就够了 -->
+        ORDER BY pi.id DESC
+    </select>
+
+    <select id="selectPurchaseInById" resultType="com.shop.entity.ShopErpPurchaseIn">
+        SELECT
+            <include refid="purchaseInColumns"/>,
+            <include refid="purchaseInReceivedSum"/>,
+            p.purchase_no AS purchaseNo,
+            rf.refund_no AS refundNo,
+            sp.supplier_name AS supplierName,
+            w.warehouse_name AS warehouseName,
+            w.status AS warehouseStatus,
+            eu.nickname AS userName
+        <include refid="purchaseInJoins"/>
+        WHERE pi.id = #{id}
+          AND pi.is_deleted = 0
+    </select>
+
+    <!-- 采购单页「入库单」弹窗那一批。字段和列表完全一样，只是不分页：
+         一张采购单底下撑死几张入库单，翻页没意义，弹窗里要的是全量 -->
+    <select id="selectReceiptsByPurchaseId" resultType="com.shop.entity.ShopErpPurchaseIn">
+        SELECT
+            <include refid="purchaseInColumns"/>,
+            <include refid="purchaseInReceivedSum"/>,
+            p.purchase_no AS purchaseNo,
+            rf.refund_no AS refundNo,
+            sp.supplier_name AS supplierName,
+            w.warehouse_name AS warehouseName,
+            w.status AS warehouseStatus,
+            eu.nickname AS userName
+        <include refid="purchaseInJoins"/>
+        WHERE pi.purchase_id = #{purchaseId}
+          AND pi.is_deleted = 0
+        <!-- ERP 账号只看自己操作的那几张（口径同 selectPurchaseInPage 覆盖 userId），
+             user_id 为 NULL 的单他看不到 -->
+        <if test="userId != null">
+            AND pi.user_id = #{userId}
+        </if>
+        ORDER BY pi.id DESC
+    </select>
+
+</mapper>

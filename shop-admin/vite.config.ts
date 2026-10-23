@@ -29,7 +29,7 @@ export default defineConfig(({ command, mode }: ConfigEnv): UserConfig => {
       // 自动导入目录下的模块
       dirs: [
         './src/composables',
-        './src/stores'
+        './src/store'
       ],
     })],
     resolve: {

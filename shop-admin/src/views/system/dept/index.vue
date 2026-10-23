@@ -72,26 +72,26 @@
               {
                 label: '修改',
                 icon: 'Edit',
-                disabled: !hasPermission('sys:dept:update'),
+                hidden: !hasPermission('sys:dept:update'),
                 command: { type: 'edit', row: scope.row }
               },
               {
                 label: '人员',
                 icon: 'User',
-                disabled: !hasPermission('sys:dept:user:list'),
+                hidden: !hasPermission('sys:dept:user:list'),
                 command: { type: 'members', row: scope.row }
               },
               {
                 label: '添加子级部门',
                 icon: 'Plus',
-                disabled: !hasPermission('sys:dept:add'),
+                hidden: !hasPermission('sys:dept:add'),
                 command: { type: 'addChild', row: scope.row }
               },
               {
                 label: '删除',
                 type: 'danger',
                 icon: 'Delete',
-                disabled: !hasPermission('sys:dept:delete'),
+                hidden: !hasPermission('sys:dept:delete'),
                 command: { type: 'delete', row: scope.row }
               }
             ]" @command="handleActionCommand" />
@@ -114,7 +114,8 @@
           <el-input v-model="deptForm.code" placeholder="请输入部门编码" disabled />
         </el-form-item>
         <el-form-item label="负责人" prop="leaderId">
-          <UserSelect v-model="deptForm.leaderId" :label="deptLeaderName" style="width: 100%" />
+          <!-- 部门只有平台内部账号才当得了负责人：弹窗只列 account_type=0 的平台用户 -->
+          <UserSelect v-model="deptForm.leaderId" :label="deptLeaderName" :account-type="0" style="width: 100%" />
         </el-form-item>
         <el-form-item label="状态">
           <el-radio-group v-model="deptForm.status">

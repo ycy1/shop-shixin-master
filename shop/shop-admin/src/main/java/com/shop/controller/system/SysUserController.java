@@ -111,6 +111,21 @@ public class SysUserController {
         return Result.success();
     }
 
+    /**
+     * 改自己的基本信息（后台「个人信息」那一页那颗「修改」）
+     *
+     * 不压 sys:user:update —— 那条是用户管理的修改权限，给每个账号勾上就等于能改别人的档案；
+     * 这一条能免权限的前提是服务端把字段收窄到 昵称/手机号/邮箱/性别/头像/地区/详细地址/经纬度/签名
+     * 且 id 钉成登录 id（见 SysUserServiceImpl#updateMyProfile），传什么都不越出自己那一行。
+     */
+    @PutMapping("/myProfile")
+    @OperationLogger("修改个人信息")
+    @ApiOperation(value = "修改自己的基本信息")
+    public Result<Void> updateMyProfile(@RequestBody SysUser user) {
+        sysUserService.updateMyProfile(user);
+        return Result.success();
+    }
+
 
     @GetMapping("/verifyPassword/{password}")
     @ApiOperation(value = "锁屏界面验证密码")

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopProductSpecMapper">
+
+    <!-- 自定义 SQL 不走全局逻辑删除，is_deleted = 0 必须手写 -->
+    <select id="selectSpecPage" resultType="com.shop.entity.ShopProductSpec">
+        SELECT
+            s.id,
+            s.category_id,
+            s.spec_name,
+            s.spec_value,
+            s.spec_unit,
+            s.status,
+            s.user_id,
+            s.create_by,
+            s.update_by,
+            s.create_time,
+            s.update_time,
+            c.category_name
+        FROM shop_product_spec s
+        LEFT JOIN shop_category c ON c.id = s.category_id AND c.is_deleted = 0
+        <where>
+            s.is_deleted = 0
+            <if test="q.categoryId != null">
+                AND s.category_id = #{q.categoryId}
+            </if>
+            <if test="q.status != null">
+                AND s.status = #{q.status}
+            </if>
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (s.spec_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR s.spec_value LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+        </where>
+        <!-- 仍先按类目分组，组内启用在前（status：1启用 0禁用） -->
+        ORDER BY s.category_id ASC, s.status DESC, s.id DESC
+    </select>
+
+</mapper>

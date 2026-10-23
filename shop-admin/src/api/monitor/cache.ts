@@ -31,4 +31,31 @@ export function clearCacheApi() {
     url: '/monitor/cache',
     method: 'delete'
   })
+}
+
+// 看某个键存的内容（给回来的是库里那串原文，不是对象）
+export function getCacheValueApi(key: string) {
+  return request({
+    url: '/monitor/cache/value',
+    method: 'get',
+    params: { key }
+  })
+}
+
+// 改某个键的内容（后端只放行 string 类型的键）
+export function updateCacheValueApi(data: { key: string; value: string }) {
+  return request({
+    url: '/monitor/cache/value',
+    method: 'put',
+    data
+  })
+}
+
+// 删某个键
+export function deleteCacheKeyApi(key: string) {
+  return request({
+    url: '/monitor/cache/key',
+    method: 'delete',
+    params: { key }
+  })
 } 

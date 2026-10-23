@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopActivityPointsLogMapper">
+
+    <!-- 公共查询列（表加了列只改这一处，别名固定是 l，和下面的 FROM 对应）。
+         这张表没有 is_deleted 那一列（流水只插不改不删，所以 DDL 里就没有留痕的 update 三件套），
+         所以这里**不需要**像别的 shop_* 表那样手写逻辑删除那一刀 —— 少写不报错，多写就报 Unknown column -->
+    <sql id="logColumns">
+        l.id,
+        l.user_id,
+        l.points,
+        l.balance,
+        l.biz_type,
+        l.biz_id,
+        l.biz_no,
+        l.description,
+        l.expire_time,
+        l.create_by,
+        l.create_time
+    </sql>
+
+    <!-- 昵称联 sys_user：sys_* 表没有 is_deleted 那一列，联表不带那一刀。
+         这一页只看一个人的流水，弹窗顶上要说得出"这是谁的积分" -->
+    <sql id="logJoins">
+        FROM shop_activity_points_log l
+        LEFT JOIN sys_user u ON u.id = l.user_id
+    </sql>
+
+    <select id="selectRecordPage" resultType="com.shop.entity.ShopActivityPointsLog">
+        SELECT
+            <include refid="logColumns"/>,
+            u.nickname AS userName
+        <include refid="logJoins"/>
+        <where>
+            <!-- 弹窗是从某一行账户点进来的，userId 恒有值；这一格留空就当"看全部人的积分流水" -->
+            <if test="q.userId != null">
+                AND l.user_id = #{q.userId}
+            </if>
+            <if test="q.bizType != null">
+                AND l.biz_type = #{q.bizType}
+            </if>
+        </where>
+        <!-- id DESC 就是时间倒序，同一秒记两笔（一次下单既抵分又送分）时它也稳定 -->
+        ORDER BY l.id DESC
+    </select>
+
+</mapper>

@@ -1,0 +1,339 @@
+/* flowbite-vue 带着一整份预编译的 Tailwind，同名工具类会按源码顺序压掉本页的 lg:/md: 变体
+   （themesberg/flowbite-vue#465）。显式钉住层级顺序，让自有 utilities 永远优先。 */
+@layer theme, base, flowbite, components, utilities;
+
+@import "tailwindcss";
+@import "flowbite/src/themes/default";
+
+@plugin "flowbite/plugin";
+@source "../../node_modules/flowbite";
+@source "../../node_modules/flowbite-vue/dist";
+
+/* Tailwind v4 的 dark: 默认跟着系统的 prefers-color-scheme 走，这里改成只认 <html> 上的 .dark：
+   页头那颗按钮是用户自己点的，得让页面说了算（没选过偏好才回落系统设置，见 Base.astro）。 */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  /* 滚动条槽一直留着。客户端路由换页时这一条是必须的：新页接过来那一瞬岛上还没取到数（首页网格、详情都是
+     onMounted 才捞），文档矮到不需要滚动条 => 视口凭空宽出十几 px => 页头、卡片整排横着跳一下，数回来又跳回去，
+     看着就是每切一页抖一下。槽位钉住就不再有这来回一趟。 */
+  html {
+    scrollbar-gutter: stable;
+  }
+
+  /* 原生控件跟着一起翻：滚动条、表单底色这些不归 Tailwind 管，只认这个 */
+  .dark {
+    color-scheme: dark;
+  }
+}
+
+/* 以下是客户端路由（astro 换页不刷新）的三条补充，都写在 @layer 外面：
+   astro 自己那套过渡样式不进层，写进 @layer base 会被它压掉，改了等于没改。 */
+
+/* 换页淡入：新内容淡进来，只加在 <main> 上（页头、页脚不受影响），类由 Base.astro 末尾那条
+   astro:after-swap 脚本挂上去。刻意没用 astro 的 transition:animate / view transition：它生成的每一条动画
+   都被它自带的 @media (prefers-reduced-motion) 罩着（::view-transition-*(*), [data-astro-transition-scope] 一律
+   animation: none !important，连浏览器给 root 的默认交叉淡变也一起吃掉），这台机器系统里关了动效，那条路怎么走都不动。
+   这里就是一条普通 CSS 动画，罩子管不到它。要让它跟着系统的「减少动效」走，把这两个类挪进下面那条媒体查询里即可。
+   两段都只动 opacity、不加 translateY 之类的位移：动画期间带 transform 的元素会变成它那些 fixed 定位弹窗
+   （收货地址表单、确认框）的包含块，遮罩就盖不满视口了。 */
+.page-enter {
+  animation: page-enter 320ms ease-out;
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 淡出那一半：类由 astro:before-preparation 挂上，astro 要等那一页取回来、且这段至少播满 LEAVE_MS 才换页（见 Base.astro）。
+   forwards 是必须的 —— 换页那一趟还要跑后端，动画播完就松手的话旧内容会在透明之后又亮回来。
+   摘掉它的有两处：after-swap 一处、一条超时兜底一处（导航被后面的点击抢掉时不会有 after-swap）。 */
+.page-leave {
+  animation: page-leave 160ms ease-in forwards;
+}
+
+@keyframes page-leave {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* 导航途中在视口顶上跑一条不定长进度线：astro 一开始换页就给 <html> 挂 data-astro-route-loading，换完摘掉。
+   SSR 那一趟（商品详情要现查库）不一定秒回，没这根线的话点上去像没反应。 */
+html[data-astro-route-loading] body::after {
+  content: '';
+  position: fixed;
+  z-index: 60;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--color-blue-600), transparent) no-repeat;
+  background-size: 40% 100%;
+  animation: route-progress 0.9s linear infinite;
+}
+
+html.dark[data-astro-route-loading] body::after {
+  background-image: linear-gradient(90deg, transparent, var(--color-blue-400), transparent);
+}
+
+@keyframes route-progress {
+  from {
+    background-position: -40% 0;
+  }
+  to {
+    background-position: 140% 0;
+  }
+}
+
+/* 系统里关了动效的，进度线停下、留一条静态的。上面那个 .page-enter 刻意不跟着停 —— 停了就等于这轮改动看不见，
+   他这两次要的就是换页那点过渡；真要以系统设置为准，按上面注释里说的把它挪进这条查询。 */
+@media (prefers-reduced-motion: reduce) {
+  html[data-astro-route-loading] body::after {
+    animation: none;
+    background: var(--color-blue-600);
+    opacity: 0.5;
+  }
+}
+
+/* 切 tab（搜索页、商品详情页）、切个人中心那一列菜单时，换掉的那一格左右移进移出：
+   往后切一格 = 旧格往左退、新格从右边移进来，往前切整个反过来。
+   方向由页面自己判断后喂给 <Transition :name>（这两条前缀各配一对 enter / leave），mode 用 out-in ——
+   旧的移走完事才挂新的，两格不会同框叠着把下面顶一下。key 仍然钉在那一格上（换 key 才有「换了一个元素」）。
+   这一段必须写在 @layer 外面，同上面 .page-enter：astro 那套换页样式不进层，写在层里会被压掉。
+   动画期间这一格带 transform ⇒ 它会变成页里 fixed 弹窗的包含块，所以三条链路上都只在没有弹窗的那一格上挂
+   （个人中心的弹窗全在 section 外面，搜索页和详情页那两块面板里也没有弹窗）。
+   位移会探出容器，所以只有这一段过渡里给包着它的那一层临时挂 overflow-x-clip（各页 sliding 那一格），
+   不然窄屏上这 360ms 会闪出一条横向滚动条。 */
+.tab-next-enter-active,
+.tab-next-leave-active,
+.tab-prev-enter-active,
+.tab-prev-leave-active {
+  transition:
+    opacity 180ms ease-out,
+    transform 180ms ease-out;
+}
+
+.tab-next-enter-from {
+  opacity: 0;
+  transform: translateX(28px);
+}
+
+.tab-next-leave-to {
+  opacity: 0;
+  transform: translateX(-28px);
+}
+
+.tab-prev-enter-from {
+  opacity: 0;
+  transform: translateX(-28px);
+}
+
+.tab-prev-leave-to {
+  opacity: 0;
+  transform: translateX(28px);
+}
+
+/* ===== 广场页：两列的几何 + 分享那一句提示 =====
+   这两块手写在这一份里，既不挂 md:/lg: 工具类、也不放组件自己的 <style scoped>，因为那两条路在客户端路由下都会掉：
+   - 工具类：换页那一趟 head 里的 global.css 是按「上一页那一轮的模块图」扫出来的，本页新添的类不在里面
+     （实测从首页点进广场：md:flex 在，md:gap-8 / md:sticky / md:w-64 / lg:w-72 全不在 ⇒ 间距掉成 0、轨道也没了，刷新才齐）。
+   - 组件的 scoped style：它跟着 island 的 js chunk 注入，只有这枚组件**头一次**被加载那一趟会注入；
+     跳走再点回来时模块已在 vite 注册表里、不会再注入 ⇒ 整块规则从文档里消失，推荐块直接落到筛选和列表中间（比缺工具类还狠）。
+   这一份是每页 SSR 都内联进 head 的，astro 换页照新文档重挂 head 时一定带上；手写的规则又不依赖扫描结果。
+   写在 @layer 外面：不进层才压得住 Tailwind 那套 utilities（同上面几段过渡）。 */
+
+/* 窄屏上下叠：推荐块跟主列表之间留 24，比卡片之间那一格（16）大，才不会看成列表头的一张卡 */
+.plaza-rec {
+  margin-bottom: 1.5rem;
+}
+
+/* 并排那一档。断点用 48rem 不用 64rem：笔记本接了系统缩放之后，1366 那一档屏给到页面的宽度只有 900 出头，
+   卡在 lg 门槛下，推荐块就落到主列表上面，看着像混进了中间那串。 */
+@media (width >= 48rem) {
+  .plaza-cols {
+    display: flex;
+    align-items: flex-start;
+    /* 并排 32：同样要跟卡片之间那一格拉开，一眼看得出这是另一块 */
+    gap: 2rem;
+  }
+
+  .plaza-rec {
+    order: 2;
+    position: sticky;
+    top: 1rem;
+    flex-shrink: 0;
+    /* 轨道在 768 那一档先给窄的，到 lg 再放宽一档，免得左边主列表被挤得太窄 */
+    width: 16rem;
+    /* 窄屏那格留的 24 到并排这一档收掉 */
+    margin-bottom: 0;
+  }
+}
+
+@media (width >= 64rem) {
+  .plaza-rec {
+    width: 18rem;
+  }
+}
+
+/* 分享那句自动消失的提示：列表页和详情页共用同一颗。钉顶部中间而不是右下 —— 广场页右下角有悬浮发布那颗按钮。
+   底色成对给暗色那一档：昼夜只认 <html> 上的 .dark，暗色下页面底色就是 gray-900，浅底那一格会跟它融为一体。 */
+.plaza-tip {
+  position: fixed;
+  z-index: 60;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100vw - 2rem);
+  border-radius: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: #fff;
+  background: rgb(17 24 39 / 90%);
+  box-shadow:
+    0 10px 15px -3px rgb(0 0 0 / 10%),
+    0 4px 6px -4px rgb(0 0 0 / 10%);
+}
+
+.dark .plaza-tip {
+  background: rgb(55 65 81 / 90%);
+}
+
+/* 广场详情的正文（v-html 出来的那一段）：图就嵌在段落里，点一张放大 —— 光标得先说出「这点得动」。
+   写在这而不是给容器补 [&_img]:cursor-pointer：这一份每页 SSR 都内联进 head，站内跳进来那一趟必定带上；
+   组件里新加的原子类跟着 island 的扫描结果走，换页那一趟容易掉（同 .plaza-cols 那一条的口径）。 */
+.plaza-content img {
+  cursor: zoom-in;
+}
+
+/* 广场卡片的配图那一格（列表 + 搜索结果两处共用）：plaza_image 那一串里的第一张，一条没传就用标题首字占位。
+   方框宽高一律钉死，两种情况下右边那列文字才在同一列起笔；几何写在这一份里而不是组件上的工具类，同上面 .plaza-cols 那条。 */
+.plaza-cover {
+  flex: 0 0 auto;
+  width: 5.5rem;
+  height: 5.5rem;
+  border-radius: 0.5rem;
+}
+
+img.plaza-cover {
+  object-fit: cover;
+}
+
+span.plaza-cover {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: rgb(156 163 175);
+  background: rgb(243 244 246);
+}
+
+.dark span.plaza-cover {
+  background: rgb(55 65 81);
+}
+
+/* 发布弹窗里「广场消息图」那一排：一张一个方框，右上角一枚 ✕ 摘掉这一张，最后那颗格子是「再加几张」（label 套一颗 sr-only 的文件框）。
+   同上面 .plaza-cover 的口径：这一圈几何是 island 里新加的，写成原子类换页那一趟会掉，所以手写在这。 */
+.plaza-thumb {
+  position: relative;
+  flex: 0 0 auto;
+  width: 88px;
+  height: 88px;
+  overflow: hidden;
+  border: 1px solid rgb(209 213 219);
+  border-radius: 0.5rem;
+}
+
+.dark .plaza-thumb {
+  border-color: rgb(75 85 99);
+}
+
+.plaza-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.plaza-thumb-remove {
+  position: absolute;
+  top: 0.125rem;
+  right: 0.125rem;
+  display: flex;
+  width: 1.125rem;
+  height: 1.125rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  font-size: 0.625rem;
+  line-height: 1;
+  color: #fff;
+  background: rgb(17 24 39 / 60%);
+}
+
+.plaza-thumb-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.25rem;
+  font-size: 0.75rem;
+  text-align: center;
+  color: rgb(107 114 128);
+  background: rgb(243 244 246);
+  cursor: pointer;
+}
+
+.dark .plaza-thumb-add {
+  color: rgb(156 163 175);
+  background: rgb(55 65 81);
+}
+
+.plaza-thumb-off {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* 广场发布弹窗里的富文本：选中一段字会浮出一排格式条（hoverbar），它下面那个下拉面板有 260px 高、要往格子外面铺。
+   外层那一格（和编辑器自己的根格）只要带 overflow，面板就被切成底部两三行 —— 所以定高给文字层、滚动收进 .w-e-scroll，外层一律不裁。
+   同 admin 端 WangEditor 那一条的口径；圆角原来是靠 overflow-hidden 顺手裁出来的，不裁了就得自己给。
+   写在这而不是组件里：这一份每页 SSR 都内联进 head，换页那一趟不会掉（见上面 .plaza-content 那条注释）。 */
+.plaza-editor .w-e-text-container {
+  height: 320px;
+  border-bottom-left-radius: 0.5rem;
+  border-bottom-right-radius: 0.5rem;
+}
+
+.plaza-editor .w-e-scroll {
+  height: 100%;
+  overflow-y: auto;
+}
+
+.plaza-editor .w-e-toolbar {
+  border-top-left-radius: 0.5rem;
+  border-top-right-radius: 0.5rem;
+}
+
+/* 详情页正文下方那一组广场消息图（plaza_image 整组）：方框钉死、点一张放大，手势同上面 .plaza-content 里的插图。
+   写在这而不是组件上的工具类：这一份每页 SSR 都内联进 head，换页那一趟不会掉（口径同上面 .plaza-cover）。 */
+.plaza-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.plaza-images img {
+  width: 7rem;
+  height: 7rem;
+  border-radius: 0.5rem;
+  object-fit: cover;
+  cursor: zoom-in;
+}

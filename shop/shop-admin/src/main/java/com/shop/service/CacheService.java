@@ -24,4 +24,19 @@ public interface CacheService {
      * 清空缓存
      */
     void clearCache();
+
+    /**
+     * 看某一个键存的内容（string 给原文，其余类型按成员/字段铺开）
+     */
+    CacheValueVo getValue(String key);
+
+    /**
+     * 改某一个键的内容（只有 string 类型可改）
+     */
+    void updateValue(CacheValueDto dto);
+
+    /**
+     * 删某一个键（什么类型都能删，缓存删了就读侧回源重建）
+     */
+    void deleteValue(String key);
 } 

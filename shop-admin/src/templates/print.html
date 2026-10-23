@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>{{title}}</title>
+    <style>{{style}}</style>
+  </head>
+  <body>
+    <!-- 这两颗按钮只管屏上，@media print 里收掉（见 print.css）；自动打印没弹出来时还能手动再来一次 -->
+    <div class="toolbar">
+      <button onclick="window.print()">打 印</button>
+      <button onclick="window.close()">关 闭</button>
+    </div>
+    {{body}}
+  </body>
+</html>

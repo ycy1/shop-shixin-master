@@ -1,0 +1,12 @@
+---
+import Base from '@/layouts/Base.astro';
+import Profile from '@/views/user/Profile.vue';
+import { useDict } from '@/i18n';
+
+const { d, fill, locale } = useDict(Astro.locals.locale);
+---
+
+<Base title={fill(d.page.user.title, { brand: d.site.brand })} description={d.page.user.desc}>
+  <!-- 这一页整块是岛：登录态读 localStorage，服务端那一趟没有它，四块数据也要带 token 才捞得动 -->
+  <Profile client:load locale={locale} />
+</Base>

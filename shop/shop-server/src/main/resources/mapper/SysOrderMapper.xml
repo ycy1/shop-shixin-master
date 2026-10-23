@@ -3,10 +3,12 @@
 <mapper namespace="com.shop.mapper.SysOrderMapper">
     <!-- 可以在这里添加自定义的复杂SQL查询 -->
 
-    <!-- 通用查询列：与 sys_user 同名的列必须带表前缀，否则 join 后报 ambiguous -->
+    <!-- 通用查询列：与 sys_user 同名的列必须带表前缀，否则 join 后报 ambiguous。
+         delivery_fee 一起选：那一格已经含在 total_amount / pay_amount 里（下单那一刻按规则算死的），
+         后台的订单列表要把"货值多少、运费多少"分开说清 -->
     <sql id="Base_Column_List">
         sys_order.id, order_no, order_type, user_id,
-        biz_id, biz_type, total_amount, pay_amount, discount_amount,
+        biz_id, biz_type, total_amount, pay_amount, discount_amount, delivery_fee,
         currency, sys_order.status, pay_type, pay_time, expire_time, sys_order.create_time
     </sql>
 
@@ -50,7 +52,9 @@
                 AND sys_order.status = #{query.status}
             </if>
 
-            <!-- 选单场景（关联订单）：只允许挑已付款的，排除待支付/已取消/已关闭/已退款 -->
+            <!-- 选单场景（关联订单）：只允许挑已付款的，排除待支付/已取消/已关闭/已退款。
+                 已出库、已发货已经从主表状态里下线（挪到明细行 shop_order_item.ship_status），
+                 付过款的单子只剩 1 已支付 和 2 已完成 两档 -->
             <if test="query.paidOnly != null and query.paidOnly">
                 AND sys_order.status IN (1, 2)
             </if>

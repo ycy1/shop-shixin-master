@@ -1,0 +1,57 @@
+<!--
+  一张出库单 = 一页（见 utils/print.ts 的 printOutbounds）。
+  {{...}} 里的值都由 print.ts 转过义再填，模板这边只管摆格子。
+  单头字段取自 shop_erp_sale_outbound（含服务端子查询现汇总的 totalOut），
+  出库仓库在明细行上不在主表（一张单的几行可能从几家仓分别发），所以那一列在明细表里。
+-->
+<section class="sheet">
+  <h1>商品出库单</h1>
+  <table class="head">
+    <tr>
+      <th>出库单号</th><td>{{outboundNo}}</td>
+      <th>来源单据</th><td>{{sourceNo}}</td>
+    </tr>
+    <tr>
+      <th>出库来源</th><td>{{outboundSource}}</td>
+      <th>状态</th><td>{{status}}</td>
+    </tr>
+    <tr>
+      <th>销售门店</th><td>{{storeName}}</td>
+      <th>操作人</th><td>{{userName}}</td>
+    </tr>
+    <tr>
+      <th>出库时间</th><td>{{outboundTime}}</td>
+      <th>计划总数</th><td>{{totalQuantity}}</td>
+    </tr>
+    <tr>
+      <th>已出库</th><td>{{totalOut}}</td>
+      <th>待出库</th><td>{{pendingQuantity}}</td>
+    </tr>
+    <tr>
+      <th>出库金额</th><td>{{totalAmount}}</td>
+      <th>创建时间</th><td>{{createTime}}</td>
+    </tr>
+    <tr>
+      <th>备注</th><td colspan="3">{{remark}}</td>
+    </tr>
+  </table>
+
+  <h2>出库明细</h2>
+  <table class="items">
+    <thead>
+      <tr>
+        <th style="width:44px">序号</th>
+        <th>商品名称</th>
+        <th style="width:100px">规格</th>
+        <th style="width:110px">商品编码</th>
+        <th style="width:110px">出库仓库</th>
+        <th style="width:70px">计划出库</th>
+        <th style="width:60px">已出库</th>
+        <th style="width:50px">剩余</th>
+        <th style="width:90px">单价(成本价)</th>
+        <th style="width:90px">小计</th>
+      </tr>
+    </thead>
+    <tbody>{{itemRows}}</tbody>
+  </table>
+</section>

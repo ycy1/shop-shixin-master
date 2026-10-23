@@ -2,7 +2,8 @@
     <div class="wang-editor">
         <!-- 编辑器内容区域 -->
          <Toolbar style="border-bottom: 1px solid #ccc;" :editor="editorRef" :defaultConfig="toolbarConfig" :mode="mode" />
-         <Editor style=" overflow-y: hidden;min-height: 300px;" v-model="modelVar" :defaultConfig="editorConfig" :mode="mode"
+         <!-- 编辑区的高度与滚动交给下面那两条 :deep（overflow 不能钉在这一格上，见样式里的说明） -->
+         <Editor style="min-height: 300px;" v-model="modelVar" :defaultConfig="editorConfig" :mode="mode"
          @onCreated="handleCreated"/>
     </div>
 </template>
@@ -145,5 +146,17 @@ const handleCreated = (editor:any) => {
     padding: 16px;
     background: #fff;
     border-radius: 4px;
+}
+
+/* 滚动只放在文字那一层，别放在编辑器的外层格子上：
+   选中文字浮出来的那一排（hoverbar）和它的下拉列表都是外层格子的孩子，列表有 260px 高，
+   格子一裁就只剩底部两三行看得见 —— 表现为「设置格式时设置界面被遮挡」。 */
+.wang-editor :deep(.w-e-text-container) {
+    height: 300px;
+}
+
+.wang-editor :deep(.w-e-text-container .w-e-scroll) {
+    height: 100%;
+    overflow-y: auto;
 }
 </style>

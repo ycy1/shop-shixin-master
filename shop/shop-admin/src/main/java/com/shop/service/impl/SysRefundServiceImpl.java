@@ -29,8 +29,11 @@ public class SysRefundServiceImpl extends ServiceImpl<SysRefundMapper, SysRefund
 
     /** 退款状态：待审核 */
     private static final int STATUS_PENDING_AUDIT = 0;
-    /** 审核结果：审核通过 */
-    private static final int AUDIT_PASS = 1;
+    /**
+     * 审核结果：审核通过 —— 直接就是这一单被改成的状态（退款中），中间不留"通过了但还没开始退"那一档。
+     * 前台把钱退掉的动作是退款回调（shop-api 的 ShopRefundCallbackServiceImpl），它认的正是这一档。
+     */
+    private static final int AUDIT_PASS = 3;
     /** 审核结果：审核拒绝 */
     private static final int AUDIT_REJECT = 2;
 
@@ -69,7 +72,9 @@ public class SysRefundServiceImpl extends ServiceImpl<SysRefundMapper, SysRefund
 
     /**
      * 审核退款
-     * 只允许待审核状态的单据被审核；审核通过时可同时确定实际退款金额
+     * 只允许待审核状态的单据被审核；审核通过时可同时确定实际退款金额。
+     * 通过直接把状态推到 3 退款中（这一档就是"审核过了、等退款回调登记结果"），不再有单独的"审核通过"那一档：
+     * 这一版审核完就算开始退钱，中间那一秒挂不挂都判不出差别，留着反而多一档要各处兼容。
      */
     @Override
     public boolean audit(SysRefund sysRefund) {

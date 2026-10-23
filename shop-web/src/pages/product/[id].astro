@@ -1,0 +1,15 @@
+---
+import Base from '@/layouts/Base.astro';
+import ProductDetail from '@/views/product/ProductDetail.vue';
+import { useDict } from '@/i18n';
+
+const { d, href, locale } = useDict(Astro.locals.locale);
+
+// 路径里进来的是字符串，非数（/product/abc）直接打发回列表，不带着 NaN 去请求接口
+const id = Number(Astro.params.id);
+if (!Number.isInteger(id) || id <= 0) return Astro.redirect(href('/'));
+---
+
+<Base title={d.page.product.title} description={d.page.product.desc}>
+  <ProductDetail client:load locale={locale} productId={id} />
+</Base>

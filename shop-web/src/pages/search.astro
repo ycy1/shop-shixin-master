@@ -1,0 +1,19 @@
+---
+import Base from '@/layouts/Base.astro';
+import SearchResults from '@/views/search/SearchResults.vue';
+import { useDict } from '@/i18n';
+
+const { d, fill, locale } = useDict(Astro.locals.locale);
+
+// 关键字和落在哪个 tab 都从 URL 上读：首页那颗搜索框是原生 <form method="get">，浏览器自己拼出 /search?kw=xxx&tab=store。
+// 在这里读好当 props 传下去，岛里就不用碰 window（服务端那一趟没有它，而且 props 进 astro-id，换关键字跳转必然重挂重取）。
+const keyword = Astro.url.searchParams.get('kw') ?? '';
+const tab = Astro.url.searchParams.get('tab') ?? '';
+---
+
+<Base
+  title={keyword ? fill(d.page.search.titleKw, { kw: keyword }) : d.page.search.title}
+  description={d.page.search.desc}
+>
+  <SearchResults client:load locale={locale} keyword={keyword} tab={tab} />
+</Base>

@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.servlet.http.HttpServletRequest;
+import java.io.Serializable;
 import java.time.LocalDateTime;
 import java.util.concurrent.TimeUnit;
 
@@ -40,7 +41,12 @@ public class MySaTokenListener implements SaTokenListener {
     public void doLogin(String loginType, Object loginId, String tokenValue, SaLoginModel loginModel) {
 
         String ip = IpUtil.getIp();
-        SysUser user = userMapper.selectById((Integer) loginId);
+        // loginId 的宽度跟着登录那一路给的对象走：账号密码传 SysUser.id（Integer），
+        // 小程序和公众号扫码传的是 LoginUserInfo.id（那一格早改成 Long 了，和业务表同宽）。
+        // 所以这里不能钉死 (Integer) 一 cast —— 微信那两条会当场 ClassCastException，
+        // 而且炸点在 token 已经发出去之后（会话建好了、接口回 500，前端反而拿不到 token）。
+        // selectById 收的就是 Serializable，原样递过去，两条都不用窄化。
+        SysUser user = userMapper.selectById((Serializable) loginId);
         // 更新登录信息
         String userAgent = request.getHeader("User-Agent");
         user.setLastLoginTime(LocalDateTime.now());

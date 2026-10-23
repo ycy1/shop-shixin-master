@@ -5,12 +5,7 @@
       <!-- 搜索区域 -->
       <el-form :inline="true" :model="queryParams" class="search-form">
         <el-form-item label="字典名称">
-          <el-input
-            v-model="queryParams.name"
-            placeholder="请输入字典名称"
-            clearable
-            @keyup.enter="handleQuery"
-          />
+          <el-input v-model="queryParams.name" placeholder="请输入字典名称" clearable @keyup.enter="handleQuery" />
         </el-form-item>
         <el-form-item label="状态">
           <el-select v-model="queryParams.status" placeholder="请选择状态" clearable>
@@ -20,10 +15,14 @@
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="handleQuery">
-            <el-icon><Search /></el-icon>搜索
+            <el-icon>
+              <Search />
+            </el-icon>搜索
           </el-button>
           <el-button @click="resetQuery">
-            <el-icon><Refresh /></el-icon>重置
+            <el-icon>
+              <Refresh />
+            </el-icon>重置
           </el-button>
         </el-form-item>
       </el-form>
@@ -33,39 +32,19 @@
       <template #header>
         <div class="card-header">
           <ButtonGroup>
-            <el-button
-              v-permission="['sys:dict:add']"
-              type="primary"
-              icon="Plus"
-              @click="handleAdd"
-            >新增</el-button>
-            <el-button
-              v-permission="['sys:dict:deleteBatch']"
-              type="danger"
-              icon="Delete"
-              :disabled="selectedIds.length === 0"
-              @click="handleBatchDelete"
-            >批量删除</el-button>
-            <el-button
-              v-permission="['sys:dict:update']"
-              type="warning"
-              icon="RefreshRight"
-              :disabled="selectedIds.length === 0"
-              @click="handleBatchRefreshCache"
-            >更新缓存</el-button>
+            <el-button v-permission="['sys:dict:add']" type="primary" icon="Plus" @click="handleAdd">新增</el-button>
+            <el-button v-permission="['sys:dict:deleteBatch']" type="danger" icon="Delete"
+              :disabled="selectedIds.length === 0" @click="handleBatchDelete">批量删除</el-button>
+            <el-button v-permission="['sys:dict:update']" type="warning" icon="RefreshRight"
+              :disabled="selectedIds.length === 0" @click="handleBatchRefreshCache">更新缓存</el-button>
           </ButtonGroup>
         </div>
       </template>
 
       <!-- 表格区域 -->
-      <el-table
-        v-loading="loading"
-        :data="dictList"
-        @selection-change="handleSelectionChange"
-        style="width: 100%"
-      >
+      <el-table v-loading="loading" :data="dictList" @selection-change="handleSelectionChange" style="width: 100%">
         <el-table-column type="selection" width="55" align="center" />
-        <el-table-column label="字典名称" prop="name" align="center"/>
+        <el-table-column label="字典名称" prop="name" align="center" />
         <el-table-column label="字典code" prop="type" align="center">
           <template #default="{ row }">
             <el-tag type="warning">
@@ -88,70 +67,50 @@
         </el-table-column>
         <el-table-column label="操作" width="320" align="center">
           <template #default="scope">
-            <TableMoreActions
-              :actions="[
-                {
-                  label: '字典数据',
-                  type: 'success',
-                  icon: 'List',
-                  command: { type: 'data', row: scope.row }
-                },
-                {
-                  label: '更新缓存',
-                  type: 'warning',
-                  icon: 'RefreshRight',
-                  disabled: !hasPermission('sys:dict:update'),
-                  command: { type: 'refresh', row: scope.row }
-                },
-                {
-                  label: '修改',
-                  type: 'primary',
-                  icon: 'Edit',
-                  disabled: !hasPermission('sys:dict:update'),
-                  command: { type: 'edit', row: scope.row }
-                },
-                {
-                  label: '删除',
-                  type: 'danger',
-                  icon: 'Delete',
-                  disabled: !hasPermission('sys:dict:delete'),
-                  command: { type: 'delete', row: scope.row }
-                }
-              ]"
-              @command="handleActionCommand"
-            />
+            <TableMoreActions :actions="[
+              {
+                label: '字典数据',
+                type: 'success',
+                icon: 'List',
+                command: { type: 'data', row: scope.row }
+              },
+              {
+                label: '更新缓存',
+                type: 'warning',
+                icon: 'RefreshRight',
+                hidden: !hasPermission('sys:dict:update'),
+                command: { type: 'refresh', row: scope.row }
+              },
+              {
+                label: '修改',
+                type: 'primary',
+                icon: 'Edit',
+                hidden: !hasPermission('sys:dict:update'),
+                command: { type: 'edit', row: scope.row }
+              },
+              {
+                label: '删除',
+                type: 'danger',
+                icon: 'Delete',
+                hidden: !hasPermission('sys:dict:delete'),
+                command: { type: 'delete', row: scope.row }
+              }
+            ]" @command="handleActionCommand" />
           </template>
         </el-table-column>
       </el-table>
 
       <!-- 分页区域 -->
       <div class="pagination-container">
-        <el-pagination
-          background
-          v-model:current-page="queryParams.pageNum"
-          v-model:page-size="queryParams.pageSize"
-          :page-sizes="[10, 20, 30, 50]"
-          :total="total"
-          layout="total, sizes, prev, pager, next, jumper"
-          @size-change="handleSizeChange"
-          @current-change="handleCurrentChange"
-        />
+        <el-pagination background v-model:current-page="queryParams.pageNum" v-model:page-size="queryParams.pageSize"
+          :page-sizes="[10, 20, 30, 50]" :total="total" layout="total, sizes, prev, pager, next, jumper"
+          @size-change="handleSizeChange" @current-change="handleCurrentChange" />
       </div>
     </el-card>
 
     <!-- 字典类型对话框 -->
-    <el-dialog
-      v-model="dialogVisible"
-      :title="dialogType === 'add' ? '新增字典' : '修改字典'"
-      width="500px"
-      append-to-body
-    >
-      <el-form
-        ref="dictFormRef"
-        :model="dictForm"
-        :rules="rules"
-        label-width="100px"
-      >
+    <el-dialog v-model="dialogVisible" :title="dialogType === 'add' ? '新增字典' : '修改字典'" width="500px" append-to-body>
+      <el-form ref="dictFormRef" :model="dictForm" :rules="rules" label-width="100px">
         <el-form-item label="字典名称" prop="name">
           <el-input v-model="dictForm.name" placeholder="请输入字典名称" />
         </el-form-item>
@@ -165,11 +124,7 @@
           </el-radio-group>
         </el-form-item>
         <el-form-item label="备注" prop="remark">
-          <el-input
-            v-model="dictForm.remark"
-            type="textarea"
-            placeholder="请输入备注"
-          />
+          <el-input v-model="dictForm.remark" type="textarea" placeholder="请输入备注" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -181,17 +136,9 @@
     </el-dialog>
 
     <!-- 字典数据对话框 -->
-    <el-dialog
-      v-model="dataDialogVisible"
-      :title="`字典数据 - ${currentDict?.name}`"
-      width="800px"
-      append-to-body
-      :close-on-click-modal="false"
-    >
-      <dict-data
-        :dict-id="currentDict?.id"
-        :dict-type="currentDict?.type"
-      />
+    <el-dialog v-model="dataDialogVisible" :title="`字典数据 - ${currentDict?.name}`" width="800px" append-to-body
+      :close-on-click-modal="false">
+      <dict-data :dict-id="currentDict?.id" :dict-type="currentDict?.type" />
     </el-dialog>
   </div>
 </template>
@@ -210,6 +157,7 @@ import DictData from './components/DictData.vue'
 import ButtonGroup from '@/components/ButtonGroup/index.vue'
 import TableMoreActions from '@/components/TableMoreActions/index.vue'
 import { useUserStore } from '@/store/modules/user'
+import { clearDictCache } from '@/utils/dictCache'
 
 import validate from '@/utils/validate'
 
@@ -311,7 +259,7 @@ const handleEdit = (row: any) => {
 // 提交表单
 const submitForm = async () => {
   if (!dictFormRef.value) return
-  
+
   await dictFormRef.value.validate(async (valid) => {
     if (valid) {
       submitLoading.value = true
@@ -388,7 +336,7 @@ const handleBatchDelete = () => {
     ElMessage.warning('请选择要删除的记录')
     return
   }
-  
+
   ElMessageBox.confirm(
     `确定要删除选中的 ${selectedIds.value.length} 条记录吗？`,
     '警告',
@@ -411,6 +359,7 @@ const handleBatchDelete = () => {
 const handleRefreshCache = async (row: any) => {
   try {
     await refreshDictCacheApi([row.type])
+    await clearDictCache([row.type]) // 清空本地字典缓存
     ElMessage.success(`「${row.name}」缓存已更新`)
   } catch (error) {
   }
@@ -427,6 +376,7 @@ const handleBatchRefreshCache = async () => {
     .map(item => item.type)
   try {
     await refreshDictCacheApi(types)
+    await clearDictCache(types) // 清空本地字典缓存
     ElMessage.success('缓存更新成功')
   } catch (error) {
   }
@@ -456,9 +406,7 @@ getList()
 </script>
 
 <style scoped>
-
 .search-form {
   margin-bottom: 20px;
 }
-
-</style> 
+</style>

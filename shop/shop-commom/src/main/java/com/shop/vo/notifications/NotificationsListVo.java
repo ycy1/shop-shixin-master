@@ -30,6 +30,9 @@ public class NotificationsListVo {
     @ApiModelProperty(value = "业务类型")
     private String businessType;
 
+    @ApiModelProperty(value = "消息分类 1-系统消息 2-互动消息")
+    private Integer category;
+
     @ApiModelProperty(value = "业务标题")
     private String businessTitle;
 
@@ -53,6 +56,12 @@ public class NotificationsListVo {
 
     @ApiModelProperty(value = "通知关联的链接，可为空")
     private String link;
+
+    @ApiModelProperty(value = "互动消息：源评论的类型 1-商品 2-门店 3-品牌 4-广场（business_type=comment/like 才有值，各端按它拼「全部评论」页路由）")
+    private Integer commentType;
+
+    @ApiModelProperty(value = "互动消息：源评论挂在哪个对象上（按 commentType 分别是商品/门店/品牌/广场消息 id）")
+    private Long commentBusinessId;
 
     @ApiModelProperty(value = "删除标记，0 未删除，1 已删除")
     private Integer delFlag;

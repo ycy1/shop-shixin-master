@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopStoreTrainingMemberMapper">
+
+    <!-- 后台这一侧只有读的一头（报名和签到走 /api/comm/store/training/sign 与 /training/attend/{trainingId}，
+         实现在 shop-api），
+         所以这里只有按培训取列表这一条 SQL。
+         姓名/电话取的是本行的快照列，不联 sys_user 覆盖 —— 人后来改了名，报名记录得留得住当时那一份；
+         门店名反过来不冗余，联表现取（同培训主表那一侧） -->
+    <select id="selectMemberByTrainingId" resultType="com.shop.entity.ShopStoreTrainingMember">
+        SELECT
+            m.id,
+            m.training_id,
+            m.store_id,
+            m.user_id,
+            m.user_name,
+            m.user_phone,
+            m.sign_status,
+            m.sign_time,
+            m.attend_status,
+            m.attend_time,
+            m.create_by,
+            m.update_by,
+            m.create_time,
+            m.update_time,
+            st.store_name AS storeName
+        FROM shop_store_training_member m
+        LEFT JOIN shop_store st ON st.id = m.store_id AND st.is_deleted = 0
+        <!-- 自定义 SQL 不走全局逻辑删除，m.is_deleted = 0 必须手写 -->
+        WHERE m.training_id = #{trainingId}
+          AND m.is_deleted = 0
+        ORDER BY m.id ASC
+    </select>
+
+</mapper>

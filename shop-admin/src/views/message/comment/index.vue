@@ -9,9 +9,8 @@
           </el-form-item>
           <el-form-item label="评论类型" prop="commentType">
             <el-select v-model="queryParams.commentType" placeholder="评论类型" clearable @change="handleQuery">
-              <el-option label="全部" :value="undefined" />
-              <el-option label="类型1" :value="1" />
-              <el-option label="类型2" :value="2" />
+              <el-option v-for="item in dict.options(DICT_TYPE)" :key="item.value" :label="item.label"
+                :value="item.value" />
             </el-select>
           </el-form-item>
           <el-form-item label="评论内容" prop="content">
@@ -53,15 +52,31 @@
           <el-table-column label="用户昵称" align="center" width="120" prop="nickname" show-overflow-tooltip />
           <el-table-column label="回复人昵称" align="center" width="120" prop="replyNickname" show-overflow-tooltip />
           <el-table-column label="评论类型" align="center" width="100">
-            <template #default="scope">
-              <el-tag :type="scope.row.commentType === 2 ? 'success' : 'primary'" size="small">
-                {{ scope.row.commentType === 2 ? '类型2' : '类型1' }}
+            <template #default="{ row }">
+              <el-tag size="small" :type="dict.tag(DICT_TYPE, row.commentType)">
+                {{ dict.label(DICT_TYPE, row.commentType) }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="评论内容" width="300" align="center" prop="content" show-overflow-tooltip>
-            <template #default="scope">
-                <span v-html="scope.row.content"></span>
+          <!-- 对象名称由后端按 comment_type 现联商品/门店/品牌/广场四张表带出来（广场那一档取消息标题，没填就是空），对象删了就是空（口径同收藏页） -->
+          <el-table-column label="评论对象" align="center" min-width="180" show-overflow-tooltip>
+            <template #default="{ row }">
+              <span>{{ row.businessName || `已删除对象 #${row.businessId}` }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="评论内容" width="300" align="center">
+            <template #default="{ row }">
+              <!-- 纯文本插值，不能用 v-html：评论是访客填的，存进去再当 HTML 画就是存储型 XSS。
+                   正文里的 [图片](地址) 摘掉后剩下的当字画，图只放一张首图缩略图，整组递给查看器左右切换 -->
+              <div class="comment-cell">
+                <el-tooltip :content="commentText(row.content)" placement="top">
+                  <span class="comment-cell__text">{{ commentText(row.content) }}</span>
+                </el-tooltip>
+                <el-tooltip v-if="row.imageUrls?.length" :content="`共 ${row.imageUrls.length} 张`" placement="top">
+                  <el-image :src="row.imageUrls[0]" :preview-src-list="row.imageUrls" :initial-index="0"
+                    preview-teleported fit="cover" class="list-thumb" />
+                </el-tooltip>
+              </div>
             </template>
           </el-table-column>
           <el-table-column label="点赞数" width="80" align="center" prop="likeCount" />
@@ -73,13 +88,14 @@
                   {
                     label: '编辑',
                     icon: 'Edit',
+                    hidden: !hasPermission('sys:comment:update'),
                     command: { type: 'edit', row: scope.row }
                   },
                   {
                     label: '删除',
                     type: 'danger',
                     icon: 'Delete',
-                    disabled: !hasPermission('sys:comment:delete'),
+                    hidden: !hasPermission('sys:comment:delete'),
                     command: { type: 'delete', row: scope.row }
                   },
                 ]"
@@ -107,7 +123,9 @@
         <el-dialog v-model="openEditDialog" title="编辑评论" width="600px" append-to-body>
           <el-form ref="editFormRef" :model="editForm" :rules="editRules" label-width="80px">
             <el-form-item label="评论内容">
-              <el-input type="textarea" :rows="6" v-model="editForm.content" placeholder="请输入评论内容" />
+              <!-- 图片不另开一格：地址写成 [图片](https://…) 混在正文里，前台就是按这一串拆出来画的 -->
+              <el-input type="textarea" :rows="6" v-model="editForm.content"
+                placeholder="正文纯文本，可含表情；图片写成 [图片](https://地址)" />
             </el-form-item>
             <el-row :gutter="20">
               <el-col :span="12">
@@ -147,6 +165,34 @@
   } from '@/api/message/comment'
   import TableMoreActions from '@/components/TableMoreActions/index.vue'
   import { useUserStore } from '@/store/modules/user'
+  import { useDict } from '@/utils/dictCache'
+
+  /**
+   * 评论正文里的图片：以 `[图片](https://…)` 内嵌在同一格 content 上，不建列、不走 v-html。
+   * 形状和判据（张数、地址）都在服务层那一份，这里只负责拆出来画；每次都新开正则实例（带 g 的有 lastIndex）。
+   */
+  const imageMark = () => /\[图片\]\(([^\s)]*)\)/g
+  // 摘掉图片串之后剩下的就是人打的字（字数那道闸也按这一份算）
+  const commentText = (content: any): string => String(content ?? '').replace(imageMark(), '')
+  // 地址不是 http(s) 开头的不当图（后台手工编辑正文时敲错的那一串照原文当字画）
+  const commentImageUrls = (content: any): string[] => {
+    const text = String(content ?? '')
+    const mark = imageMark()
+    const urls: string[] = []
+    let hit = mark.exec(text)
+    while (hit) {
+      const url = hit[1] ?? ''
+      if (/^https?:\/\//i.test(url)) {
+        urls.push(url)
+      }
+      hit = mark.exec(text)
+    }
+    return urls
+  }
+
+  // 评论类型的四档（1商品 2门店 3品牌 4广场）只在这张表上出现，页面上的文案一律吃字典，不写死
+  const DICT_TYPE = 'comment_type'
+  const dict = useDict(DICT_TYPE)
 
   const route = useRoute()
   const queryFormRef = ref<FormInstance>()
@@ -183,15 +229,23 @@
 
   const loading = ref(false)
   const total = ref(0)
-  const commentList = ref([])
+  const commentList = ref<any[]>([])
 
   const selectedIds = ref<string[]>([])
+
+  // 图片那一格在模板里要用两处（首图 + 整组递给查看器），逐层算一次挂在行上，别在模板里反复拆串；
+  // 后端把回复挂进 children 铺成一棵树，所以子行也要算，只算顶层的话子行那一格永远画不出图
+  const withCommentImages = (rows: any[]): any[] => (rows || []).map((row: any) => ({
+    ...row,
+    imageUrls: commentImageUrls(row.content),
+    children: withCommentImages(row.children)
+  }))
 
   const getList = async () => {
     loading.value = true
     try {
       const { data } = await getCommentListApi(queryParams)
-      commentList.value = data.records
+      commentList.value = withCommentImages(data.records)
       total.value = data.total
     } catch (error) {
     }
@@ -317,3 +371,30 @@
     editFormRef.value?.clearValidate()
   }
   </script>
+
+<style scoped lang="scss">
+/* 评论内容那一格：文字一行截断（原来整列靠 show-overflow-tooltip，现在格子里多了缩略图，只能自己排），
+   首图跟在文字后面，完整正文由包着文字的那颗 tooltip 给 */
+.comment-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.comment-cell__text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 列表缩略图：口径同商品页（类是各页 scoped 的，这里自带一份） */
+.list-thumb {
+  width: 50px;
+  height: 50px;
+  border-radius: 4px;
+  cursor: zoom-in;
+  flex-shrink: 0;
+}
+</style>

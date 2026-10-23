@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopConsumerAddressMapper">
+
+    <!--
+      注意：自定义 XML SQL 不会被 MyBatis-Plus 的全局逻辑删除自动接管，
+      所以下面每个查询都要手写 is_deleted = 0，否则会把已删除的地址查出来。
+      消费者被删掉时地址这条记录本身还要能在列表里看到，所以联表条件写在 ON 上、不卡 WHERE。
+    -->
+    <sql id="addressColumns">
+        a.id,
+        a.user_id,
+        a.receiver_name,
+        a.receiver_phone,
+        a.area_code,
+        a.area_zh,
+        a.detail,
+        a.postal_code,
+        a.longitude,
+        a.latitude,
+        a.tag,
+        a.is_default,
+        a.create_by,
+        a.update_by,
+        a.create_time,
+        a.update_time,
+        u.nickname,
+        u.username
+    </sql>
+
+    <sql id="addressJoins">
+        FROM shop_consumer_address a
+        LEFT JOIN sys_user u ON u.id = a.user_id
+    </sql>
+
+    <select id="selectAddressPage" resultType="com.shop.vo.address.ShopAddressVo">
+        SELECT
+        <include refid="addressColumns"/>
+        <include refid="addressJoins"/>
+        <where>
+            a.is_deleted = 0
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (a.receiver_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR a.receiver_phone LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+            <if test="q.userId != null">
+                AND a.user_id = #{q.userId}
+            </if>
+            <if test="q.tag != null and q.tag != ''">
+                AND a.tag = #{q.tag}
+            </if>
+            <if test="q.isDefault != null">
+                AND a.is_default = #{q.isDefault}
+            </if>
+            <if test="q.beginTime != null and q.beginTime != ''">
+                AND a.create_time &gt;= #{q.beginTime}
+            </if>
+            <if test="q.endTime != null and q.endTime != ''">
+                AND a.create_time &lt;= #{q.endTime}
+            </if>
+        </where>
+        <!-- 默认地址顶在前，其余按最新在前；同一消费者看自己那几条时默认那条就是第一条 -->
+        ORDER BY a.is_default DESC, a.id DESC
+    </select>
+
+    <select id="selectAddressById" resultType="com.shop.vo.address.ShopAddressVo">
+        SELECT
+        <include refid="addressColumns"/>
+        <include refid="addressJoins"/>
+        WHERE a.is_deleted = 0 AND a.id = #{id}
+    </select>
+
+</mapper>
