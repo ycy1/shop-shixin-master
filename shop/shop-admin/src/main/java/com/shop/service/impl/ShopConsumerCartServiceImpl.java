@@ -15,8 +15,10 @@ import com.shop.mapper.ShopProductMapper;
 import com.shop.mapper.ShopProductSkuMapper;
 import com.shop.mapper.SysUserMapper;
 import com.shop.service.ShopConsumerCartService;
+import com.shop.service.ShopTrendyBoxStyleService;
 import com.shop.utils.LoginUserUtils;
 import com.shop.utils.PageUtil;
+import com.shop.vo.cart.ShopCartBoxItemVo;
 import com.shop.vo.cart.ShopCartVo;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
@@ -24,7 +26,10 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 购物车 服务实现（分页走自定义 XML 联表，写法照 shop_product）
@@ -44,6 +49,8 @@ public class ShopConsumerCartServiceImpl extends ServiceImpl<ShopConsumerCartMap
 
     private final SysUserMapper sysUserMapper;
 
+    private final ShopTrendyBoxStyleService boxStyleService;
+
     @Override
     public IPage<ShopCartVo> selectPage(ShopCartQueryDto query) {
         if (query == null) {
@@ -56,7 +63,9 @@ public class ShopConsumerCartServiceImpl extends ServiceImpl<ShopConsumerCartMap
         }
         // 关键字要搜商品名称/编码和规格文本、单价也在规格侧，用 wrapper 表达不了两跳联表，走 XML；
         // 代价是自定义 SQL 不走全局逻辑删除，is_deleted = 0 在 XML 里手写
-        return baseMapper.selectCartPage(PageUtil.getPage(), query);
+        IPage<ShopCartVo> page = baseMapper.selectCartPage(PageUtil.getPage(), query);
+        fillBoxStyles(page.getRecords());
+        return page;
     }
 
     @Override
@@ -66,7 +75,23 @@ public class ShopConsumerCartServiceImpl extends ServiceImpl<ShopConsumerCartMap
             throw new ServiceException("购物车记录不存在");
         }
         assertOwn(cart);
+        fillBoxStyles(Collections.singletonList(cart));
         return cart;
+    }
+
+    /**
+     * 给「一整盒」那一行补上盒内款式：库里那一行只记「哪台盒端了几盒」（sku_id=0 + source_id=那台盒），
+     * 盒里装的是哪几款按盒 id 现查那台盒当前的配置 —— 和前台购物车页、统一下单拆明细读的是同一份，
+     * 见 {@link ShopTrendyBoxStyleService}；同一台盒只查一次。
+     */
+    private void fillBoxStyles(List<ShopCartVo> lines) {
+        Map<Long, List<ShopCartBoxItemVo>> stylesByBox = new HashMap<>();
+        for (ShopCartVo line : lines) {
+            if (!ShopConsumerCart.SKU_ID_WHOLE_BOX.equals(line.getSkuId()) || line.getSourceId() == null) {
+                continue;
+            }
+            line.setBoxItemList(stylesByBox.computeIfAbsent(line.getSourceId(), boxStyleService::stylesOf));
+        }
     }
 
     @Override
@@ -135,7 +160,7 @@ public class ShopConsumerCartServiceImpl extends ServiceImpl<ShopConsumerCartMap
             }
         }
         // removeByIds 走全局逻辑删除，只把 is_deleted 置 1；
-        // 注意 uk_user_sku 不含 is_deleted，删掉的行仍占着唯一键，所以重新加同一个规格会撞键，
+        // 注意 uk_user_sku_source 不含 is_deleted，删掉的行仍占着唯一键，所以重新加同一规格的同一来源会撞键，
         // 由 insert/update 的 DuplicateKeyException 转成业务提示
         removeByIds(ids);
     }
@@ -185,6 +210,12 @@ public class ShopConsumerCartServiceImpl extends ServiceImpl<ShopConsumerCartMap
         if (sysUserMapper.selectById(cart.getUserId()) == null) {
             throw new ServiceException("所选消费者不存在");
         }
+        // 端盒那一趟在车里是「一整盒一行」：sku_id 那个 0 是哨兵、不是一条规格，盒里有哪几款各几件
+        // 由抽盒那一步抄的快照定，后台既改不动也不该替它编一条 —— 拦下来比让它走到「规格不存在」更说得清
+        if (ShopConsumerCart.SKU_ID_WHOLE_BOX.equals(cart.getSkuId())) {
+            throw new ServiceException("「一整盒」那一行（端盒抽中的）不能在后台编辑：它的盒内款式和单价都由抽盒那一步定，"
+                    + "要腾出位置就删掉这一行");
+        }
         if (cart.getSkuId() == null) {
             throw new ServiceException("请选择商品规格");
         }
@@ -199,6 +230,10 @@ public class ShopConsumerCartServiceImpl extends ServiceImpl<ShopConsumerCartMap
         cart.setCategoryId(product.getCategoryId());
         cart.setBrandId(product.getBrandId());
         cart.setStoreId(product.getStoreId());
+        // 消费单价这一格表单里刻意不给：后台代客加的行留 NULL = "按这条规格的现价算"，
+        // 下单取价那一步（ShopOrderCreateServiceImpl#buildItem）读不到就回落现价，钱一分不差。
+        // 也不在这里替它补一个数 —— validate 修改那一路也会走，补了就等于客服改个数量
+        // 把「抽中入车」那行的盒单抽价刷回商品原价，那是替买家做主。
         // category_id 在表上是 NOT NULL，而商品的分类理论上可能为空（历史数据），到这儿必须拦住
         if (cart.getCategoryId() == null) {
             throw new ServiceException("商品「" + product.getProductName() + "」还没有分类，不能加入购物车");
@@ -206,6 +241,13 @@ public class ShopConsumerCartServiceImpl extends ServiceImpl<ShopConsumerCartMap
         Long count = baseMapper.selectCount(new LambdaQueryWrapper<ShopConsumerCart>()
                 .eq(ShopConsumerCart::getUserId, cart.getUserId())
                 .eq(ShopConsumerCart::getSkuId, cart.getSkuId())
+                // 判重要跟着新唯一键走，按 (人, 规格, 来源类型, 来源ID) 四格比：同一规格现在能并排躺着
+                // 「自己加购的」和「每台盒抽中入车的」好几行，少带一格就会把另一行的位置当成重复插不进去
+                // 后台补录的行没有来源，库里就是 0（这一格进唯一键，不能留 NULL —— MySQL 不约束空值）
+                .eq(ShopConsumerCart::getSourceType,
+                        cart.getSourceType() == null ? ShopConsumerCart.SOURCE_PRODUCT : cart.getSourceType())
+                .eq(ShopConsumerCart::getSourceId,
+                        cart.getSourceId() == null ? ShopConsumerCart.SOURCE_ID_NONE : cart.getSourceId())
                 .ne(excludeId != null, ShopConsumerCart::getId, excludeId));
         if (count != null && count > 0) {
             throw new ServiceException("该消费者的购物车里已有「" + displayName(sku, product)
@@ -224,6 +266,6 @@ public class ShopConsumerCartServiceImpl extends ServiceImpl<ShopConsumerCartMap
 
     private String duplicateMessage(ShopConsumerCart cart) {
         // 前置查重只能看到未删除的行，走到这里基本都是撞在一条已删除的记录上
-        return "该消费者的购物车里已有这个商品规格，可能来自一条已删除的购物车记录（唯一键 uk_user_sku 仍占着）";
+        return "该消费者的购物车里已有这个商品规格（同一来源），可能来自一条已删除的购物车记录（唯一键 uk_user_sku_source 仍占着）";
     }
 }

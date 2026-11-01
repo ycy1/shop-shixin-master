@@ -1,8 +1,20 @@
 <script lang="ts" setup>
 import type { IShopCartRow } from '@/api/types/shop'
-import { deleteCart, getMyCart, setAllCartSelected, updateCart } from '@/api/cart'
+import {
+  boxPieceCount,
+  deleteCart,
+  getMyCart,
+  isWholeBoxRow,
+  payPriceOf,
+  rowImageOf,
+  setAllCartSelected,
+  stockCapOf,
+  updateCart,
+} from '@/api/cart'
 import { useTokenStore } from '@/store/token'
 import { setCartBadge } from '@/utils/cartBadge'
+import AppNavBar from '@/components/AppNavBar.vue'
+import AppSearchBar from '@/components/AppSearchBar.vue'
 import { toLoginPage } from '@/utils/toLoginPage'
 
 defineOptions({
@@ -12,6 +24,8 @@ defineOptions({
 definePage({
   style: {
     navigationBarTitleText: '购物车',
+    // 导航条自绘，同首页（components/AppNavBar.vue）
+    navigationStyle: 'custom',
   },
 })
 
@@ -31,8 +45,9 @@ const actionError = ref('')
 const picked = computed(() => rows.value.filter(one => one.buyable === 1 && one.selected === 1))
 const buyableRows = computed(() => rows.value.filter(one => one.buyable === 1))
 const allSelected = computed(() => buyableRows.value.length > 0 && picked.value.length === buyableRows.value.length)
+/** 合计只按「勾着还能买」的那几行，单价一律走 payPriceOf（抽中入车的那几条是盒的单抽价） */
 const pickedTotal = computed(() =>
-  picked.value.reduce((sum, one) => sum + Number(one.productPrice ?? 0) * one.quantity, 0).toFixed(2),
+  picked.value.reduce((sum, one) => sum + payPriceOf(one) * one.quantity, 0).toFixed(2),
 )
 
 /** 规格文本这一格后端可空（无规格的默认 SKU），页面自己补一个说法，口径同详情页 */
@@ -40,13 +55,37 @@ function specLabel(one: IShopCartRow) {
   return one.specText?.trim() || '默认规格'
 }
 
-function lineTotal(one: IShopCartRow) {
-  return (Number(one.productPrice ?? 0) * one.quantity).toFixed(2)
+/** 这一行念成什么：整盒那一行没有商品名（它不挂在某个商品上），念「一整盒 · 盒名」 */
+function titleLabel(one: IShopCartRow) {
+  if (isWholeBoxRow(one)) {
+    return one.sourceName ? `一整盒 · ${one.sourceName}` : '一整盒'
+  }
+  return one.productName || '商品已被删掉'
 }
 
-/** 步进封顶到可用库存：库里没有那一行的库存行时后端给 0，这时候不给往上加（下单那一刻也会拦） */
+/** 点开看盒内有哪几款、各几件：就地展开，不跳页 */
+const opened = ref<Set<number>>(new Set())
+
+function toggleBoxOpen(id: number) {
+  const next = new Set(opened.value)
+  if (next.has(id)) {
+    next.delete(id)
+  } else {
+    next.add(id)
+  }
+  opened.value = next
+}
+
+function lineTotal(one: IShopCartRow) {
+  return (payPriceOf(one) * one.quantity).toFixed(2)
+}
+
+/**
+ * 步进封顶：普通行封到这一条规格的可用库存（库里没有那一行的库存行时后端给 0，这时候不给往上加，
+ * 下单那一刻也会拦）；整盒那一行不封顶 —— 它按「几盒」加减，某一款的仓存不是这一行的上限。
+ */
 function stockOf(one: IShopCartRow) {
-  return one.availableStock ?? 0
+  return stockCapOf(one)
 }
 
 /**
@@ -163,7 +202,9 @@ async function toggleAll() {
 function askDelete(one: IShopCartRow) {
   uni.showModal({
     title: '删除',
-    content: `把「${one.productName ?? '这件商品'} · ${specLabel(one)}」从购物车里删掉？`,
+    content: isWholeBoxRow(one)
+      ? `把「${titleLabel(one)}」这一整盒从购物车里删掉？`
+      : `把「${titleLabel(one)} · ${specLabel(one)}」从购物车里删掉？`,
     success: (res) => {
       if (res.confirm) {
         removeRows([one.id])
@@ -239,8 +280,13 @@ onShow(() => {
 </script>
 
 <template>
-  <view class="bg-[#f5f6f7] pb-[200rpx] pt-24rpx">
-    <view v-if="!tokenStore.updateNowTime().hasLogin" class="mx-24rpx mb-24rpx rounded-xl bg-white px-32rpx py-80rpx text-center">
+  <view class="bg-[#f5f6f7] pb-[200rpx]">
+    <AppNavBar title="购物车" />
+
+    <!-- 搜索入口 + 抽屉那颗：和首页同一排公共件（components/AppSearchBar.vue），四张 tab 页都有 -->
+    <AppSearchBar />
+
+    <view v-if="!tokenStore.updateNowTime().hasLogin" class="mx-24rpx mb-24rpx mt-24rpx rounded-xl bg-white px-32rpx py-80rpx text-center">
       <view class="text-[28rpx] text-gray-500">
         登录后才能看自己车里的东西
       </view>
@@ -250,7 +296,7 @@ onShow(() => {
     </view>
 
     <template v-else>
-      <view v-if="!rows.length && !loading" class="mx-24rpx mb-24rpx rounded-xl bg-white px-32rpx py-96rpx text-center">
+      <view v-if="!rows.length && !loading" class="mx-24rpx mb-24rpx mt-24rpx rounded-xl bg-white px-32rpx py-96rpx text-center">
         <view class="text-[28rpx] text-gray-500">
           购物车还是空的
         </view>
@@ -260,12 +306,13 @@ onShow(() => {
       </view>
 
       <template v-else>
-        <view v-if="actionError" class="mx-24rpx mb-24rpx rounded-lg bg-red-50 px-32rpx py-16rpx text-[26rpx] text-[#d14328]">
+        <view v-if="actionError" class="mx-24rpx mb-24rpx mt-24rpx rounded-lg bg-red-50 px-32rpx py-16rpx text-[26rpx] text-[#d14328]">
           {{ actionError }}
         </view>
 
         <!-- 改这一整列的东西（全选、删除）的按钮开一行放在列表上面，不塞进下面那条合计里 -->
-        <view class="mx-24rpx mb-24rpx flex items-center gap-24rpx rounded-xl bg-white px-24rpx py-24rpx">
+        <!-- mt 那一格是给自绘导航栏让位的：顶上两块（报错条 / 这一排）谁先画出来都得离标题留一截，两处都给上 -->
+        <view class="mx-24rpx mb-24rpx mt-24rpx flex items-center gap-24rpx rounded-xl bg-white px-24rpx py-24rpx">
           <view hover-class="fx-tap" class="fx-press flex items-center" @click="toggleAll">
             <view class="cart-check" :class="allSelected ? 'cart-check-on' : ''">
               ✓
@@ -300,9 +347,9 @@ onShow(() => {
             </view>
 
             <image
-              v-if="one.mainImage"
+              v-if="rowImageOf(one)"
               hover-class="fx-tap"
-              :src="one.mainImage"
+              :src="rowImageOf(one) || ''"
               mode="aspectFill"
               class="fx-press ml-16rpx h-[140rpx] w-[140rpx] shrink-0 rounded-lg bg-gray-50"
               @click="toDetail(one.productId)"
@@ -311,17 +358,50 @@ onShow(() => {
 
             <view hover-class="fx-tap" class="fx-press ml-24rpx min-w-0 flex-1" @click="toDetail(one.productId)">
               <view class="truncate text-[28rpx] text-[#333]">
-                {{ one.productName || '商品已被删掉' }}
+                {{ titleLabel(one) }}
               </view>
               <view class="mt-8rpx truncate text-[24rpx] text-gray-400">
-                规格 {{ specLabel(one) }}
+                <!-- 抽中入车的这一行和同规格自己加购的那一行并排躺着，不标出来看着像重复加了两次；
+                     两台盒抽中同一款也是并排两行（各挂各的单抽价），所以顺带报是哪台盒；
+                     端盒那一趟是一整盒一行，说端盒、不说规格（它不挂在某条规格上） -->
+                <text v-if="one.sourceType === 1" class="mr-8rpx rounded bg-[#fdf6ec] px-8rpx text-[20rpx] text-[#e6a23c]">{{ isWholeBoxRow(one) ? '端盒整盒' : '盲盒商品' }}{{ one.sourceName ? ` · ${one.sourceName}` : '' }}</text>
+                <view
+                  v-if="isWholeBoxRow(one)"
+                  class="inline-flex items-center gap-8rpx rounded bg-gray-100 px-12rpx py-4rpx text-[22rpx] text-gray-500"
+                  @click.stop="toggleBoxOpen(one.id)"
+                >
+                  <text
+                    class="inline-block text-[18rpx] transition-transform"
+                    :class="opened.has(one.id) ? 'rotate-90' : ''"
+                  >▶</text>
+                  <text>盒内共 {{ boxPieceCount(one) }} 件</text>
+                </view>
+                <text v-else>规格 {{ specLabel(one) }}</text>
+              </view>
+              <!-- 展开看盒内有哪几款、各几件：只给说法，钱是这一盒自己的单价，不往每款上摊给买家看 -->
+              <view v-if="isWholeBoxRow(one) && opened.has(one.id)" class="mt-8rpx space-y-8rpx">
+                <view
+                  v-for="(item, i) in one.boxItemList"
+                  :key="`${one.id}-${i}`"
+                  class="flex items-center gap-12rpx text-[22rpx] text-gray-500"
+                >
+                  <image
+                    v-if="item.styleImage"
+                    :src="item.styleImage"
+                    mode="aspectFill"
+                    class="h-40rpx w-40rpx shrink-0 rounded"
+                  />
+                  <text class="min-w-0 flex-1 truncate">{{ item.styleName || '这款已经没了' }}</text>
+                  <!-- 款式清单是「一盒里有什么」，这一行是几盒就翻几倍（同一台盒端第二次并成一行） -->
+                  <text class="shrink-0">× {{ Number(item.quantity ?? 1) * one.quantity }}</text>
+                </view>
               </view>
               <!-- 买不了只有「商品已下架」这一句：规格的 sale_enable 是 ERP 建销售单那边的开关，不管前台 -->
               <view v-if="one.buyable !== 1" class="mt-8rpx text-[22rpx] text-[#e6a23c]">
                 商品已下架
               </view>
               <view class="mt-16rpx flex items-end justify-between">
-                <text class="text-[28rpx] text-[#333]">¥{{ Number(one.productPrice ?? 0).toFixed(2) }}</text>
+                <text class="text-[28rpx] text-[#333]">¥{{ payPriceOf(one).toFixed(2) }}</text>
                 <!-- 步进器这一整块要 .stop：它就长在「点这一行进商品详情」那一颗的点击区里 -->
                 <view hover-class="fx-tap" class="cart-stepper fx-press flex items-center overflow-hidden border border-gray-200 rounded-lg" @click.stop>
                   <text

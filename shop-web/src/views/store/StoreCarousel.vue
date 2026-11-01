@@ -11,6 +11,7 @@
  * 所以 images 为空时整块不渲染 —— 不留一条空轨道。
  */
 import { onMounted, onUnmounted, ref, watch } from 'vue';
+import DotTrack from '@/components/DotTrack.vue';
 import { useI18n } from '@/i18n';
 
 const props = defineProps<{ images: string[]; name: string }>();
@@ -91,18 +92,9 @@ onUnmounted(stopTimer);
       />
     </div>
 
-    <!-- 指示点：这一格是整块轮播的当前位置，所以给 aria-label 说清是第几张 -->
-    <div v-if="images.length > 1" class="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-2">
-      <button
-        v-for="(url, index) in images"
-        :key="url"
-        type="button"
-        :aria-label="fill(d.store.carousel.gotoSlide, { n: index + 1 })"
-        :aria-current="index === active"
-        class="h-2 w-2 rounded-full transition-colors"
-        :class="index === active ? 'bg-white' : 'bg-white/50 hover:bg-white/80'"
-        @click="go(index)"
-      ></button>
+    <!-- 指示点：一条半透明圆角底槽 + 一颗在里面跑的水珠（components/DotTrack.vue，和首页那一圈同一个组件） -->
+    <div class="absolute bottom-3 left-1/2 -translate-x-1/2">
+      <DotTrack :count="images.length" :current="active" :label="d.store.carousel.gotoSlide" @select="go" />
     </div>
 
     <button

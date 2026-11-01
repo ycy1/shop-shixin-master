@@ -1,11 +1,11 @@
 <template>
   <div class="app-container">
     <!--
-      个人信息：一个账号看自己名下的八样东西（基础信息 / 订单 / 优惠券 / 徽章 / 积分 / 钱包 / 地址 / 广场消息）。
-      八块数据全走别的页面已经在用的读接口，那些读接口都只给消费者账号钉登录 id ——
-      所以平台账号坐这一页时，徽章、钱包和广场消息那三条要把自己的 id 递过去（底下那几步 loadTab('base') 就是为它）。
-      下单在小程序侧、券和徽章由运营发放、积分只能由积分动作改、钱只能由下单冻结和退款退回改，
-      所以这几块在这一页是只读的。
+      个人信息：一个账号看自己名下的九样东西（基础信息 / 订单 / 票种 / 优惠券 / 徽章 / 积分 / 钱包 / 地址 / 广场消息）。
+      九块数据全走别的页面已经在用的读接口，那些读接口都只给消费者账号钉登录 id ——
+      所以平台账号坐这一页时，票种、徽章、钱包和广场消息那四条要把自己的 id 递过去（底下那几步 loadTab('base') 就是为它）。
+      下单在小程序侧、券和徽章由运营发放、票由运营代客出或将来由支付带出来、积分只能由积分动作改、
+      钱只能由下单冻结和退款退回改，所以这几块在这一页是只读的。
       三个写入口：基础信息那一格的「修改」（只改自己那几格，走 /sys/user/myProfile）、
       地址那一格的新增/修改/删除（走收货地址那页同一套接口），和卡片顶上「签到记录」那颗 ——
       都是这个人自己的动作。
@@ -109,6 +109,77 @@
                 v-model:page-size="order.query.pageSize" :page-sizes="[10, 20, 50]" :total="order.total"
                 layout="total, sizes, prev, pager, next, jumper" @size-change="handleOrderSizeChange"
                 @current-change="getOrderList" />
+            </div>
+          </div>
+        </el-tab-pane>
+
+        <!-- 票种：自己名下那一张张公园票（读的是「订单管理 → 用户票种」同一本账）。
+             票名/类型/票价三格读的是出票那一刻定格的快照，后台后来改了票种也不会串到已经发出去的票上（同上面优惠券那一格）；
+             这里只看不操作 —— 核销是闸机/扫码那侧的动作，退款和改票去「用户票种」那页点 -->
+        <el-tab-pane label="票种" name="ticket">
+          <div class="pane">
+            <div class="pane-toolbar">
+              <el-select v-model="ticket.query.status" placeholder="全部状态" clearable class="pane-filter"
+                @change="handleTicketQuery">
+                <el-option v-for="item in dict.options(TICKET_STATUS_DICT)" :key="item.value" :label="item.label"
+                  :value="item.value" />
+              </el-select>
+            </div>
+            <el-table v-loading="ticket.loading" :data="ticket.rows" size="small" border show-overflow-tooltip
+              empty-text="手里还没有票">
+              <!-- 表格级开了 show-overflow-tooltip，纯图片列要显式关掉，否则悬停会弹一个空 tooltip -->
+              <el-table-column label="票面" align="center" width="70" :show-overflow-tooltip="false">
+                <template #default="{ row }">
+                  <!-- 出票那一刻由服务端按票码生成并上传；那趟失败这一格就是空的，票本身照样能用票码核销 -->
+                  <el-image v-if="row.qrImg" :src="row.qrImg" :preview-src-list="[row.qrImg]" preview-teleported
+                    fit="contain" style="width: 40px; height: 40px; border-radius: 4px" />
+                  <span v-else>-</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="票码" prop="ticketCode" align="center" min-width="170" />
+              <el-table-column label="票种（快照）" prop="ticketName" align="center" min-width="140" />
+              <el-table-column label="类型" align="center" width="90">
+                <template #default="{ row }">
+                  <el-tag size="small" :type="dict.tag(TICKET_TYPE_DICT, row.ticketType)">
+                    {{ dict.label(TICKET_TYPE_DICT, row.ticketType) }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="票价" align="right" width="90">
+                <template #default="{ row }">{{ priceText(row.price) }}</template>
+              </el-table-column>
+              <el-table-column label="园区" align="center" min-width="130">
+                <template #default="{ row }">
+                  <span>{{ row.parkName || (row.parkId ? `已删除园区 #${row.parkId}` : '-') }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="游玩日期" align="center" width="110">
+                <template #default="{ row }">{{ row.visitDate || '-' }}</template>
+              </el-table-column>
+              <el-table-column label="时段" align="center" width="80">
+                <template #default="{ row }">{{ dict.label(TICKET_SLOT_DICT, row.timeSlot) }}</template>
+              </el-table-column>
+              <el-table-column label="状态" align="center" width="90">
+                <template #default="{ row }">
+                  <el-tag size="small" :type="dict.tag(TICKET_STATUS_DICT, row.status)">
+                    {{ dict.label(TICKET_STATUS_DICT, row.status) }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="核销时间" align="center" width="150">
+                <template #default="{ row }">
+                  {{ row.usedTime ? validate.formatTime(row.usedTime, 'YYYY-MM-DD HH:mm') : '-' }}
+                </template>
+              </el-table-column>
+              <el-table-column label="出票时间" align="center" width="150">
+                <template #default="{ row }">{{ validate.formatTime(row.createTime, 'YYYY-MM-DD HH:mm') || '-' }}</template>
+              </el-table-column>
+            </el-table>
+            <div class="pagination-container">
+              <el-pagination background size="small" v-model:current-page="ticket.query.pageNum"
+                v-model:page-size="ticket.query.pageSize" :page-sizes="[10, 20, 50]" :total="ticket.total"
+                layout="total, sizes, prev, pager, next, jumper" @size-change="handleTicketSizeChange"
+                @current-change="getTicketList" />
             </div>
           </div>
         </el-tab-pane>
@@ -795,6 +866,8 @@ import UploadImage from '@/components/Upload/Image.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { listShopOrderApi } from '@/api/consumer/orderItem'
+// 「票种」那一格：读的是后台「订单管理 → 用户票种」同一本账（发到手上、能进园的主题公园票）
+import { listUserTicketApi } from '@/api/order/userTicket'
 import {
   listShopAddressApi,
   detailShopAddressApi,
@@ -814,6 +887,10 @@ import { useColPickerData } from '@/composables/useColPickerData'
 import { useUserStore } from '@/store/modules/user'
 
 const ORDER_DICT = 'order_status'
+/** 票种那一格三档（和「订单管理 → 用户票种」那页用同一份字典）：类型、入园时段、票的状态 */
+const TICKET_TYPE_DICT = 'ticket_type'
+const TICKET_SLOT_DICT = 'ticket_time_slot'
+const TICKET_STATUS_DICT = 'user_ticket_status'
 const COUPON_TYPE_DICT = 'coupon_type'
 /** 用户券状态（0未使用 1已使用 2已过期 3已作废）：这一页看的是手里那一张张券，不是模板 */
 const COUPON_STATUS_DICT = 'coupon_user_status'
@@ -832,7 +909,8 @@ const PLAZA_RELATION_DICT = 'plaza_relation_type'
 const PLAZA_AUDIT_DICT = 'plaza_audit_status'
 const PLAZA_STATUS_DICT = 'plaza_status'
 
-const dict = useDict('account_type', ORDER_DICT, COUPON_TYPE_DICT, COUPON_STATUS_DICT, GET_WAY_DICT, BIZ_TYPE_DICT,
+const dict = useDict('account_type', ORDER_DICT, TICKET_TYPE_DICT, TICKET_SLOT_DICT, TICKET_STATUS_DICT,
+  COUPON_TYPE_DICT, COUPON_STATUS_DICT, GET_WAY_DICT, BIZ_TYPE_DICT,
   TAG_DICT, WALLET_BIZ_TYPE_DICT, WALLET_STATUS_DICT, BADGE_TYPE_DICT, BADGE_SOURCE_DICT, BADGE_STATUS_DICT,
   PLAZA_RELATION_DICT, PLAZA_AUDIT_DICT, PLAZA_STATUS_DICT)
 
@@ -848,11 +926,13 @@ const hasPermission = (permission: string): boolean => {
 }
 
 /**
- * 八个 tab 一份一块，形状一样：rows / total / query / loading。
+ * 九个 tab 一份一块，形状一样：rows / total / query / loading。
  * 账户那一格（points.account、wallet.account）是个例外 —— 它是唯一的一行，不是分页列表。
  */
 const base = reactive<any>({ loading: false, data: {} })
 const order = reactive<any>({ loading: false, rows: [], total: 0, query: { pageNum: 1, pageSize: 10, status: undefined } })
+/** 票种：和订单同一形状（一行一张发到手上、能进园的公园票，读的是 shop_trendy_park_user_ticket） */
+const ticket = reactive<any>({ loading: false, rows: [], total: 0, query: { pageNum: 1, pageSize: 10, status: undefined } })
 const coupon = reactive<any>({ loading: false, rows: [], total: 0, query: { pageNum: 1, pageSize: 10, status: undefined } })
 const badge = reactive<any>({
   loading: false,
@@ -1047,6 +1127,23 @@ const getOrderList = async () => {
   }
 }
 
+/**
+ * 票种：走「订单管理 → 用户票种」那一条读接口（同一本账、同一套列）。
+ * 收窄不在这页做：那条接口对消费者账号自己钉登录 id、对平台账号给全平台，
+ * 和上面订单那一本（同一条口径的读接口）因此天然一致 —— 这里再递一个 id 反而会把平台账号看到的收成"自己名下的票"（= 空）。
+ */
+const getTicketList = async () => {
+  ticket.loading = true
+  try {
+    const { data } = await listUserTicketApi(ticket.query)
+    ticket.rows = data.records || []
+    ticket.total = data.total || 0
+  } catch (error) {
+  } finally {
+    ticket.loading = false
+  }
+}
+
 /** 优惠券：走发放记录那一条，服务端把 userId 钉成登录 id，couponId 不带就是看他名下全部券 */
 const getCouponList = async () => {
   coupon.loading = true
@@ -1171,6 +1268,8 @@ const getPlazaList = async () => {
 const loaders: Record<string, () => Promise<void>> = {
   base: getBase,
   order: getOrderList,
+  // 票种那一本和上面订单同一口径：收窄交给服务端（消费者账号钉本人、平台账号看全平台），所以不用先把基础信息捞回来
+  ticket: getTicketList,
   coupon: getCouponList,
   // 徽章走的是「徽章管理」那页获取记录那一条，服务端只给消费者账号钉登录 id ——
   // 平台账号坐这一页也必须把 id 递过去，不然看到的是全平台谁拿了哪些徽章（同下面钱包那两条例外）
@@ -1211,6 +1310,10 @@ const handleOrderQuery = () => {
   order.query.pageNum = 1
   getOrderList()
 }
+const handleTicketQuery = () => {
+  ticket.query.pageNum = 1
+  getTicketList()
+}
 const handleCouponQuery = () => {
   coupon.query.pageNum = 1
   getCouponList()
@@ -1228,6 +1331,10 @@ const handleWalletQuery = () => {
   getWalletList()
 }
 
+const handleTicketSizeChange = () => {
+  ticket.query.pageNum = 1
+  getTicketList()
+}
 const handleOrderSizeChange = () => {
   order.query.pageNum = 1
   getOrderList()

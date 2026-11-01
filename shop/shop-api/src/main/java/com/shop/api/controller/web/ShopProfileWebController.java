@@ -22,6 +22,7 @@ import com.shop.entity.ShopActivityPointsLog;
 import com.shop.entity.ShopActivitySignin;
 import com.shop.entity.ShopConsumerWallet;
 import com.shop.entity.ShopConsumerWalletLog;
+import com.shop.entity.ShopParkUserTicket;
 import com.shop.entity.SysUser;
 import com.shop.vo.address.ShopAddressVo;
 import com.shop.vo.browse.ShopBrowseVo;
@@ -272,6 +273,24 @@ public class ShopProfileWebController extends BaseWebController {
     @ApiOperation(value = "我的优惠券（只看自己名下的，一行一张券）")
     public Result<IPage<ShopActivityCouponUser>> couponList(ShopActivityCouponUser query) {
         return Result.success(shopProfileReadService.couponPage(query));
+    }
+
+    /**
+     * 我的票种：一行一张主题公园的票，读的是用户票那张表（shop_trendy_park_user_ticket）。
+     *
+     * 路径：GET /api/web/shop/profile/park/ticket/list?status=（0未使用 1已核销 2已过期 3已退款，留空不限）
+     * &beginVisitDate=&endVisitDate=（游玩日期区间，含两端，yyyy-MM-dd）—— 挂在「我的订单」那一格下面的
+     * 「我的票种」tab 上，和「我的订单」同一本账：一个是买货的单，一个是发到手上能进园的那张票。
+     *
+     * 票名/类型/票价读的是出票那一刻定格的快照（后台后来改了票种也不串到已经发到手上的票上），
+     * 走的是后台「订单管理 → 用户票种」那一条 SQL（顺带联出园区名），那边按账号类型收窄、这一条不给那个口子：
+     * userId 传什么都不认，服务层第一句覆盖成登录 id —— 能点名别人就等于看别人的票夹。
+     * qr_img 那一格是票面二维码图的地址（内容是这一行的票码），前台点开就是给人对着闸机用的。
+     */
+    @GetMapping("/park/ticket/list")
+    @ApiOperation(value = "我的票种（只看自己名下的，一行一张票）")
+    public Result<IPage<ShopParkUserTicket>> parkTicketList(ShopParkUserTicket query) {
+        return Result.success(shopProfileReadService.parkTicketPage(query));
     }
 
     /**

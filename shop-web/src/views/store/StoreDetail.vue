@@ -11,6 +11,7 @@ import { FwbButton } from 'flowbite-vue';
 import CartBadge from '@/components/CartBadge.vue';
 import CommentSection from '@/components/CommentSection.vue';
 import FavoriteButton from '@/components/FavoriteButton.vue';
+import TabDropper from '@/components/TabDropper.vue';
 import ProductCard from '@/views/product/ProductCard.vue';
 import StoreCarousel from '@/views/store/StoreCarousel.vue';
 import { fetchProducts, parseImageUrls, type WebProduct } from '@/lib/products';
@@ -50,10 +51,11 @@ const productTab = ref<ProductTabKey>('store');
 const showComment = ref(false);
 /** 评论那一档标签上印的条数：还没回来（或捞失败）留 null，那一格整格不出现，别闪一个 (0) 在那里 */
 const commentCount = ref<number | null>(null);
-const tabClass = (on: boolean) =>
-  on
-    ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
-    : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200';
+/** 递给 TabDropper 的那三档（两档商品 + 门店评论）：评论那颗多带一个数，条数没回来就不给，别闪一个 (0) */
+const tabItems = computed(() => [
+  ...PRODUCT_TABS.map(one => ({ key: one.key as string, label: one.label })),
+  { key: 'comment', label: d.store.comments, count: commentCount.value },
+]);
 const culturalEnable = computed(() => (productTab.value === 'cultural' ? 1 : 0));
 const emptyText = computed(() =>
   productTab.value === 'cultural' ? d.store.noCulturalProducts : d.store.noProducts
@@ -261,31 +263,15 @@ onMounted(async () => {
       <StoreCarousel :images="images" :name="store.storeName" />
 
       <section class="mt-8">
-        <div role="tablist" :aria-label="d.store.productsAria" class="mb-4 flex gap-6 border-b border-gray-200 dark:border-gray-700">
-          <button
-            v-for="tab in PRODUCT_TABS"
-            :key="tab.key"
-            type="button"
-            role="tab"
-            :aria-selected="!showComment && productTab === tab.key"
-            class="-mb-px border-b-2 pb-2 text-sm font-medium transition-colors"
-            :class="tabClass(!showComment && productTab === tab.key)"
-            @click="pickTab(tab.key)"
-          >
-            {{ tab.label }}
-          </button>
-          <!-- 门店评论这一档：形状和商品那两档一样，点它只换下面那块，不碰商品的翻页进度 -->
-          <button
-            type="button"
-            role="tab"
-            :aria-selected="showComment"
-            class="-mb-px border-b-2 pb-2 text-sm font-medium transition-colors"
-            :class="tabClass(showComment)"
-            @click="pickCommentPanel()"
-          >
-            {{ d.store.comments }}<span v-if="commentCount !== null" class="ml-1 text-gray-400 dark:text-gray-500">({{ commentCount }})</span>
-          </button>
-        </div>
+        <!-- 等分那一排 + 水滴胶囊（原来落在选中那颗文字底下的 border-b-2 由胶囊担当，切换时拉长再收住）。
+             门店评论这一档还是和两档商品并排在同一排里，点它只换下面那块，不碰商品的翻页进度。 -->
+        <TabDropper
+          :label="d.store.productsAria"
+          list-class="mb-4 gap-6"
+          :model-value="showComment ? 'comment' : productTab"
+          :items="tabItems"
+          @update:model-value="(key: string) => (key === 'comment' ? pickCommentPanel() : pickTab(key as ProductTabKey))"
+        />
 
         <!-- 跟着这一排认出来的那一档换 key ⇒ Vue 认成换了一个元素，<Transition> 就把旧那块左右移走完事再挂新的（方向见 slideName，CSS 在 global.css 最后那几条） -->
         <div :class="{ 'overflow-x-clip': sliding }">

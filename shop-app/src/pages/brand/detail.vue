@@ -2,6 +2,7 @@
 import type { IShopBrand, IShopProduct, IShopStore } from '@/api/types/shop'
 import CommentSection from '@/components/CommentSection.vue'
 import ProductGrid from '@/components/ProductGrid.vue'
+import DropTabs from '@/components/DropTabs.vue'
 import { COMMENT_TYPE_BRAND, getCommentTotal } from '@/api/comment'
 import { getProductList } from '@/api/product'
 import { getBrandDetail, getBrandStores } from '@/api/search'
@@ -123,6 +124,12 @@ function previewShots(index: number) {
 }
 
 /** 两档只换下面那块：商品那一档的翻页进度留着，切回来接着走 */
+/** 递给 DropTabs 的那一排：这一页只有两档，选中态还是 showComment 那一个布尔，下标在组件里自己换 */
+const TAB_ITEMS = computed(() => [
+  { key: 'products', label: '品牌商品' },
+  { key: 'comment', label: '品牌评价', count: commentCount.value },
+])
+
 function pickProducts() {
   showComment.value = false
 }
@@ -195,7 +202,7 @@ onReachBottom(() => {
         <view class="text-[28rpx] text-[#333] font-medium">
           品牌代言
         </view>
-        <scroll-view scroll-x class="mt-16rpx whitespace-nowrap">
+        <scroll-view scroll-x class="mt-16rpx whitespace-nowrap" @touchstart="markSwipeZone" @touchend="markSwipeZone">
           <view
             v-for="(one, index) in spokespersons"
             :key="one.url"
@@ -247,23 +254,13 @@ onReachBottom(() => {
       </view>
     </template>
 
-    <view v-if="brand" class="mt-24rpx flex items-center gap-48rpx border-b border-gray-100 bg-white px-32rpx">
-      <view
-        hover-class="fx-tap"
-        class="fx-press border-b-2 py-24rpx text-[28rpx] -mb-px"
-        :class="!showComment ? 'border-[#d14328] text-[#d14328] font-medium' : 'border-transparent text-gray-500'"
-        @click="pickProducts"
-      >
-        品牌商品
-      </view>
-      <view
-        hover-class="fx-tap"
-        class="fx-press border-b-2 py-24rpx text-[28rpx] -mb-px"
-        :class="showComment ? 'border-[#d14328] text-[#d14328] font-medium' : 'border-transparent text-gray-500'"
-        @click="pickComment"
-      >
-        品牌评价<text v-if="commentCount !== null" class="ml-8rpx text-[24rpx] text-gray-400">（{{ commentCount }}）</text>
-      </view>
+    <!-- tab 条：等分那一排 + 水滴胶囊（红下划线改由胶囊担当，切换时拉长再收住） -->
+    <view v-if="brand" class="mt-24rpx bg-white px-32rpx">
+      <DropTabs
+        :model-value="showComment ? 'comment' : 'products'"
+        :items="TAB_ITEMS"
+        @update:model-value="key => key === 'comment' ? pickComment() : pickProducts()"
+      />
     </view>
 
     <view v-if="storesError" class="mx-24rpx mb-24rpx rounded-lg bg-red-50 px-32rpx py-24rpx text-[26rpx] text-[#d14328]">
@@ -273,7 +270,7 @@ onReachBottom(() => {
       {{ productsError }}
     </view>
 
-    <ProductGrid v-if="brand && !showComment" :products="list" />
+    <ProductGrid v-if="brand && !showComment" class="fx-fade" :products="list" />
 
     <view v-if="brand && !showComment && !list.length" class="py-128rpx text-center text-[26rpx] text-gray-400">
       这个品牌还没有上架的商品
@@ -283,7 +280,7 @@ onReachBottom(() => {
     </view>
 
     <!-- 评论区：品牌不存在/已停用那一趟整块都红了，这一页不会带着错 id 去捞评论 -->
-    <view v-if="brand && showComment" class="mx-24rpx mb-24rpx mt-24rpx rounded-xl bg-white px-32rpx py-24rpx">
+    <view v-if="brand && showComment" class="fx-fade mx-24rpx mb-24rpx mt-24rpx rounded-xl bg-white px-32rpx py-24rpx">
       <CommentSection preview :comment-type="COMMENT_TYPE_BRAND" :business-id="brandId" />
     </view>
   </view>

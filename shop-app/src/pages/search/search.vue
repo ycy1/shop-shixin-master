@@ -5,6 +5,7 @@ import { getBrandList, getStoreList } from '@/api/home'
 import { getPlazaPage, plazaLabel, plazaLeadImage } from '@/api/plaza'
 import { getProductList } from '@/api/product'
 import ProductGrid from '@/components/ProductGrid.vue'
+import DropTabs from '@/components/DropTabs.vue'
 import { activityLabel, activityTimeText } from '@/utils/activity'
 
 defineOptions({
@@ -86,6 +87,9 @@ const current = computed(() => TABS.find(item => item.key === active.value)!)
  * null = 还没探到（那一格数字不出现，不写 0，0 会被当成「真的一条都没有」）。
  */
 const counts = reactive<Record<TabKey, number | null>>({ product: null, store: null, brand: null, activity: null, plaza: null })
+
+/** 递给 DropTabs 的那一排：那一档的条数跟着 counts 走（原来是模板里手写拼上去的） */
+const tabItems = computed(() => TABS.map(one => ({ key: one.key as string, label: one.label, count: counts[one.key] })))
 
 const productRows = computed(() => products.rows)
 const storeRows = computed(() => stores.rows)
@@ -224,20 +228,9 @@ onReachBottom(() => {
       />
     </view>
 
-    <view class="flex items-center gap-48rpx border-b border-gray-100 bg-white px-32rpx">
-      <view
-        v-for="item in TABS"
-        :key="item.key"
-        hover-class="fx-tap"
-        class="fx-press border-b-2 py-24rpx text-[28rpx] -mb-px"
-        :class="active === item.key ? 'border-[#d14328] text-[#d14328] font-medium' : 'border-transparent text-gray-500'"
-        @click="pickTab(item.key)"
-      >
-        {{ item.label }}
-        <text v-if="counts[item.key] != null" class="ml-8rpx text-[22rpx] text-gray-400">
-          {{ counts[item.key] }}
-        </text>
-      </view>
+    <view class="bg-white px-32rpx">
+      <!-- 等分那一排 + 水滴胶囊（原来每颗下面挂一根红下划线，现在由胶囊担当） -->
+      <DropTabs :model-value="active" :items="tabItems" @update:model-value="key => pickTab(key as TabKey)" />
     </view>
 
     <view v-if="categoryId && active === 'product'" class="bg-white px-32rpx py-16rpx text-[24rpx] text-gray-400">

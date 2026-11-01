@@ -2,6 +2,7 @@
 import type { IShopFavoriteRow } from '@/api/types/shop'
 import { getMyFavorites } from '@/api/profile'
 import ListState from '@/components/ListState.vue'
+import DropTabs from '@/components/DropTabs.vue'
 import { usePagedList } from '@/composables/usePagedList'
 import { LOGIN_PAGE } from '@/router/config'
 import { useTokenStore } from '@/store/token'
@@ -36,6 +37,9 @@ const TYPES = [
   { value: 3, label: '品牌' },
 ]
 const filterType = ref(0)
+
+/** 递给 DropTabs 的那几档：TYPES 的 value 是数字，key 要转成字符串（组件按 key 认档） */
+const tabItems = computed(() => TYPES.map(one => ({ key: String(one.value), label: one.label })))
 
 const favorites = usePagedList<IShopFavoriteRow>(
   (page, size) => getMyFavorites(page, size, filterType.value || undefined),
@@ -97,18 +101,8 @@ onReachBottom(() => {
 
     <template v-else>
       <view class="bg-white px-24rpx pt-16rpx">
-        <view class="flex border-b border-gray-100">
-          <view
-            v-for="one in TYPES"
-            :key="one.value"
-            hover-class="fx-tap"
-            class="fx-press mr-32rpx border-b-2 pb-16rpx text-[28rpx]"
-            :class="filterType === one.value ? 'border-[#d14328] text-[#d14328] font-medium' : 'border-transparent text-gray-500'"
-            @click="pickType(one.value)"
-          >
-            {{ one.label }}
-          </view>
-        </view>
+        <!-- 等分那一排 + 水滴胶囊（原来每颗下面一根红下划线） -->
+        <DropTabs :model-value="String(filterType)" :items="tabItems" @update:model-value="key => pickType(Number(key))" />
       </view>
 
       <ListState

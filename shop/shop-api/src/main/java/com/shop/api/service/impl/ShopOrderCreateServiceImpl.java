@@ -8,15 +8,18 @@ import com.shop.api.service.ShopOrderWalletService;
 import com.shop.dto.order.ShopOrderCreateDto;
 import com.shop.entity.ShopActivityCouponUser;
 import com.shop.entity.ShopConsumerAddress;
+import com.shop.entity.ShopConsumerCart;
 import com.shop.entity.ShopOrderItem;
 import com.shop.entity.ShopProduct;
 import com.shop.entity.ShopProductSku;
 import com.shop.entity.ShopDelivery;
 import com.shop.entity.SysOrder;
 import com.shop.entity.SysUser;
+import com.shop.service.ShopTrendyBoxStyleService;
 import com.shop.dto.user.LoginUserInfo;
 import com.shop.exception.ServiceException;
 import com.shop.mapper.ShopConsumerAddressMapper;
+import com.shop.mapper.ShopConsumerCartMapper;
 import com.shop.mapper.ShopErpInventoryMapper;
 import com.shop.mapper.ShopOrderItemMapper;
 import com.shop.mapper.ShopProductMapper;
@@ -27,6 +30,7 @@ import com.shop.utils.CouponUtils;
 import com.shop.utils.GeneratorNoUtils;
 import com.shop.utils.LoginUserUtils;
 import com.shop.utils.TransactionUtils;
+import com.shop.vo.cart.ShopCartBoxItemVo;
 import com.shop.vo.order.ShopOrderCreateVo;
 import com.shop.vo.order.ShopOrderPreviewVo;
 import lombok.RequiredArgsConstructor;
@@ -126,6 +130,12 @@ public class ShopOrderCreateServiceImpl implements ShopOrderCreateService {
 
     /** 只用来把逐行的分折成钱报给试算页（同一个汇率、同一个式子，见 ShopPointsSupport） */
     private final ShopPointsSupport shopPointsSupport;
+
+    /** 只用来读「下单人购物车里那一格的单价」：车里的行按自己那一格算钱，见 {@link #cartPrices} */
+    private final ShopConsumerCartMapper shopConsumerCartMapper;
+
+    /** 一整盒里有哪几款、各几件 —— 和购物车页展开看的那一份是同一个读法（按盒 id 现查，不存快照） */
+    private final ShopTrendyBoxStyleService boxStyleService;
 
     /** 订单状态：待支付（sys_order.status，字典 order_status） */
     private static final int ORDER_STATUS_UNPAID = 0;
@@ -265,10 +275,20 @@ public class ShopOrderCreateServiceImpl implements ShopOrderCreateService {
             throw new ServiceException("一次最多下单 " + MAX_ITEM_COUNT + " 种商品");
         }
 
+        // 从购物车结算的那几行要按车里那一格的单价算（抽中入车的挂的是盲盒单抽价），一次按 id 捞回来，
+        // 别在循环里逐行查；立即购买和后台代客下单都不带 cartId，这一份就是空的，一行也不多问
+        Map<Long, ShopConsumerCart> cartById = cartLines(lines, userId);
+        // 车里那一「整盒」的一行在这里先拆成盒内每款一行 —— 一整盒落不成一条明细：锁库存、出库、退货
+        // 全按款走；其余行原样传下去。往后那一段（分仓、锁库存、摊券、算配送费）看见的永远是一行一个规格
+        List<OrderLine> orderLines = toOrderLines(lines, cartById);
+        if (orderLines.size() > MAX_ITEM_COUNT) {
+            throw new ServiceException("这一单拆开有 " + orderLines.size() + " 行，一次最多 " + MAX_ITEM_COUNT + " 行");
+        }
+
         // 规格和它所属的商品各一次捞回来，别在循环里逐行查：单价/规格文本/重量在 SKU 上，
         // 名称/主图/门店/分类在那件商品上
-        List<Long> skuIds = lines.stream()
-                .map(ShopOrderCreateDto.Item::getSkuId)
+        List<Long> skuIds = orderLines.stream()
+                .map(OrderLine::skuId)
                 .filter(Objects::nonNull)
                 .distinct()
                 .collect(Collectors.toList());
@@ -281,10 +301,10 @@ public class ShopOrderCreateServiceImpl implements ShopOrderCreateService {
                 : shopProductMapper.selectBatchIds(productIds).stream()
                 .collect(Collectors.toMap(ShopProduct::getId, Function.identity()));
 
-        List<ShopOrderItem> items = new ArrayList<>(lines.size());
+        List<ShopOrderItem> items = new ArrayList<>(orderLines.size());
         BigDecimal totalAmount = BigDecimal.ZERO;
-        for (int i = 0; i < lines.size(); i++) {
-            ShopOrderItem item = buildItem(lines.get(i), i + 1, skuMap, productMap);
+        for (int i = 0; i < orderLines.size(); i++) {
+            ShopOrderItem item = buildItem(orderLines.get(i), i + 1, skuMap, productMap, cartById);
             // 逐行分仓（下单还要锁）：同一商品分成几行时，后一行看到的是前一行刚锁过的可用库存
             //（同一事务里自己的写对自己可见），所以两行不会抢同一批货；
             // 任意一行锁不到就抛异常，前面已经锁掉的和主单一起回滚
@@ -483,6 +503,9 @@ public class ShopOrderCreateServiceImpl implements ShopOrderCreateService {
             line.setPointsAmount(scale(pointsAmount));
             line.setPaidAmount(scale(item.getTotalAmount()).subtract(scale(item.getDiscountAmount()))
                     .subtract(scale(pointsAmount)));
+            // 来源两格带着：一整盒在试算里是好几行，结算页要按这两格把同一盒的行合回那一条购物车行
+            line.setSourceType(item.getSourceType() == null ? ShopOrderItem.SOURCE_PRODUCT : item.getSourceType());
+            line.setSourceId(item.getSourceId() == null ? ShopOrderItem.SOURCE_ID_NONE : item.getSourceId());
             list.add(line);
         }
         return list;
@@ -494,21 +517,122 @@ public class ShopOrderCreateServiceImpl implements ShopOrderCreateService {
     }
 
     /**
+     * 按明细行上带的那些 cartId 一次把购物车行捞回来（只读单价用）。
+     *
+     * selectBatchIds 自带 is_deleted = 0，再按下单人筛一遍：别人的那一条根本进不来这张表，
+     * buildItem 于是回同一句「不存在、已删除或不属于下单用户」—— 分档说就等于让人拿 id 试谁的车里有什么。
+     * 一行 cartId 都没带（立即购买、后台代客下单）就一句都不查。
+     */
+    private Map<Long, ShopConsumerCart> cartLines(List<ShopOrderCreateDto.Item> lines, Long userId) {
+        List<Long> cartIds = lines.stream()
+                .filter(Objects::nonNull)
+                .map(ShopOrderCreateDto.Item::getCartId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+        if (cartIds.isEmpty()) {
+            return Map.of();
+        }
+        return shopConsumerCartMapper.selectBatchIds(cartIds).stream()
+                .filter(one -> userId.equals(one.getUserId()))
+                .collect(Collectors.toMap(ShopConsumerCart::getId, Function.identity()));
+    }
+
+    /**
+     * 请求体里的那些行 → 要落的明细行：一行永远是一个具体规格。
+     *
+     * 车里那一「整盒」的行不指向某一条规格（sku_id 是 0 那个哨兵，一整盒的钱记在它自己的单价那一格），
+     * 在这里按那台盒当前配置的款式清单拆成每款一行 —— 库存、出库、退货全按款走，一条「盒」的明细它们不认识。
+     * 拆出来的那几行都带上来源（哪一台盒），页面按它把同一盒收拢成一张卡、退货按它整组退。
+     * 其余行原样传下去，单价照旧由 {@link #buildItem} 按老判据取，不在这一步定。
+     */
+    private List<OrderLine> toOrderLines(List<ShopOrderCreateDto.Item> lines, Map<Long, ShopConsumerCart> cartById) {
+        List<OrderLine> out = new ArrayList<>(lines.size());
+        for (int i = 0; i < lines.size(); i++) {
+            ShopOrderCreateDto.Item line = lines.get(i);
+            int no = i + 1;
+            if (line == null) {
+                throw new ServiceException("第 " + no + " 行没选规格");
+            }
+            ShopConsumerCart cart = line.getCartId() == null ? null : cartById.get(line.getCartId());
+            // 标了别人的、已被删掉的那些 id 不在这里分档报错：留在 buildItem 那一句统一的话术里
+            //（分开说就等于让人拿 id 试出哪一条挂在谁名下）
+            if (cart != null && ShopConsumerCart.SKU_ID_WHOLE_BOX.equals(cart.getSkuId())) {
+                out.addAll(expandBoxLine(cart, line.getQuantity(), line.getUsedPoints(), no));
+                continue;
+            }
+            out.add(new OrderLine(line.getSkuId(), line.getQuantity(), line.getUsedPoints(),
+                    line.getCartId(), null, null, null));
+        }
+        return out;
+    }
+
+    /**
+     * 一整盒 → 盒内每款一行（款式清单按盒 id 现查，口径同购物车页展开看的那一份）。
+     *
+     * 钱只有一个数：这一盒多少钱（车里那一行的单价 × 盒数），盒内没有逐款的价，也不该现去问款式原价 ——
+     * 端盒买的是整盒，不是逐款的折让，所以按件数均摊，每一款不论稀有摊到同样的份。
+     * 摊完要保证 Σ 行小计正好等于那一盒的总数：最后一款不按摊出的单价、直接领剩下的那笔钱，
+     * 除不尽的几分钱就落在这儿（所以最后那一行的「单价 × 数量」可能比它的小计差一分，
+     * 钱看的是小计，单价只是这一行摊到每件的说法）。
+     */
+    private List<OrderLine> expandBoxLine(ShopConsumerCart cart, Integer boxesRaw, Integer usedPoints, int no) {
+        List<ShopCartBoxItemVo> styles = boxStyleService.stylesOf(cart.getSourceId());
+        int perBox = styles.stream().mapToInt(one -> one.getQuantity() == null ? 0 : one.getQuantity()).sum();
+        if (perBox < 1) {
+            // 那台盒被删了、或款式全被改了/停了：这一盒已经无从拆起，不能拿一份看不见的货结钱
+            throw new ServiceException("第 " + no + " 行那一整盒已经读不到盒内款式（那台盒可能改了或删了），"
+                    + "请删掉这一行再重新端一次");
+        }
+        if (cart.getPrice() == null) {
+            throw new ServiceException("第 " + no + " 行那一整盒没有单价，不能下单");
+        }
+        int boxes = boxesRaw == null || boxesRaw < 1 ? 1 : boxesRaw;
+        BigDecimal total = cart.getPrice().multiply(BigDecimal.valueOf(boxes)).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal unit = total.divide(BigDecimal.valueOf((long) perBox * boxes), 2, RoundingMode.HALF_UP);
+        List<OrderLine> out = new ArrayList<>(styles.size());
+        BigDecimal left = total;
+        for (int i = 0; i < styles.size(); i++) {
+            ShopCartBoxItemVo style = styles.get(i);
+            int quantity = style.getQuantity() * boxes;
+            // 逐行那份积分是买家自己一行一指定的（两个前台目前都不填这一格）：一整盒拆不开，全记在拆出的第一行上
+            Integer points = i == 0 ? usedPoints : null;
+            boolean last = i == styles.size() - 1;
+            BigDecimal amount = last ? left
+                    : unit.multiply(BigDecimal.valueOf(quantity)).setScale(2, RoundingMode.HALF_UP);
+            left = left.subtract(amount);
+            out.add(new OrderLine(style.getSkuId(), quantity, points, cart.getId(), unit, amount, cart.getSourceId()));
+        }
+        return out;
+    }
+
+    /**
+     * 一行要落的明细：请求体给的那几格（规格、件数、逐行积分、来自车里哪一行），
+     * price 和 amount 只有整盒拆出来的那几行带着（服务端摊好的，buildItem 不再回头问 SKU 现价），
+     * boxId 同理 —— 带着它的那几行落库时 source_type=1 + source_id=这台盒。
+     */
+    private record OrderLine(Long skuId, Integer quantity, Integer usedPoints, Long cartId,
+                             BigDecimal price, BigDecimal amount, Long boxId) {
+    }
+
+    /**
      * 一行明细：校验入参，再从 SKU 表抄单价和规格文本、从它所属的商品抄名称、主图、门店，落成下单时的快照
      *
      * @param no 第几行（从 1 开始，只用来拼报错文案）
+     * @param cartById 这一单里标了购物车行的那几行（按 id 捞好的），单价优先读它那一格
      */
-    private ShopOrderItem buildItem(ShopOrderCreateDto.Item line, int no,
+    private ShopOrderItem buildItem(OrderLine line, int no,
                                     Map<Long, ShopProductSku> skuMap,
-                                    Map<Long, ShopProduct> productMap) {
-        if (line == null || line.getSkuId() == null) {
+                                    Map<Long, ShopProduct> productMap,
+                                    Map<Long, ShopConsumerCart> cartById) {
+        if (line == null || line.skuId() == null) {
             throw new ServiceException("第 " + no + " 行没选规格");
         }
-        Integer quantity = line.getQuantity();
+        Integer quantity = line.quantity();
         if (quantity == null || quantity <= 0) {
             throw new ServiceException("第 " + no + " 行的购买数量必须大于 0");
         }
-        ShopProductSku sku = skuMap.get(line.getSkuId());
+        ShopProductSku sku = skuMap.get(line.skuId());
         if (sku == null) {
             throw new ServiceException("第 " + no + " 行的规格不存在或已删除");
         }
@@ -522,12 +646,38 @@ public class ShopOrderCreateServiceImpl implements ShopOrderCreateService {
         if (!Integer.valueOf(ENABLED).equals(product.getStatus())) {
             throw new ServiceException("商品「" + product.getProductName() + "」已下架，不能下单");
         }
-        if (sku.getProductPrice() == null) {
-            throw new ServiceException("商品「" + product.getProductName() + "」的这个规格还没定价，不能下单");
-        }
 
-        BigDecimal price = sku.getProductPrice();
-        BigDecimal total = price.multiply(BigDecimal.valueOf(quantity)).setScale(2, RoundingMode.HALF_UP);
+        // 单价三种来源，按这个优先级：整盒拆出来的那几行是服务端自己摊好的（听摊的那个数，不再回头问 SKU）；
+        // 其次是这一行标了购物车记录（只有从购物车结算那一路会标），按车里那一格的价算 ——
+        // 抽中入车的那几条挂的是盲盒的单抽价，不是这款规格的商品原价，现联 SKU 取不到那个数；
+        // 都没有才按这条规格的现价。
+        // 车里那一格还是 NULL（存量老行、后台代客加购的行）就回落到 SKU 现价。
+        // 三道校验一道都不能少：id 对不上就是别人那一条 / 已经被删了，sku 对不上就是拿便宜那一格的价格
+        // 去买另一条规格（比如"抽中的 69 那一行"挂到原价 5980 的规格上）。
+        BigDecimal price = line.price();
+        BigDecimal total = line.amount();
+        if (total == null) {
+            if (sku.getProductPrice() == null && line.cartId() == null) {
+                throw new ServiceException("商品「" + product.getProductName() + "」的这个规格还没定价，不能下单");
+            }
+            price = sku.getProductPrice();
+            if (line.cartId() != null) {
+                ShopConsumerCart fromCart = cartById.get(line.cartId());
+                if (fromCart == null) {
+                    throw new ServiceException("第 " + no + " 行的购物车记录不存在、已删除或不属于下单用户");
+                }
+                if (!sku.getId().equals(fromCart.getSkuId())) {
+                    throw new ServiceException("第 " + no + " 行和它标的购物车记录不是同一个规格");
+                }
+                if (fromCart.getPrice() != null) {
+                    price = fromCart.getPrice();
+                }
+            }
+            if (price == null) {
+                throw new ServiceException("商品「" + product.getProductName() + "」的这个规格还没定价，不能下单");
+            }
+            total = price.multiply(BigDecimal.valueOf(quantity)).setScale(2, RoundingMode.HALF_UP);
+        }
 
         ShopOrderItem item = new ShopOrderItem();
         item.setSkuId(sku.getId());
@@ -548,8 +698,14 @@ public class ShopOrderCreateServiceImpl implements ShopOrderCreateService {
         // 这一格跟请求体一对一：买家自己选"这一行花几分"，服务端只认这一个数、也只按它折钱
         //（能抵多少钱是 ShopPointsSupport 按 sys_config 那一档汇率现算的，客户端传了金额也不认）。
         // 不传就是这一行不用分，落 0 而不是留 NULL —— 退款那一路要按这一格算还多少分
-        item.setUsedPoints(line.getUsedPoints() == null ? 0 : line.getUsedPoints());
+        item.setUsedPoints(line.usedPoints() == null ? 0 : line.usedPoints());
         item.setShipStatus(SHIP_STATUS_PENDING);
+        // 来源：一整盒拆出来的那几行记着自己是哪台盒带来的（页面按它把同一盒收拢成一张卡、退货按它整组退）；
+        // 其余行这一格不写，全局 not_empty 跳过 null ⇒ 库里落默认 0（普通商品）
+        if (line.boxId() != null) {
+            item.setSourceType(ShopOrderItem.SOURCE_BOX);
+            item.setSourceId(line.boxId());
+        }
         return item;
     }
 

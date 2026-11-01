@@ -25,7 +25,15 @@
         c.brand_id,
         c.store_id,
         c.quantity,
+        <!-- 消费单价：这一行按它算钱（抽中入车的那几件挂的是盲盒的单抽价，不是这款规格的原价）。
+             老行和后台代客加购的行可能是 NULL，那是"按现价"，回落发生在统一下单取价那一步 -->
+        c.price,
         c.selected,
+        c.source_type,
+        c.source_id,
+        <!-- 来源名称：盲盒那一行报的是抽中它的那台盒叫什么（两台盒抽中同一款是并排两行两价，
+             只标「盲盒商品」看不出这一行是哪台盒带来的）；普通行没有来源、盒被删了也联不出 → NULL -->
+        tb.box_name AS sourceName,
         c.create_by,
         c.update_by,
         c.create_time,
@@ -38,12 +46,14 @@
         sk.spec_text AS specText,
         <!-- 可用库存不在购物车也不在 SKU 表上：库存是一个规格 × 一个仓一行，这里按这一条规格汇总各仓。
              口径同商品列表的 available_stock（那边按商品名下所有 SKU 汇总，这边一行本来就只有一个规格），
-             同样只算 1 启用 的仓 —— 盘点中/调拨中/禁用 的仓发不了货，不该算进"还能买几件"。 -->
-        (SELECT IFNULL(SUM(i.stock - i.locked_stock), 0)
+             同样只算 1 启用 的仓 —— 盘点中/调拨中/禁用 的仓发不了货，不该算进"还能买几件"。
+             整盒那一行（sku_id=0）没有"某一条规格"，给 NULL 而不是 0：0 会被前端当成「一件都不剩」把步进钉死，
+             而一整盒能不能再端一次看的是盒，不是某款规格的仓存。 -->
+        CASE WHEN c.sku_id = 0 THEN NULL ELSE (SELECT IFNULL(SUM(i.stock - i.locked_stock), 0)
         FROM shop_erp_inventory i
         WHERE i.sku_id = sk.id AND i.is_deleted = 0
         AND EXISTS (SELECT 1 FROM shop_erp_warehouse w
-        WHERE w.id = i.warehouse_id AND w.is_deleted = 0 AND w.status = 1)) AS available_stock,
+        WHERE w.id = i.warehouse_id AND w.is_deleted = 0 AND w.status = 1)) END AS available_stock,
         cat.category_name,
         b.brand_name,
         b.logo AS brand_logo,
@@ -59,6 +69,9 @@
         LEFT JOIN shop_category cat ON cat.id = c.category_id AND cat.is_deleted = 0
         LEFT JOIN shop_brand b ON b.id = c.brand_id AND b.is_deleted = 0
         LEFT JOIN shop_store st ON st.id = c.store_id AND st.is_deleted = 0
+        <!-- 只有盲盒那一行才去联盒：普通行的 source_id 是 0，本来就对不上任何一台盒，
+             把 c.source_type = 1 也写进 ON（而不是 WHERE）才能让那种行照旧出现在列表里 -->
+        LEFT JOIN shop_trendy_box tb ON tb.id = c.source_id AND c.source_type = 1 AND tb.is_deleted = 0
         LEFT JOIN sys_user u ON u.id = c.user_id
     </sql>
 
@@ -108,29 +121,35 @@
       和上面两条的区别只在 WHERE：这里按 user_id 钉死一个人（服务层第一句就把它覆盖成登录 id），
       并且把规格或商品已经被删掉的行筛掉 —— 那两行 LEFT JOIN 出来单价和名称都是 NULL，
       画不出这一行是啥、也算不出钱，不如不给（购物车行本身还在库里，后台那两条看得见，商品回来它也跟着回来）。
+      整盒那一行（sku_id=0）不受这两句筛：它本来就不挂某一条规格，认的是盒，盒名在 sourceName 那一格。
       商品下架、规格停售不筛：那种行还认得出是什么，就地灰掉、不计入合计（buyable 那一格），
       不至于让人以为车吞了他的货。
       buyable 只认商品在不在架上：规格的 sale_enable 是 ERP 建销售单那边的开关，不参与前台能不能买。
+      整盒那一行没有商品行可看，改看那台盒还在不在进行中（shop_trendy_box.status=2，口径同抽盒那一步的第一道闸）。
     -->
     <select id="selectCartListByUser" resultType="com.shop.vo.cart.ShopCartVo">
         SELECT
         <include refid="cartColumns"/>,
-        CASE WHEN p.status = 1 THEN 1 ELSE 0 END AS buyable
+        CASE WHEN c.sku_id = 0 THEN (CASE WHEN tb.status = 2 THEN 1 ELSE 0 END)
+             WHEN p.status = 1 THEN 1 ELSE 0 END AS buyable
         <include refid="cartJoins"/>
         WHERE c.is_deleted = 0
           AND c.user_id = #{userId}
-          AND sk.id IS NOT NULL
-          AND p.id IS NOT NULL
+          AND (c.sku_id = 0 OR (sk.id IS NOT NULL AND p.id IS NOT NULL))
         ORDER BY c.id DESC
     </select>
 
     <!--
-      前台那颗「加入购物车」的两条写，都按 (消费者, 规格) 这一对点，不走购物车行的 id：
+      前台那颗「加入购物车」的两条写，都按 (消费者, 规格, 来源类型, 来源ID) 这一组坐标点，不走购物车行的 id：
       详情页上只有「这个规格我车里有没」这一个事实，id 是车那一页才拿得到的东西。
       两份都不挂 @Transactional —— 每条各自最多一句 UPDATE，没有要一起成才算数的第二句。
 
       数量是 quantity = quantity + #{delta} 而不是覆盖：加购是「在车里已有的那个规格上再加几件」，
       读出来加完再写回去中间能被另一个标签页插一次（口径同库存那几条原子 UPDATE）。
+      单价是 price = IFNULL(#{price}, price)：给得出价就刷这一行（详情页那颗给的是这条规格的现价，
+      抽中入车那一路给的是盲盒的单抽价 —— 谁最后进车，这一行往后就按谁的价算钱；「互相刷」只可能发生在
+      同一来源的两次写之间，不同来源、不同盒各自一行，各挂各的价），
+      给不出（null）保持原值，别让一次不带价的写把已经写好的单价抹成 NULL。
       update_time 手写 NOW()：这里是绕过 MP 的直接 UPDATE，MyMetaObjectHandler 不插手；
       create_time / create_by 不动 —— 那是这一对第一次建上行的留痕。
       WHERE 不带库存判据：可用库存只在下单那一刻才真的拦，加购和改数量都不过这道闸（口径同后台那份 update）。
@@ -138,24 +157,31 @@
     <update id="increaseQuantityBySku">
         UPDATE shop_consumer_cart
         SET quantity    = quantity + #{delta},
+            price       = IFNULL(#{price}, price),
             update_by   = #{updateBy},
             update_time = NOW()
         WHERE user_id = #{userId}
           AND sku_id = #{skuId}
+          AND source_type = #{sourceType}
+          AND source_id = #{sourceId}
           AND is_deleted = 0
     </update>
 
     <!--
-      WHERE 上没有 is_deleted —— uk_user_sku(user_id, sku_id) 不含这一列，删掉的行也还占着这个键，
-      所以「删掉后又加回同一个规格」必须把那一行复活，而不是插第二条（口径同收藏的 reviveByTarget、
-      也是后台新增那一路撞键报错的根由，那边是代客补录、撞了就让用户去列表找，前台这一颗不能这么回）。
-      分类/品牌/门店三格重新按现在这个商品带：这一行是「重新加进来的」，快照该跟着这一次走。
+      WHERE 上没有 is_deleted —— 新唯一键 uk_user_sku_source(user_id, sku_id, source_type, source_id)
+      不含这一列，删掉的行也还占着这个键，所以「删掉后又加回同一个规格的同一来源」必须把那一行复活，
+      而不是插第二条（口径同收藏的 reviveByTarget、也是后台新增那一路撞键报错的根由，那边是代客补录、
+      撞了就让用户去列表找，前台这一颗不能这么回）。
+      来源那两格（类型 + ID）是这一行的身份，只在 WHERE 上定点、不在 SET 里刷 —— 刷完就等于把这台盒
+      带来的那行挪到别的盒名下，和人家那一行撞键。
+      分类/品牌/门店和单价按这一次重新带：这一行是「重新加进来的」，快照该跟着这一次走。
       selected 一律回 1：刚加进来的东西默认就是要买的，用户在车里改过的勾选跟着那次删除一起作废了。
     -->
     <update id="reviveBySku">
         UPDATE shop_consumer_cart
         SET is_deleted   = 0,
             quantity     = #{quantity},
+            price        = #{price},
             selected     = 1,
             category_id  = #{categoryId},
             brand_id     = #{brandId},
@@ -164,6 +190,8 @@
             update_time  = NOW()
         WHERE user_id = #{userId}
           AND sku_id = #{skuId}
+          AND source_type = #{sourceType}
+          AND source_id = #{sourceId}
     </update>
 
     <!--

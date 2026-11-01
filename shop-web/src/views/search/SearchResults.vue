@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { FwbButton } from 'flowbite-vue';
 import ProductCard from '@/views/product/ProductCard.vue';
 import SearchBox from '@/views/search/SearchBox.vue';
+import TabDropper from '@/components/TabDropper.vue';
 import { fetchProducts, type WebProduct } from '@/lib/products';
 import {
   fetchBrands,
@@ -127,6 +128,10 @@ function pickTab(tab: string | undefined): TabKey {
 }
 
 const active = ref<TabKey>(pickTab(props.tab));
+/** 递给 TabDropper 的那一排：每档的条数跟着 counts 走（原来这一截是模板里手写拼的） */
+const tabItems = computed(() =>
+  TABS.map(one => ({ key: one.key as string, label: one.label, count: counts[one.key] ?? null })),
+);
 /** 这次是往后切还是往前切（决定新块从哪边移进来）；sliding 只在过渡那一段挂上，见 global.css 最后那一条 */
 const slideName = ref('tab-next');
 const sliding = ref(false);
@@ -245,29 +250,14 @@ onMounted(() => {
       <template v-else>{{ fill(d.search.showAllNoKw, { noun: current.noun }) }}</template>
     </p>
 
-    <div
-      role="tablist"
-      :aria-label="d.search.scope"
-      class="mb-6 flex justify-center gap-6 border-b border-gray-200 dark:border-gray-700"
-    >
-      <button
-        v-for="item in TABS"
-        :key="item.key"
-        type="button"
-        role="tab"
-        :aria-selected="active === item.key"
-        class="-mb-px border-b-2 pb-2 text-sm font-medium transition-colors"
-        :class="
-          active === item.key
-            ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
-            : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
-        "
-        @click="selectTab(item.key)"
-      >
-        {{ item.label }}
-        <span v-if="counts[item.key] != null" class="ml-1 text-xs text-gray-400">{{ counts[item.key] }}</span>
-      </button>
-    </div>
+    <!-- 等分那一排 + 水滴胶囊（原来落在选中那颗文字底下的 border-b-2 由胶囊担当，切换时拉长再收住） -->
+    <TabDropper
+      :label="d.search.scope"
+      list-class="mb-6 justify-center gap-6"
+      :model-value="active"
+      :items="tabItems"
+      @update:model-value="(key: string) => selectTab(key as TabKey)"
+    />
 
     <!-- 只画当前这一块：另两块切过去才捞，DOM 里也不留着另两块的行。
          换 key ⇒ Vue 认成换了一个元素，<Transition> 于是把旧那块左右移走完事再挂新的（方向见 slideName，CSS 在 global.css 最后那一条）。

@@ -30,7 +30,7 @@ public class ShopCategory extends BaseEntity {
     @ApiModelProperty(value = "层级：1/2/3")
     private Integer level;
 
-    @ApiModelProperty(value = "图标，存 shop_icon.id")
+    @ApiModelProperty(value = "图标，存 sys_icon.id")
     private String icon;
 
     @ApiModelProperty(value = "状态：1启用 0禁用")
@@ -41,15 +41,15 @@ public class ShopCategory extends BaseEntity {
     @TableField(updateStrategy = FieldStrategy.NEVER)
     private Long userId;
 
-    @ApiModelProperty(value = "图标名称（联表 shop_icon 回填）")
+    @ApiModelProperty(value = "图标名称（联表 sys_icon 回填）")
     @TableField(exist = false)
     private String iconName;
 
-    @ApiModelProperty(value = "图标类型：1 SVG 2 图片URL 3 字体类名（联表 shop_icon 回填）")
+    @ApiModelProperty(value = "图标类型：1 SVG 2 图片URL 3 字体类名（联表 sys_icon 回填）")
     @TableField(exist = false)
     private Integer iconType;
 
-    @ApiModelProperty(value = "图标内容（联表 shop_icon 回填）")
+    @ApiModelProperty(value = "图标内容（联表 sys_icon 回填）")
     @TableField(exist = false)
     private String iconValue;
 

@@ -7,6 +7,8 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 购物车列表/详情视图对象
@@ -70,9 +72,29 @@ public class ShopCartVo extends ShopConsumerCart {
     @ApiModelProperty(value = "门店名称（联表带出）")
     private String storeName;
 
+    /**
+     * 来源名称：这一行是抽中入车的那一行时，报的是抽中它的那台盒（shop_trendy_box.box_name）。
+     *
+     * 只出现在 VO 里 —— 库里那一行存的是 source_id，名字按它现联。前台那一枚 tip 要它是因为
+     * 两台盒可以抽中同一款而单抽价不一样（各一行各算各的），只写「盲盒商品」看不出这一行归哪台盒。
+     * 自己加购的行没有来源、盒后来被删了也联不出，两种都是 NULL，页面退回只写「盲盒商品」。
+     */
+    @ApiModelProperty(value = "来源名称（盲盒行=抽中它的那台盒名，联表带出），NULL=普通商品那行或盒已删除")
+    private String sourceName;
+
     @ApiModelProperty(value = "消费者昵称（联表带出）")
     private String nickname;
 
     @ApiModelProperty(value = "消费者用户名（联表带出）")
     private String username;
+
+    /**
+     * 整盒那一行盒里有哪几款、各几件 —— 按 source_id（哪一台盒）现查那台盒配置的款式清单，
+     * 库里那一行不存快照（见 ShopTrendyBoxStyleService）。
+     *
+     * 自己加购的行、单抽入车的行都是空数组（不是 null，前端那句「展开」的判据就一条：
+     * 这一行是不是整盒 = sku_id 是不是 0）。
+     */
+    @ApiModelProperty(value = "整盒行的盒内明细（按盒 id 现查那台盒配的款式清单；非整盒行为空数组）")
+    private List<ShopCartBoxItemVo> boxItemList = new ArrayList<>();
 }

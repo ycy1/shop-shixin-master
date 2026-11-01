@@ -27,8 +27,8 @@ function toRegister() {
 }
 
 /**
- * 账号密码登录：/api/auth/login 在 SaTokenConfigure 的放行名单里，哪一档都输得成，
- * 所以这一页不按平台分叉，两颗入口同屏给出去。
+ * 账号密码登录：/api/auth/login 在 SaTokenConfigure 的放行名单里，哪一档都输得成。
+ * 微信那颗只在小程序和 App 画（H5 没网页授权凭据，见下面那条），所以这一页从「三档同屏」变成按平台分叉。
  */
 async function doLogin() {
   if (!username.value || !password.value) {
@@ -50,8 +50,12 @@ async function doLogin() {
 
 /**
  * 微信登录：小程序和 App 两条授权链不一样（小程序给 code 让后端换 openid，App 里 SDK 直接把 openid 给前端），
- * 分叉收在 tokenStore.wxLogin() 里，这一页的按钮哪一档都长同一张样。
+ * 分叉收在 tokenStore.wxLogin() 里。
+ *
+ * H5 那一档不画这颗：网页端要的是开放平台的网页授权（appid + 回调域名 + secret），这套凭据没配、
+ * 点了也只能拿一个换不到东西的 code，与其给一颗注定失败的按钮，不如这一档只留账号密码。
  */
+// #ifndef H5
 async function doWxLogin() {
   submitting.value = true
   try {
@@ -65,6 +69,7 @@ async function doWxLogin() {
     submitting.value = false
   }
 }
+// #endif
 </script>
 
 <template>
@@ -89,6 +94,7 @@ async function doWxLogin() {
           </wd-button>
         </view>
 
+        <!-- #ifndef H5 -->
         <view class="mt-64rpx flex items-center">
           <view class="h-1px flex-1 bg-gray-200" />
           <view class="mx-32rpx text-24rpx text-gray-400">
@@ -101,6 +107,7 @@ async function doWxLogin() {
             微信登录
           </wd-button>
         </view>
+        <!-- #endif -->
       </view>
 
       <view class="mt-48rpx pb-48rpx text-center text-[26rpx] text-gray-500">

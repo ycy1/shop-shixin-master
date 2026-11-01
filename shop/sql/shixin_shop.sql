@@ -1318,16 +1318,17 @@ CREATE TABLE `shop_erp_warehouse`  (
 ) ENGINE = InnoDB AUTO_INCREMENT = 5 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '仓库表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
--- Table structure for shop_icon
+-- Table structure for sys_icon
 -- ----------------------------
-DROP TABLE IF EXISTS `shop_icon`;
-CREATE TABLE `shop_icon`  (
+DROP TABLE IF EXISTS `sys_icon`;
+CREATE TABLE `sys_icon`  (
   `id` bigint(0) UNSIGNED NOT NULL AUTO_INCREMENT,
   `user_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '创建人用户ID(sys_user.id)',
   `icon_name` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '图标名称',
   `icon_code` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '图标编码，唯一',
   `icon_type` tinyint(0) NOT NULL DEFAULT 1 COMMENT '1 SVG 2 图片URL 3 字体类名',
   `icon_value` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '图标内容',
+  `icon_category` tinyint(0) NOT NULL DEFAULT 2 COMMENT '图标分类：1系统图标 2商品分类 3其他',
   `category_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '商品分类ID',
   `sort` int(0) NOT NULL DEFAULT 0 COMMENT '排序',
   `status` tinyint(0) NOT NULL DEFAULT 1 COMMENT '1启用 0禁用',
@@ -1341,6 +1342,7 @@ CREATE TABLE `shop_icon`  (
   UNIQUE INDEX `uk_icon_code`(`icon_code`) USING BTREE,
   INDEX `idx_category`(`category_id`) USING BTREE,
   INDEX `idx_status_sort`(`status`, `sort`) USING BTREE,
+  INDEX `idx_category_status_sort`(`icon_category`, `status`, `sort`) USING BTREE,
   INDEX `idx_user_id`(`user_id`) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 22 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '图标库表' ROW_FORMAT = Dynamic;
 
@@ -1867,7 +1869,7 @@ CREATE TABLE `sys_menu`  (
   `component` varchar(255) CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci NULL DEFAULT NULL COMMENT '组件路径',
   `title` varchar(100) CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci NULL DEFAULT NULL COMMENT '菜单名称',
   `sort` int(0) NULL DEFAULT 0 COMMENT '排序',
-  `icon` varchar(32) CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci NULL DEFAULT NULL COMMENT '资源图标',
+  `icon` varchar(32) CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci NULL DEFAULT NULL COMMENT '资源图标：存 sys_icon.id，或历史遗留的 el-icon 组件名（如 Setting）',
   `type` varchar(32) CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci NULL DEFAULT NULL COMMENT '类型 menu、button',
   `create_time` datetime(0) NULL DEFAULT NULL COMMENT '创建时间',
   `update_time` datetime(0) NULL DEFAULT NULL COMMENT '更新时间',
@@ -2134,8 +2136,6 @@ CREATE TABLE `sys_web_config`  (
   `author` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '作者',
   `author_info` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '个性签名',
   `author_avatar` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '作者头像',
-  `ali_pay` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '支付宝收款码',
-  `weixin_pay` varchar(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '微信收款码',
   `github` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT 'github地址',
   `gitee` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT 'gitee地址',
   `qq_number` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT 'QQ号',

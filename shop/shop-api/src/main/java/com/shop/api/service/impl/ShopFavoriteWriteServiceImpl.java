@@ -7,6 +7,7 @@ import com.shop.mapper.ShopBrandMapper;
 import com.shop.mapper.ShopConsumerFavoriteMapper;
 import com.shop.mapper.ShopProductMapper;
 import com.shop.mapper.ShopStoreMapper;
+import com.shop.mapper.ShopTrendyParkMapper;
 import com.shop.utils.LoginUserUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
@@ -27,15 +28,18 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class ShopFavoriteWriteServiceImpl implements ShopFavoriteWriteService {
 
-    /** target_type 的三档，和字典 favorite_target_type、和那张表 CASE 联表的三档是同一套 */
+    /** target_type 的四档，和字典 favorite_target_type、和那张表 CASE 联表的四档是同一套 */
     private static final int TARGET_TYPE_PRODUCT = 1;
     private static final int TARGET_TYPE_STORE = 2;
     private static final int TARGET_TYPE_BRAND = 3;
+    /** 主题公园（往后接的一档）；评论那边公园是 5，两本字典各数各的，别互相抄 */
+    private static final int TARGET_TYPE_PARK = 4;
 
     private final ShopConsumerFavoriteMapper shopConsumerFavoriteMapper;
     private final ShopProductMapper shopProductMapper;
     private final ShopStoreMapper shopStoreMapper;
     private final ShopBrandMapper shopBrandMapper;
+    private final ShopTrendyParkMapper shopTrendyParkMapper;
 
     /**
      * 全局配置钉了 logic-delete-field=isDeleted（实体上没有 @TableLogic），deleteById 就是一条 UPDATE is_deleted=1；
@@ -102,7 +106,7 @@ public class ShopFavoriteWriteServiceImpl implements ShopFavoriteWriteService {
      */
     private void assertTargetExists(Integer targetType, Long targetId) {
         if (targetType == null) {
-            throw new ServiceException("收藏类型只能是 1商品、2门店 或 3品牌");
+            throw new ServiceException("收藏类型只能是 1商品、2门店、3品牌 或 4公园");
         }
         if (targetId == null) {
             throw new ServiceException("请选择收藏对象");
@@ -125,6 +129,12 @@ public class ShopFavoriteWriteServiceImpl implements ShopFavoriteWriteService {
             }
             return;
         }
-        throw new ServiceException("收藏类型只能是 1商品、2门店 或 3品牌");
+        if (targetType == TARGET_TYPE_PARK) {
+            if (shopTrendyParkMapper.selectById(targetId) == null) {
+                throw new ServiceException("所选公园不存在");
+            }
+            return;
+        }
+        throw new ServiceException("收藏类型只能是 1商品、2门店、3品牌 或 4公园");
     }
 }

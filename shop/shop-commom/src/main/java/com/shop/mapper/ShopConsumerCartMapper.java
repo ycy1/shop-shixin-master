@@ -8,6 +8,7 @@ import com.shop.vo.cart.ShopCartVo;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -39,22 +40,31 @@ public interface ShopConsumerCartMapper extends BaseMapper<ShopConsumerCart> {
     List<ShopCartVo> selectCartListByUser(@Param("userId") Long userId);
 
     /**
-     * 加购：这一对（消费者, 规格）车上已经有没删的那一条，就在它上面加 delta 件。
+     * 加购：这一组（消费者, 规格, 来源类型, 来源ID）车上已经有没删的那一条，就在它上面加 delta 件。
      *
      * 走 UPDATE quantity = quantity + delta 而不是先查出来加完写回，是为了让两个标签页各点一次加购
-     * 叠得起来；返回影响行数，0 就是这一对没有活着的行（调用方接着试复活那条路）。
+     * 叠得起来；返回影响行数，0 就是这一组没有活着的行（调用方接着试复活那条路）。
+     * 来源两格都必须在 WHERE 里：同一个规格现在能并排躺着好几行（自己加购的、每台盒抽中入车的），
+     * 少带一格就会串到对方那一行上，把人家约定好的单价刷掉 —— 不同盒的单抽价不一样，
+     * 所以按 source_type 分还不够，得连 source_id（哪一台盒）一起定点。
+     * price 是这一次的单价（详情页那颗 = 这条规格的现价、抽中入车 = 盲盒给的价格、端盒 = 这台盒的端盒价），
+     * 给得出来就刷这一行的单价（IFNULL），传 null 保持原值不动 —— 同一组坐标内「后一次进车定这一行的价」。
      */
     int increaseQuantityBySku(@Param("userId") Long userId, @Param("skuId") Long skuId,
-                              @Param("delta") Integer delta, @Param("updateBy") Long updateBy);
+                              @Param("sourceType") Integer sourceType, @Param("sourceId") Long sourceId,
+                              @Param("delta") Integer delta, @Param("price") BigDecimal price,
+                              @Param("updateBy") Long updateBy);
 
     /**
-     * 加购第二条路：把 (消费者, 规格) 那条已删除的行复活成「这次加了 quantity 件、默认选中」。
+     * 加购第二条路：把 (消费者, 规格, 来源类型, 来源ID) 那条已删除的行复活成「这次加了 quantity 件、默认选中」。
      *
-     * 唯一键 uk_user_sku 不含 is_deleted，删掉的行还占着这个键，直接插第二条必撞键
-     *（口径同收藏的 reviveByTarget）。categoryId / brandId / storeId 是这次重新从商品上带的快照。
+     * 唯一键 uk_user_sku_source 不含 is_deleted，删掉的行还占着这个键，直接插第二条必撞键
+     *（口径同收藏的 reviveByTarget）。来源两格都在 WHERE 上（它们是这一行的身份，不是要刷新的快照），
+     * categoryId / brandId / storeId 和单价才是这一次重新带的。
      */
     int reviveBySku(@Param("userId") Long userId, @Param("skuId") Long skuId,
-                    @Param("quantity") Integer quantity,
+                    @Param("sourceType") Integer sourceType, @Param("sourceId") Long sourceId,
+                    @Param("quantity") Integer quantity, @Param("price") BigDecimal price,
                     @Param("categoryId") Long categoryId, @Param("brandId") Long brandId,
                     @Param("storeId") Long storeId, @Param("updateBy") Long updateBy);
 

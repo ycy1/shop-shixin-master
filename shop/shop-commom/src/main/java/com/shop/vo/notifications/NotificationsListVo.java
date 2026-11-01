@@ -57,6 +57,9 @@ public class NotificationsListVo {
     @ApiModelProperty(value = "通知关联的链接，可为空")
     private String link;
 
+    @ApiModelProperty(value = "消费失败次数（仅后台列表带；0=已发送，>0=还没发出去；满 3 次停止自动重试）")
+    private Integer failCount;
+
     @ApiModelProperty(value = "互动消息：源评论的类型 1-商品 2-门店 3-品牌 4-广场（business_type=comment/like 才有值，各端按它拼「全部评论」页路由）")
     private Integer commentType;
 

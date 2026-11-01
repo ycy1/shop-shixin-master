@@ -4,6 +4,7 @@ import {
   addMyCart,
   deleteMyCart,
   fetchMyCart,
+  payPriceOf,
   selectAllMyCart,
   updateMyCart,
   type CartLine,
@@ -29,8 +30,9 @@ export const useCartStore = defineStore('cart', () => {
   /** 整块级别的错误（列表没捞动）；单颗写的失败走各自抛出来的那句，由调用方就地印 */
   const error = ref('');
 
+  /** 一行按多少钱算：车里那一格的单价优先（抽中入车的挂的是盒的单抽价），见 lib/cart 的 payPriceOf */
   function priceOf(line: CartLine): number {
-    return Number(line.productPrice ?? 0);
+    return payPriceOf(line);
   }
 
   /** 还能买的那几行：商品下架的不算进份数也不算进金额（badge 上那两个数说的是「还要买多少」） */

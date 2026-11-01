@@ -4,6 +4,9 @@ import { ACTIVITY_EVENT_CLICK, ACTIVITY_EVENT_VIEW, trackActivity } from '@/api/
 import { getBrandList, getCategoryList, getHomeActivities, getStoreList } from '@/api/home'
 import { getProductList } from '@/api/product'
 import ProductGrid from '@/components/ProductGrid.vue'
+import AppNavBar from '@/components/AppNavBar.vue'
+import AppSearchBar from '@/components/AppSearchBar.vue'
+import DropDots from '@/components/DropDots.vue'
 
 defineOptions({
   name: 'Home',
@@ -14,6 +17,8 @@ definePage({
   type: 'home',
   style: {
     navigationBarTitleText: '商品',
+    // 导航条自绘（components/AppNavBar.vue）：原生那条站不住 Vue 节点，右侧栏那颗只能摆进自己画的那一条里
+    navigationStyle: 'custom',
     enablePullDownRefresh: true,
     onReachBottomDistance: 100,
   },
@@ -177,32 +182,31 @@ onReachBottom(() => {
 
 <template>
   <view class="bg-[#f5f6f7] pb-192rpx">
-    <view class="home-head z-10">
-      <!-- disabled 是为了让点击冒泡出来（wd-search 只在 disabled 时抛 click），这一格只是个入口 -->
-      <wd-search
-        disabled
-        placeholder="搜索商品 / 门店 / 品牌 / 活动"
-        hide-cancel
-        @click="toSearch()"
-      />
-    </view>
+    <AppNavBar title="商品" />
 
-    <!-- 轮播位：图由服务端挑好了给（首页位 + 投放中 + 有图），点一下进这条活动的详情页 -->
-    <swiper
-      v-if="banners.length"
-      class="h-[320rpx] w-full"
-      circular
-      autoplay
-      :interval="4000"
-      indicator-dots
-      indicator-color="rgba(255, 255, 255, 0.45)"
-      indicator-active-color="#ffffff"
-      @change="onBannerChange"
-    >
-      <swiper-item v-for="one in banners" :key="one.id" class="fx-press" hover-class="fx-tap" @click="toActivity(one.id)">
-        <image :src="one.image" mode="aspectFill" class="h-full w-full" />
-      </swiper-item>
-    </swiper>
+    <!-- 搜索入口 + 抽屉那颗：四张 tab 页共用同一排（components/AppSearchBar.vue） -->
+    <AppSearchBar />
+
+    <!-- 轮播位：图由服务端挑好了给（首页位 + 投放中 + 有图），点一下进这条活动的详情页。
+         dot 不用 swiper 自带的 indicator-dots —— 那层画在组件内部，动效插不进去；换成 DropDots（水滴胶囊）。 -->
+    <view v-if="banners.length" class="relative">
+      <swiper
+        class="h-[320rpx] w-full"
+        circular
+        autoplay
+        :interval="4000"
+        @touchstart="markSwipeZone"
+        @touchend="markSwipeZone"
+        @change="onBannerChange"
+      >
+        <swiper-item v-for="one in banners" :key="one.id" class="fx-press" hover-class="fx-tap" @click="toActivity(one.id)">
+          <image :src="one.image" mode="aspectFill" class="h-full w-full" />
+        </swiper-item>
+      </swiper>
+      <view class="absolute bottom-16rpx left-0 right-0 z-10 flex justify-center">
+        <DropDots :count="banners.length" :current="bannerIdx" tone="light" />
+      </view>
+    </view>
 
     <!-- 门店 + 品牌同一块：各只摆 4 个当地图用，点进去是各自的详情页，「全部」跳搜索页那一 tab -->
     <view v-if="stores.length || brands.length" class="mx-24rpx my-24rpx rounded-xl bg-white px-24rpx py-24rpx">
@@ -219,7 +223,7 @@ onReachBottom(() => {
             全部 ›
           </view>
         </view>
-        <scroll-view scroll-x class="mt-16rpx whitespace-nowrap">
+        <scroll-view scroll-x class="mt-16rpx whitespace-nowrap" @touchstart="markSwipeZone" @touchend="markSwipeZone">
           <view
             v-for="one in stores"
             :key="one.id"
@@ -252,7 +256,7 @@ onReachBottom(() => {
             全部 ›
           </view>
         </view>
-        <scroll-view scroll-x class="mt-16rpx whitespace-nowrap">
+        <scroll-view scroll-x class="mt-16rpx whitespace-nowrap" @touchstart="markSwipeZone" @touchend="markSwipeZone">
           <view
             v-for="one in brands"
             :key="one.id"
@@ -311,28 +315,3 @@ onReachBottom(() => {
     </view>
   </view>
 </template>
-
-<!--
-  这一页的样式块刻意没写 scoped：下面第二条要伸手进 wd-search 这个自定义组件里面，
-  小程序里 scoped 选择器跨组件边界不一定命中（它得靠页面 wxss + 组件自己的 styleIsolation: shared）。
-  两条都以只有本页有的 .home-head 开头，H5 上也不会串到别处。
--->
-<style lang="scss">
-.home-head {
-  position: sticky;
-  /* H5 顶上那条 44px 标题栏是盖在内容之上的，粘到 top:0 会钻进它底下（实测滚起来后整条 y=0）；
-     --window-top 就是那条的高度，小程序/App 上这个变量不存在 ⇒ 回退成 0 */
-  top: var(--window-top, 0);
-  /* 毛玻璃：和底部那条 tabbar 同一套做法（见 src/tabbar/index.vue）。老安卓 webview 不认 backdrop-filter，
-     那一头就只剩 75% 的白底，不看糊也照样读得清 */
-  background-color: rgba(255, 255, 255, 0.75);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
-  backdrop-filter: saturate(180%) blur(20px);
-}
-
-/* wd-search 那层底色是写死的 #fff，它没留 CSS 变量，不摘掉就把上面这层毛玻璃整个盖住了。
-   里面那颗灰底输入条（.wd-search__block）留着，不然这一格就不像个搜索框了 */
-.home-head .wd-search {
-  background: transparent;
-}
-</style>

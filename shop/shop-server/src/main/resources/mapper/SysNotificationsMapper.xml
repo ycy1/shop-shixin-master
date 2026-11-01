@@ -72,6 +72,8 @@
         left join sys_comment c on n.business_id = c.id and n.business_type in ('comment', 'like')
         <where>
             n.del_flag = 0
+            <!-- 只露"已发送完"的：fail_count>0 = 还没发出去（重试中/等人工），那条在后台看 -->
+            and n.fail_count = 0
             and <include refid="pushVisible"/>
             and <include refid="pushNotDeleted"/>
             <if test="notifications.category != null">
@@ -102,6 +104,7 @@
             n.message,
             n.link,
             n.notice_push,
+            n.fail_count,
             <!-- 接收人现在是发送时就一律铺进关联表（未读也有一行），所以这一格必须只数 is_read=1，
                  不能再像原先那样「有行即已读」—— 那样阅读数会等于接收人数，发出去就全是已读 -->
             (select count(1) from sys_notifications_receiver r
@@ -164,7 +167,7 @@
         left join sys_user u on u.id = <include refid="pushFirstUser"/>
         left join sys_user u1 on n.from_user_id = u1.id
         left join sys_notice e on n.business_id = e.id and n.business_type = 'notice'
-        where n.id = #{id} and n.del_flag = 0
+        where n.id = #{id} and n.del_flag = 0 and n.fail_count = 0
     </select>
 
     <!-- 未读汇总：一趟把「总数 + 两档各自多少条未读」都算回来（红点只看 total，两档 tab 各看一格） -->
@@ -175,6 +178,7 @@
             COALESCE(sum(case when n.category = 2 then 1 else 0 end), 0) as interact_num
         from sys_notifications n
         where n.del_flag = 0
+          and n.fail_count = 0
           and <include refid="pushVisible"/>
           and <include refid="pushNotDeleted"/>
           and <include refid="pushNotRead"/>
@@ -196,6 +200,7 @@
         select n.id, #{userId}, n.send_code, 1, now(), 0, now()
         from sys_notifications n
         where n.del_flag = 0
+          and n.fail_count = 0
           and <include refid="pushVisible"/>
           and <include refid="pushNotDeleted"/>
           and <include refid="pushNotRead"/>
@@ -212,6 +217,23 @@
         from sys_notifications n
         where n.id = #{notificationId} and n.del_flag = 0
           and <include refid="pushVisible"/>
+        on duplicate key update send_code = values(send_code), is_deleted = 1
+    </insert>
+
+    <!-- 接收人清空消息：照 deleteByUser 那个形状，把当前用户可见的（且还没对自己删掉的）一次性全铺成 is_deleted=1。
+         带 pushNotDeleted 是为了不把自己已经隐掉的那些再刷一遍；is_read 那两格跟 deleteByUser 给同一组值，
+         两条路铺出来的行得长得一样，不然「先删一条」和「清空」留下的行会有已读没已读之分。 -->
+    <insert id="allDelete">
+        insert into sys_notifications_receiver (notification_id, user_id, send_code, is_read, read_time, is_deleted, create_time)
+        select n.id, #{userId}, n.send_code, 0, null, 1, now()
+        from sys_notifications n
+        where n.del_flag = 0
+          and n.fail_count = 0
+          and <include refid="pushVisible"/>
+          and <include refid="pushNotDeleted"/>
+          <if test="category != null">
+              and n.category = #{category}
+          </if>
         on duplicate key update send_code = values(send_code), is_deleted = 1
     </insert>
 

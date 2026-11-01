@@ -46,8 +46,38 @@
       </template>
 
       <!-- 数据表格 -->
-      <el-table v-loading="loading" :data="dataList" show-overflow-tooltip @selection-change="handleSelectionChange">
+      <el-table v-loading="loading" :data="dataList" show-overflow-tooltip row-key="id"
+        :row-class-name="itemRowClass" @selection-change="handleSelectionChange">
         <el-table-column type="selection" width="55" align="center" />
+        <!-- 一整盒那一行的展开列：盒内每款一行，按 sku_id=0 现查那台盒当前的款式清单（后端带出来的 boxItemList）。
+             普通商品行没有下一层，箭头由 itemRowClass 收掉 -->
+        <el-table-column type="expand">
+          <template #default="{ row }">
+            <el-table v-if="row.boxItemList && row.boxItemList.length" class="box-lines" size="small" border
+              :data="row.boxItemList">
+              <el-table-column label="款式图" align="center" width="80" :show-overflow-tooltip="false">
+                <template #default="{ row: one }">
+                  <el-image v-if="one.styleImage" :src="one.styleImage" :preview-src-list="[one.styleImage]"
+                    preview-teleported fit="cover" style="width: 46px; height: 46px; border-radius: 4px" />
+                  <span v-else>-</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="盒内款式" align="center" min-width="180">
+                <template #default="{ row: one }">{{ one.styleName || '-' }}</template>
+              </el-table-column>
+              <el-table-column label="每盒几件" prop="quantity" align="center" width="100" />
+              <el-table-column label="这一行共" align="center" width="110">
+                <template #default="{ row: one }">
+                  {{ Number(one.quantity || 0) * (row.quantity || 0) }} 件
+                </template>
+              </el-table-column>
+            </el-table>
+            <div v-else class="box-lines box-lines-empty">
+              这台盒现在配不出款（盒已删除，或盒里的款式都没挂商品规格）：这一行还是车里的一整盒，
+              下单那一步会按同一份判据拦下来
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="消费者" align="center" min-width="130">
           <template #default="{ row }">
             <span>{{ row.nickname || row.username || '-' }}</span>
@@ -56,15 +86,32 @@
         <!-- 表级的 show-overflow-tooltip 会被每一列继承，纯图片列要显式关掉，否则悬停弹一个空 tooltip -->
         <el-table-column label="商品名称" prop="productName" align="center" min-width="180">
           <template #default="{ row }">
-            <span>{{ row.productName || '商品已删除' }}</span>
+            <!-- 端盒那一趟在车里是一整盒一行，它不挂在某个商品上（sku_id 那个 0 是哨兵）：
+                 照旧走下面那句会把它念成「商品已删除」，人看着像脏数据 -->
+            <span v-if="isWholeBox(row)">{{ wholeBoxLabel(row) }}</span>
+            <span v-else>{{ row.productName || '商品已删除' }}</span>
           </template>
         </el-table-column>
         <el-table-column label="规格" align="center" min-width="140">
           <template #default="{ row }">
-            <span>{{ row.specText || '默认规格' }}</span>
+            <span>{{ isWholeBox(row) ? `一整盒（盒内 ${(row.boxItemList || []).length} 款，展开看）` : (row.specText || '默认规格') }}</span>
           </template>
         </el-table-column>
         <el-table-column label="商品编码" prop="productCode" align="center" min-width="150" />
+        <!-- 一个规格现在能并排躺着好几行（自己加购的、每台盒抽中入车的），不带这两格看不出这一行是按哪个价算钱的 -->
+        <el-table-column label="来源" align="center" width="110">
+          <template #default="{ row }">
+            <el-tag v-if="row.sourceType != null" size="small" :type="dict.tag(DICT_SOURCE_TYPE, row.sourceType)">
+              {{ dict.label(DICT_SOURCE_TYPE, row.sourceType) }}
+            </el-tag>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="来源盲盒" align="center" min-width="140">
+          <template #default="{ row }">
+            <span>{{ row.sourceName || '-' }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="所属分类" prop="categoryName" align="center" width="120">
           <template #default="{ row }">
             <span>{{ row.categoryName || '-' }}</span>
@@ -83,15 +130,14 @@
         </el-table-column>
         <el-table-column label="单价" align="center" width="100">
           <template #default="{ row }">
-            <span v-if="row.productPrice != null">￥{{ Number(row.productPrice).toFixed(2) }}</span>
+            <span v-if="linePrice(row) != null">￥{{ Number(linePrice(row)).toFixed(2) }}</span>
             <span v-else>-</span>
           </template>
         </el-table-column>
         <el-table-column label="数量" prop="quantity" align="center" width="80" />
         <el-table-column label="小计" align="center" width="110">
           <template #default="{ row }">
-            <span v-if="row.productPrice != null">￥{{ (Number(row.productPrice) * (row.quantity || 0)).toFixed(2)
-              }}</span>
+            <span v-if="linePrice(row) != null">￥{{ (Number(linePrice(row)) * (row.quantity || 0)).toFixed(2) }}</span>
             <span v-else>-</span>
           </template>
         </el-table-column>
@@ -103,7 +149,7 @@
         </el-table-column>
         <el-table-column label="操作" align="center" width="150" fixed="right">
           <template #default="scope">
-            <el-button v-permission="['shop:cart:update']" type="primary" link icon="Edit"
+            <el-button v-if="!isWholeBox(scope.row)" v-permission="['shop:cart:update']" type="primary" link icon="Edit"
               @click="handleUpdate(scope.row)">修改</el-button>
             <el-button v-permission="['shop:cart:delete']" type="danger" link icon="Delete"
               @click="handleDelete(scope.row)">删除</el-button>
@@ -182,7 +228,12 @@ import ShopCategorySelect from '@/components/ShopCategorySelect/index.vue'
 import ShopProductSkuSelect from '@/components/ShopProductSkuSelect/index.vue'
 import ShopBrandOption from '@/components/ShopBrandOption/index.vue'
 import validate from '@/utils/validate'
+import { useDict } from '@/utils/dictCache'
 import { useUserStore } from '@/store/modules/user'
+
+/** 购物车来源（shop_consumer_cart.source_type）：0 普通商品 1 盲盒商品 */
+const DICT_SOURCE_TYPE = 'cart_source_type'
+const dict = useDict(DICT_SOURCE_TYPE)
 
 const userStore = useUserStore()
 /**
@@ -235,6 +286,25 @@ const skuLabel = computed(() =>
 
 /** 单价的显示口径同列表那一列 */
 const priceText = (price: any) => (price == null || price === '' ? '' : `￥${Number(price).toFixed(2)}`)
+
+/**
+ * 端盒那一趟在车里是「一整盒一行」：库里那一行的 sku_id 是 0 这个哨兵（它不挂在某条规格上），
+ * 盒内款式和单价都是抽盒那一刻抄的快照，后台改不了 —— 见 ShopConsumerCartServiceImpl#validate。
+ */
+const isWholeBox = (row: any) => Number(row.skuId) === 0
+const wholeBoxLabel = (row: any) => (row.sourceName ? `一整盒 · ${row.sourceName}` : '一整盒（端盒抽中的）')
+
+/**
+ * 这一行按哪个价算钱：一整盒那一行不挂在规格上（联不出 productPrice），它的价就是库里那一行的
+ * 盒价（抽中/端盒那一刻落的 price），右边「数量」那一格是盒数，所以小计 = 盒价 × 盒数。
+ * 普通商品行照旧念规格的现价。
+ */
+const linePrice = (row: any) => (isWholeBox(row) ? row.price : row.productPrice)
+
+/** 普通商品行没有下一层：把展开列那颗箭头收掉（连点击一起禁），只剩一个空格子 */
+function itemRowClass({ row }: any) {
+  return isWholeBox(row) ? '' : 'no-expand'
+}
 
 /** 查询列表 */
 const getList = async () => {
@@ -434,6 +504,23 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
+/* 展开列里那一层盒内款式表：给点内边距，别贴着外层表格的边框线 */
+.box-lines {
+  margin: 8px 16px;
+}
+
+/* 盒已经配不出款时那一格说明 */
+.box-lines-empty {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+/* 普通商品行没有下一层：箭头藏掉并把点击也禁了，只剩一个空格子 */
+:deep(.el-table__row.no-expand .el-table__expand-icon) {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 /* 参照部门管理：筛选项等分整行，控件宽度统一由 CSS 控制 */
 .search-form {
   display: flex;

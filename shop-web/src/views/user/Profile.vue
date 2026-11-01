@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { FwbToggle } from 'flowbite-vue';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import FilterSelect from '@/components/FilterSelect.vue';
 import ImagePreview from '@/components/ImagePreview.vue';
 import OrderPayDialog from '@/components/OrderPayDialog.vue';
+import { useDroplet } from '@/lib/droplet';
 import AccountForm from '@/views/user/AccountForm.vue';
 import AddressForm from '@/views/user/AddressForm.vue';
 import OrderDetail from '@/views/user/OrderDetail.vue';
@@ -26,6 +27,7 @@ import {
   fetchMyOrders,
   fetchMyPointLogs,
   fetchMyPoints,
+  fetchMyTickets,
   fetchMyWallet,
   fetchMyWalletLogs,
   setBadgeShow,
@@ -38,6 +40,7 @@ import {
   type OrderRow,
   type PointLogRow,
   type PointsAccount,
+  type TicketRow,
   type WalletAccount,
   type WalletLogRow,
 } from '@/lib/profile';
@@ -60,6 +63,8 @@ import {
   type PlazaMessage,
 } from '@/lib/plaza';
 import { enumFilters, enumLabel, useI18n } from '@/i18n';
+// 「我的票种」那一本那三档称呼走字典（同 OrderDetail 里 order_type 那一句），不在 i18n 里抄第二份
+import { dictLabel, loadDict } from '@/lib/dict';
 import { useAuthStore } from '@/stores/auth';
 
 const auth = useAuthStore();
@@ -89,6 +94,8 @@ interface Block<T> {
 type SectionKey = 'account' | 'orders' | 'addresses' | 'favorites' | 'browses' | 'messages' | 'plaza';
 /** 「个人信息」那一块下面那五个 tab */
 type InfoTabKey = 'base' | 'coupon' | 'badge' | 'points' | 'wallet';
+/** 「我的订单」那一块下面的两个 tab：下的单 / 发到手上能进园的那本票 */
+type OrderTabKey = 'order' | 'ticket';
 /** 一行是什么由那一块自己定，八块合在一条 load() 里读，所以这里收成"一堆行" */
 type AnyBlock = Block<unknown>;
 type Fetcher = (page: number, size: number) => Promise<{ records: unknown[]; total: number; pages: number }>;
@@ -96,6 +103,7 @@ type Fetcher = (page: number, size: number) => Promise<{ records: unknown[]; tot
 const PAGE_SIZE = 10;
 
 const orders = reactive<Block<OrderRow>>({ rows: [], page: 0, pages: 0, total: 0, loading: false, error: '' });
+const tickets = reactive<Block<TicketRow>>({ rows: [], page: 0, pages: 0, total: 0, loading: false, error: '' });
 const addresses = reactive<Block<AddressRow>>({ rows: [], page: 0, pages: 0, total: 0, loading: false, error: '' });
 const favorites = reactive<Block<FavoriteRow>>({ rows: [], page: 0, pages: 0, total: 0, loading: false, error: '' });
 const browses = reactive<Block<BrowseRow>>({ rows: [], page: 0, pages: 0, total: 0, loading: false, error: '' });
@@ -143,6 +151,29 @@ async function refilterMessages() {
   messages.pages = 0;
   messages.total = 0;
   await load(messages, fetchMessages);
+}
+
+/**
+ * 收藏类型那排 chip：0 当「不限」用（不往上传），其余按 d.enum.favoriteTarget 的下标走
+ *（1商品 2门店 3品牌 4公园）。
+ */
+const favoriteType = ref(0);
+const FAVORITE_FILTERS = computed(() => [
+  { label: d.account.favorite.filterAll, value: 0 },
+  ...d.enum.favoriteTarget.slice(1).map((label, i) => ({ label, value: i + 1 })),
+]);
+
+function fetchFavorites(page: number, size: number) {
+  return fetchMyFavorites(page, size, favoriteType.value || undefined);
+}
+
+/** 换档同样回第 1 页整块重捞：分类换了还接着旧页，翻出来的就是两串混在一起 */
+async function refilterFavorites() {
+  favorites.rows.splice(0);
+  favorites.page = 0;
+  favorites.pages = 0;
+  favorites.total = 0;
+  await load(favorites, fetchFavorites);
 }
 
 /**
@@ -410,6 +441,43 @@ function badgeShown(row: BadgeRow) {
 }
 
 /**
+ * 「我的票种」那一本的三档称呼：全走后端字典（user_ticket_status / ticket_type / ticket_time_slot），
+ * 前台不抄一份 —— 后台加一档或改一个字，这一本跟着变，不用动四档 i18n 再发一版。
+ * 字典那趟还没到（首屏一瞬）或库里压根没这一档时，状态报统一那句「未知（n）」、类型时段那两格留空，
+ * 都不铺一片空白（口径同 OrderDetail 里 order_type 那一句）。
+ */
+function ticketStatusLabel(row: TicketRow) {
+  return dictLabel('user_ticket_status', row.status) ?? unknownCode(row.status);
+}
+
+function ticketTypeLabel(row: TicketRow) {
+  return dictLabel('ticket_type', row.ticketType) ?? '';
+}
+
+/** 一行第三句：去哪一家 · 哪天来玩 · 约的哪个时段（时段是一张贴一个档，不是票种卖的那几档） */
+function ticketVisitText(row: TicketRow) {
+  return fill(d.account.ticket.visit, {
+    park: row.parkName || d.account.ticket.parkFallback,
+    date: row.visitDate || d.account.ticket.dateFallback,
+    slot: dictLabel('ticket_time_slot', row.timeSlot) ?? '',
+  });
+}
+
+/** 票名读不出来（快照那格为空的老数据）只垫一个破折号，票码还在下面那一行，不会认不出是哪张 */
+function ticketTitle(row: TicketRow) {
+  return row.ticketName || d.common.dash;
+}
+
+/**
+ * 票面图点开一整屏：图的内容就是这一行的票码（对着闸机扫的那一张）。
+ * 出票时那趟出图失败就没有这一颗 —— 那一行下面会写一句「票面图没生成」，
+ * 但票本身照样能用票码核销，所以不拦、也不报红。
+ */
+function openTicketQr(row: TicketRow) {
+  if (row.qrImg) openPreview(row.qrImg, ticketTitle(row), row.ticketCode);
+}
+
+/**
  * 顶上那一排挂件用的徽章：读的就是「个人信息 → 徽章」那一份列表的第一页（最新拿到的一枚在前），不另发一个请求。
  * 本人收起的那几枚不挂（每行右边那颗开关改的就是这一格）；下面那一列还是全铺，
  * 不然收起来的没有地方放回来。有效的那几枚挪到前面，过期的灰着留在后面；
@@ -480,10 +548,11 @@ const wallet = reactive<{ row: WalletAccount | null; loaded: boolean; loading: b
  */
 const MENUS = computed<{ key: SectionKey; label: string; unit?: string; block?: AnyBlock; fetch?: Fetcher }[]>(() => [
   { key: 'account', label: d.account.menu.personal },
-  { key: 'orders', label: d.account.menu.orders, unit: d.account.units.order, block: orders, fetch: fetchMyOrders },
+  // 「我的订单」这一格自己下面还挂两本（订单 / 票种），捞哪一本由 ORDER_TABS 说，这里不给 block/fetch
+  { key: 'orders', label: d.account.menu.orders },
   { key: 'messages', label: d.account.menu.messages, unit: d.account.units.message, block: messages, fetch: fetchMessages },
   { key: 'addresses', label: d.account.menu.addresses, unit: d.account.units.address, block: addresses, fetch: fetchMyAddresses },
-  { key: 'favorites', label: d.account.menu.favorites, unit: d.account.units.favorite, block: favorites, fetch: fetchMyFavorites },
+  { key: 'favorites', label: d.account.menu.favorites, unit: d.account.units.favorite, block: favorites, fetch: fetchFavorites },
   { key: 'browses', label: d.account.menu.browses, unit: d.account.units.browse, block: browses, fetch: fetchMyBrowses },
   // 广场消息原来是「个人信息」下面最后一格 tab：它能改能删、头上还挂三个筛选项，挤在 tab 里不如单开一档
   { key: 'plaza', label: d.account.menu.plaza, unit: d.account.units.plaza, block: plaza, fetch: fetchPlazaMine },
@@ -504,14 +573,60 @@ const INFO_TABS = computed<{ key: InfoTabKey; label: string; unit?: string; bloc
 
 const active = ref<SectionKey>('account');
 const infoTab = ref<InfoTabKey>('base');
+/** 「我的订单」那一块下面停在哪一本（下的单 / 发到手上的票），和上面那排 tab 各记各的 */
+const orderTab = ref<OrderTabKey>('order');
 /** 这次是往后挪一格还是往前挪（决定右边那卡从哪边移进来）；sliding 只在那段过渡里挂，见 global.css 最后那一条 */
 const slideName = ref('tab-next');
 const sliding = ref(false);
+/**
+ * 「我的订单」下面那两本：一本是买货下的单，一本是发到手上、能进园的主题公园票。
+ * 形状和上面那排 tab 一样（点开谁拉谁、条数报在右上角），所以 panel / 右上角那句 /「再看 N 条」
+ * 都只认这一格里现在停着的那一本，不认菜单本身。
+ * 票那一本的称呼走字典（user_ticket_status / ticket_type / ticket_time_slot），不在这儿抄一份。
+ */
+const ORDER_TABS = computed<{ key: OrderTabKey; label: string; unit?: string; block?: AnyBlock; fetch?: Fetcher }[]>(() => [
+  { key: 'order', label: d.account.menu.orders, unit: d.account.units.order, block: orders, fetch: fetchMyOrders },
+  { key: 'ticket', label: d.account.menu.tickets, unit: d.account.units.ticket, block: tickets, fetch: fetchMyTickets },
+]);
+
+/**
+ * 这一格头上要不要画那排 tab、画哪几本：现在只有「个人信息」和「我的订单」两条挂了 tab，
+ * 其余四条回空数组 ⇒ 那排位置整个不出现，下面也照旧看菜单本身。
+ */
+const subTabs = computed(() => (active.value === 'account' ? INFO_TABS.value : active.value === 'orders' ? ORDER_TABS.value : []));
+/** 当前停在哪一本（没有 tab 的那些格回基础信息那一档，行为和加这两个 tab 之前一样） */
+const subTab = computed(() => (active.value === 'account' ? infoTab.value : active.value === 'orders' ? orderTab.value : infoTab.value));
+
 const current = computed(() => MENUS.value.find((item) => item.key === active.value)!);
-/** 现在画的是哪一格：菜单第一格看 tab，其余四格看菜单本身 —— 右上角那句、红字、「再看 N 条」都只认它 */
-const panel = computed(() =>
-  active.value === 'account' ? INFO_TABS.value.find((item) => item.key === infoTab.value)! : current.value,
-);
+/** 现在画的是哪一格：挂 tab 的那两条菜单看自己那一本，其余看菜单本身 —— 右上角那句、红字、「再看 N 条」都只认它 */
+const panel = computed(() => {
+  if (active.value === 'account') return INFO_TABS.value.find((item) => item.key === infoTab.value)!;
+  if (active.value === 'orders') return ORDER_TABS.value.find((item) => item.key === orderTab.value)!;
+  return current.value;
+});
+
+/**
+ * 菜单选中项后面那块蓝底交给「水珠」：切档时它先被拉成「旧那一格 → 新那一格」的整条，再收到目标（形状在 global.css 的 .drop-pill--menu）。
+ * 这一列在 lg 以下是横着滚的一排、以上是竖着排，所以轴不写死 —— droplet 现量轨道的 flex-direction，两边都认。
+ * 位置得等 DOM 铺好才量得到：首屏一次 place()，断点/宽度一变就重新贴一次（只 place 不拉伸，改屏幕尺寸不该看着像切了一次档）。
+ */
+const menuTrack = ref<HTMLElement | null>(null);
+const menuIndex = computed(() => {
+  const at = MENUS.value.findIndex(item => item.key === active.value);
+  return at < 0 ? 0 : at;
+});
+const { style: menuPill, place: placeMenu } = useDroplet(menuIndex, menuTrack);
+onMounted(() => {
+  placeMenu();
+  const ro = new ResizeObserver(() => placeMenu());
+  if (menuTrack.value)
+    ro.observe(menuTrack.value);
+  window.addEventListener('resize', placeMenu);
+  onUnmounted(() => {
+    ro.disconnect();
+    window.removeEventListener('resize', placeMenu);
+  });
+});
 
 /** 那一块右上角那句：有列表的那几格报条数，基础信息那一格没有 */
 const countText = computed(() =>
@@ -810,7 +925,7 @@ function removePlaza(row: PlazaMessage) {
 }
 
 /**
- * 收藏行能不能点：按 target_type 分叉到各自那一页（商品 / 门店 / 品牌三档前台都有详情页了），
+ * 收藏行能不能点：按 target_type 分叉到各自那一页（商品 / 门店 / 品牌 / 公园四档前台都有详情页了），
  * targetId 为空（对象已被删）也不给链接。
  */
 function favoriteUrl(row: FavoriteRow): string {
@@ -818,6 +933,7 @@ function favoriteUrl(row: FavoriteRow): string {
   if (row.targetType === 1) return href(`/product/${row.targetId}`);
   if (row.targetType === 2) return href(`/store/${row.targetId}`);
   if (row.targetType === 3) return href(`/brand/${row.targetId}`);
+  if (row.targetType === 4) return href(`/trendy/park/${row.targetId}`);
   return '';
 }
 
@@ -1041,12 +1157,15 @@ async function onWalletChanged() {
 }
 
 /**
- * 把「哪一格」摊成一条序列，好判这次是往后还是往前：个人信息下面那三个 tab 排在最前，其余四条菜单接着往后。
+ * 把「哪一格」摊成一条序列，好判这次是往后还是往前：个人信息下面那五本排在最前，其余菜单接着往后。
+ * 「我的订单」自己下面还挂两本 ⇒ 票那一本在订单那一本后面一档，方向才判得对（不然从订单切到票会往反方向移）。
  * 只有左边菜单和上面那排 tab 各自换档时用得上（切这两样才会换右边那一卡的内容）。
  */
-function viewRank(section: SectionKey, tab: InfoTabKey) {
+function viewRank(section: SectionKey, tab: string) {
   if (section === 'account') return INFO_TABS.value.findIndex((item) => item.key === tab);
-  return INFO_TABS.value.length - 1 + MENUS.value.findIndex((item) => item.key === section);
+  const base = INFO_TABS.value.length - 1 + MENUS.value.findIndex((item) => item.key === section);
+  if (section === 'orders') return base + (tab === 'ticket' ? 1 : 0);
+  return base;
 }
 
 /** 换档前先记下方向，<Transition> 才拿得到（key 一改旧的就要开始移了） */
@@ -1068,13 +1187,32 @@ function pickInfo(key: InfoTabKey) {
   if (item.block && item.block.page === 0 && !item.block.loading) void load(item.block, item.fetch!);
 }
 
+/** 「我的订单」下面那两本的换档：形状和上面那排 tab 一样（点开谁拉谁，另一本等切过去） */
+function pickOrderTab(key: OrderTabKey) {
+  if (key !== orderTab.value) aimSlide(viewRank(active.value, subTab.value), viewRank(active.value, key));
+  orderTab.value = key;
+  const item = ORDER_TABS.value.find((tab) => tab.key === key)!;
+  if (item.block && item.block.page === 0 && !item.block.loading) void load(item.block, item.fetch!);
+}
+
+/** 那排 tab 上点下来：现在挂 tab 的两条菜单各交给自己那本，其余（没那排）不走这一路 */
+function pickSubTab(key: string) {
+  if (active.value === 'account') pickInfo(key as InfoTabKey);
+  else if (active.value === 'orders') pickOrderTab(key as OrderTabKey);
+}
+
 /** 菜单切过去才拉那一块（没点开的一概不发请求）；某一格挂了只红它自己那块，切走再切回来会重试 */
 function pick(key: SectionKey) {
-  if (key !== active.value) aimSlide(viewRank(active.value, infoTab.value), viewRank(key, infoTab.value));
+  if (key !== active.value) aimSlide(viewRank(active.value, subTab.value), viewRank(key, subTab.value));
   active.value = key;
   if (key === 'account') {
     // 停在哪个 tab 就拉哪一格：菜单上切走再切回来不该把三个 tab 都捞一遍
     pickInfo(infoTab.value);
+    return;
+  }
+  if (key === 'orders') {
+    // 同理：这一格也挂了两本，切回来只捞停着的那一本（停在票那一本时不该顺手把订单也捞一趟）
+    pickOrderTab(orderTab.value);
     return;
   }
   const item = MENUS.value.find((menu) => menu.key === key)!;
@@ -1192,6 +1330,9 @@ function initialSection(): SectionKey {
 
 onMounted(() => {
   ready.value = true;
+  // 「我的票种」那一本那三档称呼读字典（一趟批量要三本，模块级缓存、只发一次）：
+  // 没登录也要要得到 —— 字典那一条不要登录态，切到票那一本时才不用现等
+  void loadDict(['user_ticket_status', 'ticket_type', 'ticket_time_slot']);
   if (!auth.isLoggedIn) return;
   // 只拉进来就看到的那一格（默认个人信息 → 基础信息，深链进来就是深链那格）：另两个 tab、另外四条菜单都等点开
   pick(initialSection());
@@ -1376,14 +1517,20 @@ onMounted(() => {
           class="shrink-0 lg:w-44"
           :aria-label="d.account.page.navAria"
         >
-          <ul class="flex gap-1 overflow-x-auto lg:flex-col lg:gap-0 lg:space-y-1 lg:rounded-xl lg:border lg:border-gray-200 lg:bg-white lg:p-1 dark:lg:border-gray-700 dark:lg:bg-gray-800">
-            <li v-for="menu in MENUS" :key="menu.key" class="shrink-0">
+          <!-- 间距一律走 gap-1（原来竖排那一档是 lg:gap-0 + lg:space-y-1 写两遍）：水珠那颗也在这个 ul 里，
+               space-y 那种「除第一颗以外」会因为它把整列往下错一格 -->
+          <ul
+            ref="menuTrack"
+            class="relative flex gap-1 overflow-x-auto lg:flex-col lg:rounded-xl lg:border lg:border-gray-200 lg:bg-white lg:p-1 dark:lg:border-gray-700 dark:lg:bg-gray-800"
+          >
+            <li class="drop-pill drop-pill--menu" :style="menuPill" aria-hidden="true"><span class="drop-pill__face" /></li>
+            <li v-for="menu in MENUS" :key="menu.key" class="drop-item shrink-0">
               <button
                 type="button"
                 class="w-full whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm transition-colors"
                 :class="
                   active === menu.key
-                    ? 'bg-blue-50 font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+                    ? 'font-medium text-blue-700 dark:text-blue-300'
                     : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
                 "
                 :aria-current="active === menu.key ? 'page' : undefined"
@@ -1415,28 +1562,30 @@ onMounted(() => {
               <h2 class="font-medium">{{ current.label }}</h2>
               <span v-if="countText" class="text-sm text-gray-500 dark:text-gray-400">{{ countText }}</span>
             </div>
-            <!-- 个人信息那一块的五个 tab：底下这几格都在同一个账号上，只是看的角度不同（资料 / 券 / 徽章 / 分 / 钱） -->
-            <div v-if="isInfo" class="mb-4 flex gap-1 border-b border-gray-200 dark:border-gray-700">
+            <!-- 挂 tab 的那两格头上这一排：「个人信息」下面是 资料 / 券 / 徽章 / 分 / 钱 五本，
+                 「我的订单」下面是 订单 / 票种 两本；其余四条菜单 subTabs 是空数组 ⇒ 这一排整个不出现，
+                 卡和标题都留在原地，只有下面那一块换（同加这两个 tab 之前的表现） -->
+            <div v-if="subTabs.length" class="mb-4 flex gap-1 border-b border-gray-200 dark:border-gray-700">
               <button
-                v-for="tab in INFO_TABS"
+                v-for="tab in subTabs"
                 :key="tab.key"
                 type="button"
                 class="-mb-px border-b-2 px-3 py-2 text-sm transition-colors"
                 :class="
-                  infoTab === tab.key
+                  subTab === tab.key
                     ? 'border-blue-600 font-medium text-blue-700 dark:border-blue-400 dark:text-blue-300'
                     : 'border-transparent text-gray-600 hover:border-gray-300 hover:text-gray-800 dark:text-gray-300 dark:hover:border-gray-600 dark:hover:text-gray-100'
                 "
-                :aria-current="infoTab === tab.key ? 'page' : undefined"
-                @click="pickInfo(tab.key)"
+                :aria-current="subTab === tab.key ? 'page' : undefined"
+                @click="pickSubTab(tab.key)"
               >
                 {{ tab.label }}
               </button>
             </div>
-            <!-- 切上面那排 tab 只换下面这一块：卡的边框、标题、那排 tab 都留在原地，这一块跟着 infoTab 换 key ⇒ 左右移进移出。
-                 另外四条菜单没有 tab（infoTab 一直是进来的那一档）⇒ 这一路不会自己动起来，切它们动的是整张卡。 -->
+            <!-- 切上面那排 tab 只换下面这一块：卡的边框、标题、那排 tab 都留在原地，这一块跟着当前那一本换 key ⇒ 左右移进移出。
+                 没挂 tab 的那几条菜单 subTab 一直是进来的那一档 ⇒ 这一路不会自己动起来，切它们动的是整张卡。 -->
             <Transition :name="slideName" mode="out-in" @before-leave="sliding = true" @after-enter="sliding = false">
-              <div :key="infoTab">
+              <div :key="subTab">
                 <!-- 基础信息那一格的 toolbar：签到、改资料、改密码都是这个账号自己的动作，挂在它下面那一排（同收货地址那颗「添加地址」的位置） -->
                 <div v-if="isInfo && infoTab === 'base'" class="mb-3">
                   <div class="flex justify-end gap-2">
@@ -1841,8 +1990,8 @@ onMounted(() => {
                   </template>
                 </template>
 
-                <!-- 我的订单：一行一张单，多一颗「详情」看名下全部商品行 -->
-                <ul v-else-if="active === 'orders'" class="divide-y divide-gray-100 dark:divide-gray-700">
+                <!-- 我的订单那一本：一行一张单，多一颗「详情」看名下全部商品行 -->
+                <ul v-else-if="active === 'orders' && orderTab === 'order'" class="divide-y divide-gray-100 dark:divide-gray-700">
                   <li v-for="row in orders.rows" :key="row.id" class="py-3">
                     <div class="flex items-baseline justify-between gap-3 text-sm">
                       <span class="truncate font-mono text-gray-500 dark:text-gray-400">{{ row.orderNo }}</span>
@@ -1877,6 +2026,63 @@ onMounted(() => {
                   </li>
                   <li v-if="!orders.rows.length && !orders.loading" class="py-3 text-sm text-gray-500 dark:text-gray-400">
                     {{ d.account.order.empty }}
+                  </li>
+                </ul>
+
+                <!--
+                  我的票种那一本：一行一张发到手上、能进园的主题公园票。
+                  票名 / 类型 / 票价读的是出票那一刻定格的快照（后台后来改了票种也不串到已经发出去的票上），
+                  园区名是读的时候现联的（园区改了名跟着新名走）；三档称呼（状态 / 类型 / 时段）全走字典。
+                  左边那张就是票面二维码，点开是一整屏 —— 内容是本行那串票码，对着闸机扫的是它；
+                  出票时那趟出图失败的行留一句「票面图没生成」，那一串码照样能手输核销，所以不报红也不拦。
+                -->
+                <ul v-else-if="active === 'orders' && orderTab === 'ticket'" class="divide-y divide-gray-100 dark:divide-gray-700">
+                  <li v-for="row in tickets.rows" :key="row.id" class="flex items-start gap-3 py-3">
+                    <button
+                      v-if="row.qrImg"
+                      type="button"
+                      class="shrink-0 rounded border border-gray-200 p-1 hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700"
+                      :aria-label="d.account.ticket.viewQr"
+                      @click="openTicketQr(row)"
+                    >
+                      <img :src="row.qrImg" :alt="row.ticketCode" class="h-14 w-14 object-contain" />
+                    </button>
+                    <span
+                      v-else
+                      class="flex h-16 w-16 shrink-0 items-center justify-center rounded border border-dashed border-gray-200 px-1 text-center text-xs leading-tight text-gray-400 dark:border-gray-600"
+                    >
+                      {{ d.account.ticket.noQr }}
+                    </span>
+                    <div class="min-w-0 flex-1">
+                      <div class="flex items-baseline justify-between gap-3 text-sm">
+                        <span class="min-w-0 truncate font-medium">
+                          {{ ticketTitle(row) }}
+                          <span v-if="ticketTypeLabel(row)" class="text-xs text-gray-500 dark:text-gray-400">· {{ ticketTypeLabel(row) }}</span>
+                        </span>
+                        <span
+                          class="shrink-0 rounded px-2 py-0.5 text-xs"
+                          :class="
+                            row.status === 0
+                              ? 'bg-green-50 text-green-700 dark:bg-green-900/40 dark:text-green-300'
+                              : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                          "
+                        >
+                          {{ ticketStatusLabel(row) }}
+                        </span>
+                      </div>
+                      <div class="mt-1 flex items-baseline justify-between gap-3">
+                        <span class="truncate text-sm text-gray-500 dark:text-gray-400">{{ ticketVisitText(row) }}</span>
+                        <span class="shrink-0 text-sm text-red-500 dark:text-red-400">{{ moneyOf(row.price) }}</span>
+                      </div>
+                      <p class="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">
+                        <span class="font-mono">{{ row.ticketCode }}</span>
+                        ·
+                        {{ row.holderName ? fill(d.account.ticket.holder, { name: row.holderName }) : d.account.ticket.noHolder }}
+                      </p>
+                    </div>
+                  </li>
+                  <li v-if="!tickets.rows.length && !tickets.loading" class="py-3 text-sm text-gray-500 dark:text-gray-400">
+                    {{ d.account.ticket.empty }}
                   </li>
                 </ul>
 
@@ -1916,8 +2122,27 @@ onMounted(() => {
                   </li>
                 </ul>
 
-                <!-- 我的收藏：只有「删」这一颗（前台没有「收藏」那颗按钮，收藏行都由后台录），逐行删 -->
-                <ul v-else-if="active === 'favorites'" class="divide-y divide-gray-100 dark:divide-gray-700">
+                <!-- 我的收藏：顶上那排按类型筛（全部 / 商品 / 门店 / 品牌 / 公园，服务端按 target_type 收窄），下面逐行删 -->
+                <template v-else-if="active === 'favorites'">
+                  <div class="mb-3 flex flex-wrap items-center gap-2">
+                    <button
+                      v-for="filter in FAVORITE_FILTERS"
+                      :key="filter.value"
+                      type="button"
+                      :disabled="favorites.loading"
+                      class="rounded-full border px-3 py-1 text-sm transition-colors disabled:opacity-60"
+                      :class="
+                        favoriteType === filter.value
+                          ? 'border-blue-600 bg-blue-50 font-medium text-blue-700 dark:border-blue-400 dark:bg-blue-900/40 dark:text-blue-300'
+                          : 'border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700'
+                      "
+                      @click="favoriteType = filter.value, refilterFavorites()"
+                    >
+                      {{ filter.label }}
+                    </button>
+                  </div>
+
+                  <ul class="divide-y divide-gray-100 dark:divide-gray-700">
                   <!-- 不能用 justify-between：那样空白会平均分到「名称↔时间」和「时间↔删除」两段，
                        名字长的行时间被挤得靠左、名字短的行靠右，上下几行看就是一条斜线。
                        改成名称 flex-1 把空白全吃掉，时间和「删除」两格 shrink-0 钉死在右边，时间这一列就齐了。
@@ -1945,9 +2170,10 @@ onMounted(() => {
                     </button>
                   </li>
                   <li v-if="!favorites.rows.length && !favorites.loading" class="py-3 text-sm text-gray-500 dark:text-gray-400">
-                    {{ d.account.favorite.empty }}
+                    {{ favoriteType ? d.account.favorite.emptyFiltered : d.account.favorite.empty }}
                   </li>
-                </ul>
+                  </ul>
+                </template>
 
                 <!-- 消息：一行一条，最左边那颗勾给批量操作用、未读的往右一格挂红点；点标题那段标已读并按 businessType 跳过去，右边留「删除」。
                      正文是服务端写好的那句中文（属于内容不属于界面，不翻），这里只做排版 -->

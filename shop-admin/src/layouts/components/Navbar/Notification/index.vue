@@ -96,7 +96,7 @@ import {
   getMyNotificationUnreadApi,
   readMyNotificationApi,
   readAllMyNotificationApi,
-  deleteMyNotificationApi
+  deleteAllMyNotificationApi
 } from '@/api/message/notification'
 
 const settingsStore = useSettingsStore()
@@ -175,9 +175,11 @@ const markAllRead = async () => {
 }
 
 /**
- * 清空全部：把这一页名下的逐条删掉。
+ * 清空全部：一趟 deleteAll，服务端一条 SQL 把名下可见的那些全铺成已删。
  * 「删」在这里只是对自己隐藏（receiver 那一行 is_deleted=1），消息本身还在、别人照样看得见，
- * 而且是一条条撤不掉回来 —— 所以点下去之前问一句。
+ * 而且撤不回来 —— 所以点下去之前问一句。
+ * 这里原本是按 id 循环调 delete：库在公网一趟一个来回，名下几十条就是几十趟，
+ * 而且循环只清得到面板捞到的那 50 条 —— 写着「清空全部」却留着一堆没删干净。
  */
 const clearAll = async () => {
   if (!notifications.value.length) {
@@ -192,9 +194,7 @@ const clearAll = async () => {
   } catch {
     return
   }
-  for (const id of notifications.value.map(n => n.id)) {
-    await deleteMyNotificationApi(id)
-  }
+  await deleteAllMyNotificationApi()
   notifications.value = []
   unreadCount.value = 0
   ElMessage.success('已清空')

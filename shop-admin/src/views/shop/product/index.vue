@@ -154,6 +154,15 @@
                 </el-select>
               </el-form-item>
             </el-col>
+            <el-col :span="12">
+              <el-form-item label="潮玩系列" prop="sectionId">
+                <!-- 口径同上面那格品牌：只有启用中的潮玩系列能被选上，不绑就留空（NULL=这件商品不是潮玩） -->
+                <el-select v-model="form.sectionId" placeholder="不是潮玩商品" clearable filterable style="width: 100%">
+                  <el-option v-for="item in trendySelectOptions" :key="item.id" :label="item.trendyName"
+                    :value="item.id" />
+                </el-select>
+              </el-form-item>
+            </el-col>
             <!-- 打开这一档就必须选所属门店（文创商品是这家店自己的周边，服务层同样拦一道） -->
             <el-col :span="12">
               <el-form-item label="文创商品" prop="culturalEnable">
@@ -281,6 +290,7 @@ import {
 import { getCategoryTreeApi } from '@/api/shop/category'
 import { optionsShopSpecApi, addShopSpecApi } from '@/api/shop/spec'
 import { optionsShopBrandApi } from '@/api/shop/brand'
+import { optionsShopTrendyApi } from '@/api/trendy/trendy'
 import { optionsShopStoreApi, myShopStoresApi } from '@/api/store/store'
 import ButtonGroup from '@/components/ButtonGroup/index.vue'
 import ShopCategorySelect from '@/components/ShopCategorySelect/index.vue'
@@ -350,6 +360,16 @@ const brandSelectOptions = computed(() => {
 const selectedBrand = computed(() => {
   if (!form.brandId) return undefined
   return brandSelectOptions.value.find((item) => String(item.id) === String(form.brandId))
+})
+
+/** 潮玩系列下拉选项（只取启用中的，口径同上面那格品牌） */
+const trendyOptions = ref<any[]>([])
+const trendySelectOptions = computed(() => {
+  const id = form.sectionId
+  if (!id) return trendyOptions.value
+  if (trendyOptions.value.some((item) => String(item.id) === String(id))) return trendyOptions.value
+  // 商品详情接口不联表带回潮玩名，所以老商品绑了一个已停用的潮玩时只能拿 id 顶着显示
+  return [{ id, trendyName: `已停用潮玩 #${id}` }, ...trendyOptions.value]
 })
 
 /** 门店下拉选项：普通账号取全部启用中的门店 */
@@ -425,6 +445,15 @@ const getBrandOptions = async (categoryId?: number) => {
   try {
     const { data } = await optionsShopBrandApi(categoryId)
     brandOptions.value = data || []
+  } catch (error) {
+  }
+}
+
+/** 加载潮玩系列下拉：不随分类变化，进页面取一次就够（口径同门店那一格） */
+const getTrendyOptions = async () => {
+  try {
+    const { data } = await optionsShopTrendyApi()
+    trendyOptions.value = data || []
   } catch (error) {
   }
 }
@@ -530,6 +559,7 @@ const reset = () => {
     productDesc: undefined,
     categoryId: undefined,
     brandId: undefined,
+    sectionId: undefined,
     storeId: undefined,
     storeName: undefined,
     mainImage: undefined,
@@ -684,6 +714,7 @@ onMounted(() => {
   getList()
   getCategoryOptions()
   getBrandOptions()
+  getTrendyOptions()
   getStoreOptions()
   getMyStores()
 })

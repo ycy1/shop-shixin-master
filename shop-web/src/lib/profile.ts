@@ -74,7 +74,40 @@ export interface BrowseRow {
   browseTime: string | null;
 }
 
+/**
+ * 个人中心「我的票种」那一本（shop_trendy_park_user_ticket）：一行一张发到手上、能进园的主题公园票。
+ *
+ * ticketName / ticketType / price / parkId 四格是出票那一刻从票种行上定格的<b>快照</b>，
+ * 后台后来改了票种的名字和价格不会串到已经发到手上的票上（口径同上面那张券）；
+ * parkName 是读的时候现联园区表带出来的（它只说"去哪一家"，园区改了名跟着新名走才对得上）。
+ * qrImg 是票面二维码那一张图的地址，内容是这一行的票码 —— 点开就是给人对着闸机扫的，
+ * 出票时那一趟出图失败就是空（票照样能按票码核销）。
+ */
+export interface TicketRow {
+  id: number;
+  ticketCode: string;
+  ticketName: string | null;
+  /** 1日票 2年卡 3套票 4快速通行 5限定款购买资格（字典 ticket_type） */
+  ticketType: number | null;
+  price: number | null;
+  parkId: number | null;
+  parkName: string | null;
+  /** 游玩日期，yyyy-MM-dd */
+  visitDate: string | null;
+  /** 0全天 1上午 2下午 3夜场（字典 ticket_time_slot；一张票约的是其中一个档） */
+  timeSlot: number | null;
+  holderName: string | null;
+  holderPhone: string | null;
+  /** 0未使用 1已核销 2已过期 3已退款（字典 user_ticket_status） */
+  status: number | null;
+  qrImg: string | null;
+  usedTime: string | null;
+  refundTime: string | null;
+  createTime: string | null;
+}
+
 export type OrderPage = Paged<OrderRow>;
+export type TicketPage = Paged<TicketRow>;
 export type AddressPage = Paged<AddressRow>;
 export type FavoritePage = Paged<FavoriteRow>;
 export type BrowsePage = Paged<BrowseRow>;
@@ -84,12 +117,28 @@ export function fetchMyOrders(pageNum = 1, pageSize = 5): Promise<OrderPage> {
   return apiGet<OrderPage>('/api/web/shop/profile/order/list', { pageNum, pageSize });
 }
 
+/**
+ * 我的票种（挂在「我的订单」那一格下面的第二个 tab）：一行一张票，status 可选筛（0未使用 1已核销 2已过期 3已退款）。
+ * userId 同样前端不传：传了也会被服务层覆盖成登录 id（口径同上面那本券、那本徽章）。
+ */
+export function fetchMyTickets(pageNum = 1, pageSize = 5, status?: number): Promise<TicketPage> {
+  return apiGet<TicketPage>('/api/web/shop/profile/park/ticket/list', { pageNum, pageSize, status });
+}
+
 export function fetchMyAddresses(pageNum = 1, pageSize = 5): Promise<AddressPage> {
   return apiGet<AddressPage>('/api/web/shop/profile/address/list', { pageNum, pageSize });
 }
 
-export function fetchMyFavorites(pageNum = 1, pageSize = 5): Promise<FavoritePage> {
-  return apiGet<FavoritePage>('/api/web/shop/profile/favorite/list', { pageNum, pageSize });
+/**
+ * 我的收藏：targetType 不给就是四档一起（服务端「不传 = 不限」那一支）。
+ * 0 在这里当「不限」用，由调用方剥掉，别把 0 传上去 —— 0 在库里不是一个合法档位。
+ */
+export function fetchMyFavorites(pageNum = 1, pageSize = 5, targetType?: number): Promise<FavoritePage> {
+  return apiGet<FavoritePage>('/api/web/shop/profile/favorite/list', {
+    pageNum,
+    pageSize,
+    ...(targetType ? { targetType } : {}),
+  });
 }
 
 export function fetchMyBrowses(pageNum = 1, pageSize = 5): Promise<BrowsePage> {
@@ -194,6 +243,11 @@ export interface OrderItemRow {
   returnedQuantity: number | null;
   shipStatus: number | null;
   storeName: string | null;
+  /** 来源：1 盲盒商品（一整盒拆出来的那几行）—— 页面按下面那个 id 把同一盒收拢成一张卡 */
+  sourceType: number | null;
+  sourceId: number | null;
+  /** 来源名称：那一行来自哪台盒（后端按 source_id 现联带出）；普通行、盒已删除是 null */
+  sourceName: string | null;
 }
 
 /** 详情弹窗上半那块：列表那一行的格之外多出来的几格都在这（同一份 orderColumns，只是多带明细） */

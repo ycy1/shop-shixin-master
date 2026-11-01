@@ -50,6 +50,13 @@ public interface SysNotificationService extends IService<SysNotifications> {
     boolean update(SysNotifications notifications);
 
     /**
+     * 人工重试一条发送失败的通知：失败次数归零，按库里那一行重新投递一次（走同一条 MQ 链路）
+     *
+     * @param id 消息id
+     */
+    void retry(Long id);
+
+    /**
      * 分页查询某消息的阅读记录（关联表 sys_notifications_receiver + 阅读人信息，可按阅读人昵称/用户名搜索）
      *
      * @param notificationId 消息id

@@ -10,6 +10,7 @@ import type {
   IShopFavoriteRow,
   IShopOrderDetail,
   IShopOrderRow,
+  IShopParkTicketRow,
   IShopPointsAccount,
   IShopPointsLogRow,
   IShopSigninRow,
@@ -106,6 +107,15 @@ export function getMyOrders(pageNum: number, pageSize: number) {
 /** 订单详情：主表 + 名下全部明细行；别人的、已删的、没这个 id 一律回「订单不存在」 */
 export function getMyOrderDetail(id: number) {
   return http.get<IShopOrderDetail>(`/api/app/shop/profile/order/${id}`)
+}
+
+/**
+ * 我的票种（「我的订单」那一页第二个 tab）：一行一张发到手上、能进园的主题公园票。
+ * status（0未使用 1已核销 2已过期 3已退款）可选筛；游玩日期区间两格传了才卡（含两端，yyyy-MM-dd）。
+ * 票名/票价那几格读的是出票时的快照，userId 前端不传（服务端覆盖成登录 id）。
+ */
+export function getMyParkTickets(pageNum: number, pageSize: number, status?: number) {
+  return http.get<IPageRes<IShopParkTicketRow>>('/api/app/shop/profile/park/ticket/list', { pageNum, pageSize, status })
 }
 
 /** 我的收藏：商品/门店/品牌共用一张表，targetType 传 1/2/3 就是只筛那一类 */

@@ -127,4 +127,14 @@ public class RedisConstants {
      * 首页那一排热搜（一整个 ZSet：成员=关键字，分值=这个关键字被搜的次数）
      */
     public static final String SEARCH_HOT_KEY = "search_hot";
+
+    /**
+     * 园区照片的标签词表（一整个 Set：成员=一个标签文本）
+     *
+     * 后台「园区照片」新建/修改表单里那颗下拉列的就是这一串 —— 不是字典、也不是当前列表里数出来的，
+     * 存这儿是因为它要的就是「一处维护、到处都能选」：照片删了词还在（词表不该跟着图一起缩），
+     * 新打的词落库时顺手进这一串，下一次新建就能选到。
+     * 这一串空掉（从没建过 / 被清库）时，服务端会从库里已在用的标签先灌一遍当起点。
+     */
+    public static final String PARK_PHOTO_TAG_KEY = "park_photo_tag";
 }

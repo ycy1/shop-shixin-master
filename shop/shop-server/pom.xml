@@ -56,5 +56,11 @@
             <version>${package.version}</version>
         </dependency>
 
+        <dependency>
+            <groupId>com.shop</groupId>
+            <artifactId>shop-mq</artifactId>
+            <version>${package.version}</version>
+        </dependency>
+
     </dependencies>
 </project>

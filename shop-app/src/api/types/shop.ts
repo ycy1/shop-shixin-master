@@ -286,6 +286,11 @@ export interface IShopOrderItemRow {
   /** 0 待发货 1 已发货 2 已退货 3 已出库 4 部分退货 */
   shipStatus: number | null
   storeName: string | null
+  /** 来源：1 盲盒商品（一整盒拆出来的那几行），页面按 sourceId 把同一盒收成一张卡；普通行是 0 */
+  sourceType: number | null
+  sourceId: number | null
+  /** 来源名称：那一行来自哪台盒（后端按 source_id 现联带出）；普通行、盒已删除是 null */
+  sourceName: string | null
 }
 
 export interface IShopOrderDetail extends IShopOrderRow {
@@ -297,6 +302,38 @@ export interface IShopOrderDetail extends IShopOrderRow {
   payTime: string | null
   remark: string | null
   items: IShopOrderItemRow[] | null
+}
+
+/**
+ * 个人中心「我的票种」那一本（shop_trendy_park_user_ticket）：一行一张发到手上、能进园的主题公园票。
+ *
+ * ticketName / ticketType / price / parkId 四格是出票那一刻从票种行上定格的<b>快照</b>，
+ * 后台后来改了票种的名字和价格不会串到已经发到手上的票上（口径同优惠券那本）；
+ * parkName 是读的时候现联园区表带出来的（它只是"去哪一家"，跟着新名字走才对得上）。
+ */
+export interface IShopParkTicketRow {
+  id: number
+  /** 票码 / 入园码：票面二维码装的就是这一串 */
+  ticketCode: string
+  ticketName: string | null
+  /** 1日票 2年卡 3套票 4快速通行 5限定款购买资格 */
+  ticketType: number | null
+  price: number | null
+  parkId: number | null
+  parkName: string | null
+  /** 游玩日期，yyyy-MM-dd */
+  visitDate: string | null
+  /** 0全天 1上午 2下午 3夜场（一张票约一个时段，候选由票种卖的那几档出） */
+  timeSlot: number | null
+  holderName: string | null
+  holderPhone: string | null
+  /** 0未使用 1已核销 2已过期 3已退款 */
+  status: number | null
+  /** 票面二维码图的地址；出票时那一趟出图失败就是空，票本身照样能用票码核销 */
+  qrImg: string | null
+  usedTime: string | null
+  refundTime: string | null
+  createTime: string | null
 }
 
 /**
@@ -447,6 +484,14 @@ export interface IShopWalletChangeForm {
   description?: string
 }
 
+/** 购物车一整盒（端盒那一趟）里的一个款式：服务端从库里那串 JSON 快照拆出来的 */
+export interface IShopCartBoxItem {
+  skuId: number | null
+  styleName: string | null
+  styleImage: string | null
+  quantity: number | null
+}
+
 /** 购物车一行 = 一个规格；id/skuId/quantity/selected 来自实体 ShopConsumerCart */
 export interface IShopCartRow {
   id: number
@@ -458,9 +503,23 @@ export interface IShopCartRow {
   specText: string | null
   mainImage: string | null
   productPrice: number | null
+  /**
+   * 消费单价：这一行按它算钱（抽中入车的那几条挂的是盲盒的单抽价，不是这款规格的原价）。
+   * 老行和后台代客加购的行是 null ⇒ 那种按 productPrice 现价算，页面统一走 utils/cart 的 payPriceOf，
+   * 和统一下单取价那一步（服务端读购物车那一格）同一个判据。
+   */
+  price: number | null
   availableStock: number | null
   /** 1 可以买 0 商品已下架（灰行、不计入选中和合计） */
   buyable: number | null
+  /** 来源：0 普通商品（自己加购） 1 盲盒商品（抽中入车，单价按盒给的价格）—— 同一规格按来源分行、各算各的价 */
+  sourceType: number | null
+  /** 来源ID：盲盒商品那行是抽中它的那台盒(shop_trendy_box.id)，两台盒抽中同一款是两行两价；普通行为 null（库里记 0） */
+  sourceId: number | null
+  /** 来源名称：盲盒行=抽中它的那台盒叫什么（后端联表带出）；普通行、那台盒已删除时是 null */
+  sourceName: string | null
+  /** 一整盒（端盒那一趟，skuId 是 0 那个哨兵）里有哪几款、各几件；其它行是空数组 */
+  boxItemList: IShopCartBoxItem[]
 }
 
 /** 加购只认 skuId + quantity；改数量/勾选认 id + 那两格（都是局部更新） */
@@ -476,6 +535,9 @@ export interface IShopOrderItemForm {
   skuId: number
   quantity: number
   usedPoints?: number
+  /** 这一行是购物车里哪一条(shop_consumer_cart.id)：从车里结算才带，「立即购买」不带。
+   *  带了就按那一行自己的单价算钱（抽中入车的是盲盒单抽价），价格还是服务端读的，不是这里报数 */
+  cartId?: number
 }
 
 export interface IShopOrderForm {
@@ -519,6 +581,9 @@ export interface IShopOrderPreview {
     usedPoints: number
     pointsAmount: number
     paidAmount: number
+    /** 来源两格：一整盒在试算里是盒内每款一行，页面按 sourceId 把同一盒收成一组（普通行是 0/0） */
+    sourceType: number | null
+    sourceId: number | null
   }[]
 }
 

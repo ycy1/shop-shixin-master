@@ -456,9 +456,12 @@ onReachBottom(() => {
     </view>
 
     <template v-else>
-      <!-- 七档 tab：形状同门店详情页那两档（红下划线在选中那一颗上）。七颗已经排不进一屏，
-           所以套一层横着滚的 scroll-view（口径同优惠券上面那两排筛选：内部 inline-flex，边距留在外面那层） -->
-      <scroll-view scroll-x class="overflow-hidden whitespace-nowrap border-b border-gray-100 bg-white">
+      <!-- 这一排 tab：形状同门店详情页那两档（红下划线在选中那一颗上）。刻意**不等分**：
+           等分要给每格一个下限，几格加起来就超出一屏，外面这个横着滚的 scroll-view 会多出一条可见的滚动条；
+           按内容宽铺，这一排正好在两三字之内铺完（实测不溢出），也就滑不动、不必滑。
+           代价是这一排没有那滴会拉长的水珠，其余各页的 tab 都有。
+           口径同优惠券上面那两排筛选：内部 inline-flex，边距留在外面那层。 -->
+      <scroll-view scroll-x class="overflow-hidden whitespace-nowrap border-b border-gray-100 bg-white" @touchstart="markSwipeZone" @touchend="markSwipeZone">
         <view class="inline-flex px-32rpx">
           <view
             v-for="one in TABS"
@@ -604,7 +607,7 @@ onReachBottom(() => {
       <view v-else-if="tab === 'coupon'" class="pb-16rpx">
         <!-- 两档筛选各占一横排：scroll-view 自带 width:100%，边距套在它们外面这一层才撑不出屏幕 -->
         <view class="mx-24rpx my-24rpx">
-          <scroll-view scroll-x class="overflow-hidden whitespace-nowrap rounded-xl bg-white">
+          <scroll-view scroll-x class="overflow-hidden whitespace-nowrap rounded-xl bg-white" @touchstart="markSwipeZone" @touchend="markSwipeZone">
             <view class="inline-flex px-24rpx py-16rpx">
               <!-- 这一格必须是 view 不能是 text：uni-app 的 uni-text 是 white-space: pre-line，
                    模板里那两下换行会被当真换行渲染，胶囊就变成两行高 -->
@@ -620,7 +623,7 @@ onReachBottom(() => {
               </view>
             </view>
           </scroll-view>
-          <scroll-view scroll-x class="mt-16rpx overflow-hidden whitespace-nowrap rounded-xl bg-white">
+          <scroll-view scroll-x class="mt-16rpx overflow-hidden whitespace-nowrap rounded-xl bg-white" @touchstart="markSwipeZone" @touchend="markSwipeZone">
             <view class="inline-flex px-24rpx py-16rpx">
               <view
                 v-for="one in TYPE_CHIPS"

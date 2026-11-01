@@ -66,6 +66,16 @@ public interface SysNotificationsMapper extends BaseMapper<SysNotifications> {
     int deleteByUser(@Param("userId") Long userId, @Param("notificationId") Long notificationId);
 
     /**
+     * 接收人清空消息：照 deleteByUser 那个形状，把当前用户可见的（且还没删的）一次性铺成 is_deleted=1。
+     *
+     * 为什么不学后台铃铛那样按 id 一条条调 deleteByUser：库在公网，一条一个来回，名下几十条就是几十趟。
+     *
+     * @param category 只清这一档（1 系统 / 2 互动），null 表示两档一起
+     * @return 受影响行数（<=0 表示名下本来就一条不留）
+     */
+    int allDelete(@Param("userId") Long userId, @Param("category") Integer category);
+
+    /**
      * 分页查询某消息的阅读记录（关联表 sys_notifications_receiver + 阅读人信息，可按阅读人昵称/用户名搜索）
      *
      * @param page           分页参数

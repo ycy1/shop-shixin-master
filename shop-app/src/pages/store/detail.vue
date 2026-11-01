@@ -2,6 +2,8 @@
 import type { IShopProduct, IShopStore } from '@/api/types/shop'
 import CommentSection from '@/components/CommentSection.vue'
 import ProductGrid from '@/components/ProductGrid.vue'
+import DropDots from '@/components/DropDots.vue'
+import DropTabs from '@/components/DropTabs.vue'
 import { COMMENT_TYPE_STORE, getCommentTotal } from '@/api/comment'
 import { getProductList } from '@/api/product'
 import { getStoreDetail } from '@/api/search'
@@ -32,6 +34,15 @@ const PRODUCT_TABS = [
 ] as const
 type ProductTabKey = (typeof PRODUCT_TABS)[number]['key']
 
+/** 「门店评价」标签上印的条数：还没回来（或捞失败）留 null，那一格整格不出现，别闪一个（0）在那里 */
+const commentCount = ref<number | null>(null)
+
+/** 递给 DropTabs 的那一排：门店商品 / 文创商品 / 门店评价（选中态还是这页原有的 tab + showComment 两格） */
+const TAB_ITEMS = computed(() => [
+  ...PRODUCT_TABS.map(one => ({ key: one.key as string, label: one.label })),
+  { key: 'comment', label: '门店评价', count: commentCount.value },
+])
+
 const storeId = ref(0)
 const store = ref<IShopStore | null>(null)
 const loadError = ref('')
@@ -39,8 +50,6 @@ const loadError = ref('')
 const tab = ref<ProductTabKey>('store')
 /** 底下那一排第三档「门店评价」：评论不是一种 cultural_enable，所以单开一个开关，切过去也不清商品的列表 */
 const showComment = ref(false)
-/** 「门店评价」标签上印的条数：还没回来（或捞失败）留 null，那一格整格不出现，别闪一个（0）在那里 */
-const commentCount = ref<number | null>(null)
 const list = ref<IShopProduct[]>([])
 const total = ref(0)
 const pageNum = ref(0)
@@ -48,6 +57,12 @@ const productsError = ref('')
 let loading = false
 
 const shots = computed(() => parseImageUrls(store.value?.coverImages ?? null))
+
+/** 轮播当前那一页（swiper 不往外露这个数，@change 现记），那排水滴 dot 跟着它走 */
+const shotIdx = ref(0)
+function onShotChange(e: { detail: { current: number } }) {
+  shotIdx.value = e.detail.current
+}
 
 const storeTypeText = computed(() => {
   const type = store.value?.storeType
@@ -223,49 +238,41 @@ onReachBottom(() => {
       </view>
 
       <!-- 招牌图这一横排套一层壳才敢加边距：swiper 自己带 width:100%，在它身上直接写 mx-24rpx 会撑出屏幕外 -->
-      <view v-if="shots.length" class="mx-24rpx mb-24rpx h-[360rpx] overflow-hidden rounded-xl">
+      <view v-if="shots.length" class="relative mx-24rpx mb-24rpx h-[360rpx] overflow-hidden rounded-xl">
         <swiper
           class="h-full w-full"
           circular
           autoplay
           :interval="4000"
-          indicator-dots
-          indicator-color="rgba(255, 255, 255, 0.45)"
-          indicator-active-color="#ffffff"
+          @touchstart="markSwipeZone"
+          @touchend="markSwipeZone"
+          @change="onShotChange"
         >
           <swiper-item v-for="url in shots" :key="url" class="fx-press" hover-class="fx-tap" @click="previewShots">
             <image :src="url" mode="aspectFill" class="h-full w-full" />
           </swiper-item>
         </swiper>
+        <!-- dot 换成自绘的水滴胶囊（swiper 自带那层画在组件内部，动效插不进去）；铺在照片上，用亮色那一档 -->
+        <view class="absolute bottom-16rpx left-0 right-0 z-10 flex justify-center">
+          <DropDots :count="shots.length" :current="shotIdx" tone="light" />
+        </view>
       </view>
     </template>
 
-    <view v-if="store" class="mt-24rpx flex items-center gap-48rpx border-b border-gray-100 bg-white px-32rpx">
-      <view
-        v-for="one in PRODUCT_TABS"
-        :key="one.key"
-        hover-class="fx-tap"
-        class="fx-press border-b-2 py-24rpx text-[28rpx] -mb-px"
-        :class="!showComment && tab === one.key ? 'border-[#d14328] text-[#d14328] font-medium' : 'border-transparent text-gray-500'"
-        @click="pickTab(one.key)"
-      >
-        {{ one.label }}
-      </view>
-      <view
-        hover-class="fx-tap"
-        class="fx-press border-b-2 py-24rpx text-[28rpx] -mb-px"
-        :class="showComment ? 'border-[#d14328] text-[#d14328] font-medium' : 'border-transparent text-gray-500'"
-        @click="pickComment"
-      >
-        门店评价<text v-if="commentCount !== null" class="ml-8rpx text-[24rpx] text-gray-400">（{{ commentCount }}）</text>
-      </view>
+    <!-- tab 条：等分那一排 + 水滴胶囊（红下划线改由胶囊担当，切换时拉长再收住） -->
+    <view v-if="store" class="mt-24rpx bg-white px-32rpx">
+      <DropTabs
+        :model-value="showComment ? 'comment' : tab"
+        :items="TAB_ITEMS"
+        @update:model-value="key => key === 'comment' ? pickComment() : pickTab(key as ProductTabKey)"
+      />
     </view>
 
     <view v-if="!showComment && productsError" class="mx-24rpx mb-24rpx rounded-lg bg-red-50 px-32rpx py-24rpx text-[26rpx] text-[#d14328]">
       {{ productsError }}
     </view>
 
-    <ProductGrid v-else-if="store && !showComment" :products="list" />
+    <ProductGrid v-else-if="store && !showComment" class="fx-fade" :products="list" />
 
     <view v-if="store && !showComment && !list.length && !productsError" class="py-128rpx text-center text-[26rpx] text-gray-400">
       {{ emptyText }}

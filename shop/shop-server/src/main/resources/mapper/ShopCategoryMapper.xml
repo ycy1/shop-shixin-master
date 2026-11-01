@@ -22,13 +22,13 @@
             i.icon_value
         FROM shop_category c
         <!--
-            icon 列是 varchar 但存的是 shop_icon.id：直接写 i.id = c.icon 会触发
-            字符串隐式转换，走不上 shop_icon 主键索引，所以显式 CAST。
+            icon 列是 varchar 但存的是 sys_icon.id：直接写 i.id = c.icon 会触发
+            字符串隐式转换，走不上 sys_icon 主键索引，所以显式 CAST。
             历史遗留的非数字值（如 EP 图标名 Goods）CAST 成 0，联不到记录，
             icon_type / icon_value 为空，前端 ShopIcon 会显示占位符。
             is_deleted 的过滤放在 ON 里，避免把图标被删的类目整行过滤掉。
         -->
-        LEFT JOIN shop_icon i ON i.id = CAST(c.icon AS UNSIGNED) AND i.is_deleted = 0
+        LEFT JOIN sys_icon i ON i.id = CAST(c.icon AS UNSIGNED) AND i.is_deleted = 0
         <!-- 自定义 SQL 不走全局逻辑删除，is_deleted = 0 必须手写 -->
         <where>
             c.is_deleted = 0

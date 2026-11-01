@@ -2,7 +2,16 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useAuthStore } from '@/stores/auth';
 import ModalOverlay from '@/components/ModalOverlay.vue';
-import { fetchMyNotifications, fetchUnreadSummary, messageTarget, readNotification, type NotificationRow } from '@/lib/notification';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
+import {
+  deleteAllNotifications,
+  fetchMyNotifications,
+  fetchUnreadSummary,
+  messageTarget,
+  readAllNotifications,
+  readNotification,
+  type NotificationRow,
+} from '@/lib/notification';
 import { useI18n } from '@/i18n';
 
 const auth = useAuthStore();
@@ -175,6 +184,61 @@ function openMessage(row: NotificationRow) {
 }
 
 /**
+ * 面板顶上那两颗。全部已读走 readAll、全部清空走 deleteAll，两格都是服务端一趟刷完（不按 id 循环：库在公网）。
+ * 「清空」只对自己隐藏（软删名下那几行 receiver），别人照旧看得见，而且这边没有反悔的入口 ⇒ 点之前问一句。
+ * 两颗共用一格 busy：同一片数据上的两个动作，不能让它俩互踩。
+ */
+const bellBusy = ref('');
+const confirmClear = ref(false);
+/**
+ * 面板里那一行报错。列表本身捞失败是静默的（快捷入口，报错会把人挡在消息中心外面），
+ * 但这两颗是「点下去就该有事发生」的动作 —— 没成又不说，人只会以为按钮坏了，所以这一行只服务它们。
+ */
+const bellError = ref('');
+
+async function markAllRead() {
+  if (!unread.value || bellBusy.value) return;
+  bellBusy.value = 'read';
+  bellError.value = '';
+  try {
+    await readAllNotifications();
+    await loadBell();
+  } catch (err) {
+    bellError.value = message(err);
+  } finally {
+    bellBusy.value = '';
+  }
+}
+
+/** 先收面板再开确认框：框挂在岛根上，面板留在底下会被遮得半露，看着像两层没对齐 */
+function askClearAll() {
+  if (!bellRows.value.length || bellBusy.value) return;
+  bellOpen.value = false;
+  bellError.value = '';
+  confirmClear.value = true;
+}
+
+async function clearAll() {
+  confirmClear.value = false;
+  if (bellBusy.value) return;
+  bellBusy.value = 'clear';
+  try {
+    await deleteAllNotifications();
+    // 服务端已经清完，本地照着置空就行，不用再捞一趟（再捞也是空，白跑一个来回）
+    bellRows.value = [];
+    unread.value = 0;
+    bellError.value = '';
+  } catch (err) {
+    // 清失败要把面板开回来：不然点完确定什么都没变，人只当那颗没生效
+    bellError.value = message(err);
+    bellOpen.value = true;
+    void loadBell();
+  } finally {
+    bellBusy.value = '';
+  }
+}
+
+/**
  * 个人中心那一页在没登录时会给出一颗 `data-open-login` 的按钮。
  * island 之间不共享 store，也不共享组件实例，所以按属性认领这一次点击（头部那颗昼夜按钮同一做法）。
  */
@@ -299,6 +363,32 @@ onUnmounted(() => {
       "
       class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-600 dark:bg-gray-800"
     >
+      <!-- 顶上这一行照后台那颗铃铛的形状：左边题、右边两颗动作。全部已读只在还有未读时点得动，
+           全部清空只在面板里有行时点得动（没行也没得清）；两颗共用 bellBusy，捞着数的时候一起按住。 -->
+      <div class="flex items-center justify-between gap-2 border-b border-gray-200 px-4 py-2.5 dark:border-gray-600">
+        <span class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ d.site.messages }}</span>
+        <span class="flex items-center gap-3">
+          <button
+            type="button"
+            :disabled="!unread || bellBusy !== ''"
+            class="text-xs text-blue-600 disabled:opacity-50 dark:text-blue-400"
+            @click="markAllRead"
+          >
+            {{ d.site.messagesReadAll }}
+          </button>
+          <button
+            type="button"
+            :disabled="!bellRows.length || bellBusy !== ''"
+            class="text-xs text-red-600 disabled:opacity-50 dark:text-red-400"
+            @click="askClearAll"
+          >
+            {{ d.site.messagesClearAll }}
+          </button>
+        </span>
+      </div>
+      <p v-if="bellError" class="border-b border-gray-200 px-4 py-2 text-xs text-red-600 dark:border-gray-600 dark:text-red-400">
+        {{ bellError }}
+      </p>
       <ul class="max-h-80 divide-y divide-gray-100 overflow-y-auto dark:divide-gray-700">
         <li v-if="bellLoading && !bellRows.length" class="px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
           {{ d.common.loading }}
@@ -332,6 +422,17 @@ onUnmounted(() => {
         >{{ d.site.messagesAll }}</a
       >
     </div>
+
+    <!-- 清空那一句要人点实：撤不回来（软删的是自己名下那几行 receiver，这边没有反悔的入口） -->
+    <ConfirmDialog
+      v-if="confirmClear"
+      :title="d.site.messages"
+      :message="d.site.messagesClearAllTip"
+      :confirm-text="d.common.delete"
+      :busy="bellBusy === 'clear'"
+      @confirm="clearAll"
+      @cancel="confirmClear = false"
+    />
 
     <ModalOverlay v-if="showDialog" @close="closeDialog">
       <div

@@ -37,6 +37,9 @@ public class ShopProductSaveDto {
     @ApiModelProperty(value = "品牌id，不关联品牌时传 null")
     private Long brandId;
 
+    @ApiModelProperty(value = "潮玩系列id，不是潮玩商品时传 null")
+    private Long sectionId;
+
     @ApiModelProperty(value = "所属门店id，不限定门店时传 null")
     private Long storeId;
 

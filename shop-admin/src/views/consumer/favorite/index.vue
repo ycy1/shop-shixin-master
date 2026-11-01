@@ -147,6 +147,7 @@ import {
 import { listShopProductApi } from '@/api/shop/product'
 import { optionsShopBrandApi } from '@/api/shop/brand'
 import { optionsShopStoreApi } from '@/api/store/store'
+import { optionsShopParkApi } from '@/api/trendy/park'
 import ButtonGroup from '@/components/ButtonGroup/index.vue'
 import UserSelect from '@/components/UserSelect/index.vue'
 import ShopBrandOption from '@/components/ShopBrandOption/index.vue'
@@ -166,6 +167,8 @@ const DICT_TYPE = 'favorite_target_type'
 const TYPE_PRODUCT = 1
 const TYPE_STORE = 2
 const TYPE_BRAND = 3
+// 公园在收藏这一本字典里是往后接的 4（评论那一本 comment_type 里公园是 5，两本各数各的）
+const TYPE_PARK = 4
 
 const dict = useDict(DICT_TYPE)
 
@@ -203,6 +206,7 @@ const rules = reactive<FormRules>({
 const productOptions = ref<any[]>([])
 const storeOptions = ref<any[]>([])
 const brandOptions = ref<any[]>([])
+const parkOptions = ref<any[]>([])
 const targetLoading = ref(false)
 
 /** 单价的显示口径同购物车、商品列表 */
@@ -230,6 +234,8 @@ const targetOptions = computed(() => {
       code: item.productCode,
       priceText: priceText(item.productPrice)
     }))
+  } else if (form.targetType === TYPE_PARK) {
+    list = parkOptions.value.map((item: any) => ({ id: item.id, name: item.parkName }))
   }
   // 修改回显时选中的对象往往不在候选里（门店/品牌已停用、商品已删除），
   // el-select 会直接显示裸 id，所以只在展示层用详情接口带回的名称补一条
@@ -244,6 +250,7 @@ const targetPlaceholder = computed(() => {
   if (form.targetType === TYPE_PRODUCT) return '输入名称/编码搜索商品'
   if (form.targetType === TYPE_STORE) return '请选择门店'
   if (form.targetType === TYPE_BRAND) return '请选择品牌'
+  if (form.targetType === TYPE_PARK) return '请选择公园'
   return '请先选择收藏类型'
 })
 
@@ -277,6 +284,14 @@ const getBrandOptions = async () => {
   try {
     const { data } = await optionsShopBrandApi()
     brandOptions.value = data || []
+  } catch (error) {
+  }
+}
+/** 公园下拉：同样只取启用中的（options 那条只回启用的行） */
+const getParkOptions = async () => {
+  try {
+    const { data } = await optionsShopParkApi()
+    parkOptions.value = data || []
   } catch (error) {
   }
 }
@@ -434,6 +449,7 @@ onMounted(() => {
   getList()
   getStoreOptions()
   getBrandOptions()
+  getParkOptions()
 })
 </script>
 

@@ -9,6 +9,7 @@
         s.store_name,
         s.store_type,
         s.brand_id,
+        s.section_id,
         s.contact_name,
         s.contact_phone,
         s.area_code,
@@ -51,6 +52,10 @@
             </if>
             <if test="q.status != null">
                 AND s.status = #{q.status}
+            </if>
+            <!-- 只看某个潮玩系列名下的门店（列表那排筛选项，可空） -->
+            <if test="q.sectionId != null">
+                AND s.section_id = #{q.sectionId}
             </if>
             <!-- 数据范围（账号类型=门店）：服务层要收窄时强制置成当前用户ID，其它类型置空。这里只认字段、不认角色。
                  自己建的或自己当店长都算自己的店；括号不能省，否则 OR 会把上面的筛选一起放行 -->

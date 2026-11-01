@@ -127,5 +127,16 @@ public class ShopOrderPreviewVo {
 
         @ApiModelProperty(value = "这一行的实付 = 小计 − 券优惠 − 积分抵扣（提交后落 shop_order_item，退款和出库结成本都按它）")
         private BigDecimal paidAmount;
+
+        /**
+         * 来源两格（口径同 shop_order_item）：一整盒在试算里就是好几行（盒内每款一行），
+         * 结算页那一行要把属于它的这几行合起来报「券抵多少、行实付多少」，认的就是这两格 ——
+         * 只按 skuId 配不行：同一款可能既是自己加购的一行、又是某台盒抽中的一行。
+         */
+        @ApiModelProperty(value = "来源：0普通商品 1盲盒商品（一整盒拆出来的那几行）")
+        private Integer sourceType;
+
+        @ApiModelProperty(value = "来源ID：盲盒那几行=哪一台盒；普通为0")
+        private Long sourceId;
     }
 }

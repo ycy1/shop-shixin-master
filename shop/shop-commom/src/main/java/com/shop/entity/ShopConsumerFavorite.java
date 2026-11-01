@@ -28,10 +28,10 @@ public class ShopConsumerFavorite extends BaseEntity {
     @ApiModelProperty(value = "收藏的消费者用户ID(sys_user.id)")
     private Long userId;
 
-    @ApiModelProperty(value = "收藏类型：1商品 2门店 3品牌（字典 favorite_target_type）")
+    @ApiModelProperty(value = "收藏类型：1商品 2门店 3品牌 4公园（字典 favorite_target_type）")
     private Integer targetType;
 
-    @ApiModelProperty(value = "收藏对象ID：按 target_type 分别指向 shop_product/shop_store/shop_brand")
+    @ApiModelProperty(value = "收藏对象ID：按 target_type 分别指向 shop_product/shop_store/shop_brand/shop_trendy_park")
     private Long targetId;
 
     // 一人一对象只留一条（uk_user_target），取消收藏只是软删、再收藏是把那一行复活，create_time 停在第一次那一趟，

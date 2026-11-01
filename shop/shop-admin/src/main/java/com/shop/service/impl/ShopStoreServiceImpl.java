@@ -8,13 +8,16 @@ import com.shop.entity.ShopBrand;
 import com.shop.entity.ShopProduct;
 import com.shop.entity.ShopStore;
 import com.shop.entity.ShopStoreInvestment;
+import com.shop.entity.ShopTrendy;
 import com.shop.entity.SysUser;
 import com.shop.exception.ServiceException;
 import com.shop.mapper.ShopBrandMapper;
 import com.shop.mapper.ShopProductMapper;
 import com.shop.mapper.ShopStoreInvestmentMapper;
 import com.shop.mapper.ShopStoreMapper;
+import com.shop.mapper.ShopTrendyMapper;
 import com.shop.mapper.SysUserMapper;
+import com.shop.enums.SectionTypeEnum;
 import com.shop.service.ShopStoreService;
 import com.shop.utils.GeneratorNoUtils;
 import com.shop.utils.LoginUserUtils;
@@ -45,6 +48,9 @@ public class ShopStoreServiceImpl extends ServiceImpl<ShopStoreMapper, ShopStore
     /** 只用来认一下来源招商线索、带回编号（建店和改绑都走它） */
     private final ShopStoreInvestmentMapper shopStoreInvestmentMapper;
 
+    /** 只用来看「所选潮玩系列存不存在」这一道判据 */
+    private final ShopTrendyMapper trendyMapper;
+
     @Override
     public IPage<ShopStore> selectPage(ShopStore query) {
         if (query == null) {
@@ -58,7 +64,33 @@ public class ShopStoreServiceImpl extends ServiceImpl<ShopStoreMapper, ShopStore
         IPage<ShopStore> result = baseMapper.selectStorePage(PageUtil.getPage(), query);
         fillManagerName(result.getRecords());
         fillBrand(result.getRecords());
+        fillTrendy(result.getRecords());
         return result;
+    }
+
+    /**
+     * 按 trendy_id 回填系列名，给列表那一列「潮玩系列」用（形状同 fillBrand：一次 in 查询拿当页出现过的 id，
+     * 不在 XML 里联 shop_trendy）。系列后来被停用/删掉了就查不到，这一格留空、前端显示 '-'。
+     */
+    private void fillTrendy(List<ShopStore> stores) {
+        Set<Long> sectionIds = new HashSet<>();
+        for (ShopStore store : stores) {
+            if (store.getSectionId() != null) {
+                sectionIds.add(store.getSectionId());
+            }
+        }
+        if (sectionIds.isEmpty()) {
+            return;
+        }
+        Map<Long, String> nameById = new HashMap<>();
+        for (ShopTrendy trendy : trendyMapper.selectList(new LambdaQueryWrapper<ShopTrendy>()
+                .select(ShopTrendy::getId, ShopTrendy::getTrendyName)
+                .in(ShopTrendy::getId, sectionIds))) {
+            nameById.put(trendy.getId(), trendy.getTrendyName());
+        }
+        for (ShopStore store : stores) {
+            store.setTrendyName(nameById.get(store.getSectionId()));
+        }
     }
 
     @Override
@@ -131,6 +163,9 @@ public class ShopStoreServiceImpl extends ServiceImpl<ShopStoreMapper, ShopStore
         if (StringUtils.isBlank(store.getStoreCode())) {
             store.setStoreCode(GeneratorNoUtils.getStoreNo());
         }
+        // 专区类型按有没有选专区自动写：选了 = 1 潮玩、清空 = 0（表单里没有这一格）
+        store.setSectionType(store.getSectionId() == null
+                ? SectionTypeEnum.NONE.getCode() : SectionTypeEnum.TRENDY.getCode());
         validate(store, null);
         normalize(store);
         fillInvestmentSource(store, null);
@@ -154,6 +189,8 @@ public class ShopStoreServiceImpl extends ServiceImpl<ShopStoreMapper, ShopStore
         }
         // 判的是库里那行的归属，不是请求体里的：否则前端把 userId/managerId 一起改掉就自推自出去了
         assertWritable(Collections.singletonList(exists));
+        store.setSectionType(store.getSectionId() == null
+                ? SectionTypeEnum.NONE.getCode() : SectionTypeEnum.TRENDY.getCode());
         validate(store, store.getId());
         normalize(store);
         // 招商来源在修改弹窗里也改得动（实体上这两列已放开成 IGNORED），所以这一趟必须跟着走：
@@ -325,6 +362,10 @@ public class ShopStoreServiceImpl extends ServiceImpl<ShopStoreMapper, ShopStore
         // 品牌同样可空（不绑品牌的门店是常态），但选了就得真有其人，口径同上
         if (store.getBrandId() != null && shopBrandMapper.selectById(store.getBrandId()) == null) {
             throw new ServiceException("所选品牌不存在");
+        }
+        // 潮玩系列同样可空（不是潮玩门店是常态），口径同上
+        if (store.getSectionId() != null && trendyMapper.selectById(store.getSectionId()) == null) {
+            throw new ServiceException("所选潮玩系列不存在");
         }
         Long count = baseMapper.selectCount(new LambdaQueryWrapper<ShopStore>()
                 .eq(ShopStore::getStoreCode, store.getStoreCode())

@@ -130,6 +130,12 @@ const switchUrl = (code: Locale) => localeHref(code, currentPath) + Astro.url.se
                 class="rounded-lg px-2 py-2 text-blue-600 hover:bg-gray-100 hover:underline dark:text-blue-400 dark:hover:bg-gray-700 md:px-0 md:py-0 md:hover:bg-transparent md:dark:hover:bg-transparent"
                 >{d.site.home}</a
               >
+              <!-- 潮玩专区：进去之后是另一条左侧导航（首页/盲盒/公园），见 layouts/Trendy.astro -->
+              <a
+                href={href('/trendy')}
+                class="rounded-lg px-2 py-2 text-blue-600 hover:bg-gray-100 hover:underline dark:text-blue-400 dark:hover:bg-gray-700 md:px-0 md:py-0 md:hover:bg-transparent md:dark:hover:bg-transparent"
+                >{d.site.trendy}</a
+              >
               <!-- 活动列表：这一条是静态链接，不带登录态；里面的卡片再按活动自己的跳转类型分流 -->
               <a
                 href={href('/activity')}
@@ -334,47 +340,21 @@ const switchUrl = (code: Locale) => localeHref(code, currentPath) + Astro.url.se
       </svg>
     </button>
 
-    <!-- 换页动画两头各一半，都不走 view transition（这机器系统里关了动效，astro 会把整套 VT 动画压成 none !important）：
-         淡出挂在 astro 换页前那个可等待的 loader 上，淡入挂在换完页抛的 astro:after-swap 上。 -->
+    <!-- 换页只在「新内容上屏」这一头动，换之前旧内容一直亮着（不走 view transition：这机器系统里关了动效，
+         astro 会把整套 VT 动画压成 none !important）。
+         原先两头各一半（旧内容先淡到 0、新的再从 0 淡上来）会留下一帧纯白 —— 淡出到底那一刻 body 露出来，
+         看起来就是「闪白」；现在旧内容不淡出，新的从半亮起步，中间没有透明帧。 -->
     <script>
-      const LEAVE_MS = 160;
-      let leaveTimer = 0;
-
       function getMain() {
         const main = document.querySelector('main');
         return main instanceof HTMLElement ? main : null;
       }
 
-      // 淡出：astro 在 astro:before-preparation 之后会 await event.loader()，所以拿它当闸门，让旧内容播完这段再换页。
-      // 只能在这份 loader 外面套一层，绝不能整份替掉：默认那份 loader 就是「把下一页 fetch 回来、写进 event.newDocument」
-      // （router.js 里的 defaultLoader），而 newDocument 的初值是 window.document 自己。替掉之后换页用的就是当前这份文档，
-      // swap 里 body.replaceWith(自己)、head 全摘再重挂 => 样式丢、脚本被标记已执行（岛不再水合），整页就乱了。
-      document.addEventListener('astro:before-preparation', (event) => {
-        const main = getMain();
-        if (!main) return;
-        clearTimeout(leaveTimer);
-        main.classList.remove('page-leave');
-        void main.offsetWidth;
-        main.classList.add('page-leave');
-        const loadPage = event.loader;
-        event.loader = async () => {
-          const startedAt = Date.now();
-          await loadPage();
-          const remaining = LEAVE_MS - (Date.now() - startedAt);
-          if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
-        };
-        // 这一趟导航也可能被后面的点击抢掉（那时不会有 after-swap 来摘这个类），动画是 forwards、
-        // 摘不掉内容就一直停在透明上，所以兜一条：到点还挂着就当它没换过页，自己收掉。
-        leaveTimer = setTimeout(() => main.classList.remove('page-leave'), LEAVE_MS + 3000);
-      });
-
       // 淡入：astro 换完内容只抛这一条事件，类在这里摘了再重挂（同名动画连挂两次浏览器不当新一轮，第二次不播；
       // 挂到下一帧会让成品先亮一帧再退回透明，看着就是闪一下）。
       document.addEventListener('astro:after-swap', () => {
         const main = getMain();
-        clearTimeout(leaveTimer);
         if (!main) return;
-        main.classList.remove('page-leave');
         main.classList.remove('page-enter');
         void main.offsetWidth;
         main.classList.add('page-enter');

@@ -15,6 +15,8 @@ import com.shop.mapper.ShopCategoryMapper;
 import com.shop.mapper.ShopProductMapper;
 import com.shop.mapper.ShopProductSkuMapper;
 import com.shop.mapper.ShopStoreMapper;
+import com.shop.mapper.ShopTrendyMapper;
+import com.shop.enums.SectionTypeEnum;
 import com.shop.service.ShopProductService;
 import com.shop.utils.GeneratorNoUtils;
 import com.shop.utils.LoginUserUtils;
@@ -48,6 +50,8 @@ public class ShopProductServiceImpl extends ServiceImpl<ShopProductMapper, ShopP
 
     private final ShopStoreMapper storeMapper;
 
+    private final ShopTrendyMapper trendyMapper;
+
     @Override
     public IPage<ShopProductVo> selectPage(ShopProductQueryDto query) {
         if (query == null) {
@@ -76,6 +80,9 @@ public class ShopProductServiceImpl extends ServiceImpl<ShopProductMapper, ShopP
         if (StringUtils.isBlank(product.getProductCode())) {
             product.setProductCode(GeneratorNoUtils.getProductNo());
         }
+        // 专区类型按有没有选专区自动写：选了 = 1 潮玩、清空 = 0（表单里没有这一格）
+        product.setSectionType(product.getSectionId() == null
+                ? SectionTypeEnum.NONE.getCode() : SectionTypeEnum.TRENDY.getCode());
         validate(product, null);
         if (product.getSort() == null) {
             product.setSort(0);
@@ -119,6 +126,8 @@ public class ShopProductServiceImpl extends ServiceImpl<ShopProductMapper, ShopP
         if (product.getCategoryId() == null) {
             product.setCategoryId(exists.getCategoryId());
         }
+        product.setSectionType(product.getSectionId() == null
+                ? SectionTypeEnum.NONE.getCode() : SectionTypeEnum.TRENDY.getCode());
         validate(product, product.getId());
         normalizeImages(product);
         updateById(product);
@@ -184,6 +193,10 @@ public class ShopProductServiceImpl extends ServiceImpl<ShopProductMapper, ShopP
         // brand_id 可空（不关联品牌），但传了就必须存在
         if (product.getBrandId() != null && brandMapper.selectById(product.getBrandId()) == null) {
             throw new ServiceException("所选品牌不存在");
+        }
+        // trendy_id 可空（不是潮玩商品），口径同上
+        if (product.getSectionId() != null && trendyMapper.selectById(product.getSectionId()) == null) {
+            throw new ServiceException("所选潮玩系列不存在");
         }
         // 文创商品是这家店自己的周边，没有归属店就进不了门店详情页「文创商品」那一档，所以这一档必填门店
         if (Integer.valueOf(1).equals(product.getCulturalEnable()) && product.getStoreId() == null) {

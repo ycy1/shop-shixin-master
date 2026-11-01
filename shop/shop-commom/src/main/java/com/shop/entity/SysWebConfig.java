@@ -45,12 +45,6 @@ public class SysWebConfig implements Serializable {
     @ApiModelProperty(value = "作者头像")
     private String authorAvatar;
 
-    @ApiModelProperty(value = "支付宝收款码")
-    private String aliPay;
-
-    @ApiModelProperty(value = "微信收款码")
-    private String weixinPay;
-
     @ApiModelProperty(value = "github地址")
     private String github;
 

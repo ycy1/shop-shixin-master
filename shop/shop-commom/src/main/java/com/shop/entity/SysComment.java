@@ -11,11 +11,11 @@ import java.time.LocalDateTime;
 import java.io.Serializable;
 
 /**
- * 评论（一条评论一行，商品/门店/品牌/广场四类共用这一张表）
+ * 评论（一条评论一行，商品/门店/品牌/广场/公园五类共用这一张表）
  *
- * 一张表挂四样对象：business_id 指向哪张表由 comment_type 定（1商品→shop_product.id 是 SPU 那一层、
- * 2门店→shop_store.id、3品牌→shop_brand.id、4广场→shop_plaza_message.id），
- * 一列指四张表所以库上不建外键，名称也不在这儿冗余 ——
+ * 一张表挂五样对象：business_id 指向哪张表由 comment_type 定（1商品→shop_product.id 是 SPU 那一层、
+ * 2门店→shop_store.id、3品牌→shop_brand.id、4广场→shop_plaza_message.id、5公园→shop_trendy_park.id），
+ * 一列指五张表所以库上不建外键，名称也不在这儿冗余 ——
  * 后台列表按 comment_type 现联表带出，口径同 shop_consumer_favorite.target_id。
  *
  * 层级不限：parent_id 为 NULL 就是顶层评论，回复挂在被回复的那一行下面（回复的回复再回复，想多深有多深）；
@@ -55,6 +55,9 @@ public class SysComment implements Serializable {
     /** 评论类型：4 广场 —— business_id 是 shop_plaza_message.id（只对已上广场的那几条开放，判据在广场写服务里） */
     public static final int TYPE_PLAZA = 4;
 
+    /** 评论类型：5 主题公园 —— business_id 是 shop_trendy_park.id（收藏那一档的号不一样，它往后接的是 4） */
+    public static final int TYPE_PARK = 5;
+
     /** 是否置顶：1 置顶 —— 列表排序把它打头，只有顶层评论用得着 */
     public static final int STICK_YES = 1;
 
@@ -62,7 +65,7 @@ public class SysComment implements Serializable {
     @ApiModelProperty(value = "评论主键ID，自增唯一标识")
     private Integer id;
 
-    @ApiModelProperty(value = "关联对象ID：按 commentType 分叉指向 shop_product / shop_store / shop_brand / shop_plaza_message 的主键（不建外键）")
+    @ApiModelProperty(value = "关联对象ID：按 commentType 分叉指向 shop_product / shop_store / shop_brand / shop_plaza_message / shop_trendy_park 的主键（不建外键）")
     private Long businessId;
 
     @ApiModelProperty(value = "发表评论的用户ID(sys_user.id)，由服务端按登录态钉")
@@ -74,7 +77,7 @@ public class SysComment implements Serializable {
     @ApiModelProperty(value = "父评论ID(sys_comment.id)，NULL=顶层评论；回复挂在被回复那一行下面，层数不限")
     private Integer parentId;
 
-    @ApiModelProperty(value = "评论类型：1商品 2门店 3品牌 4广场（字典 comment_type）")
+    @ApiModelProperty(value = "评论类型：1商品 2门店 3品牌 4广场 5公园（字典 comment_type）")
     private Integer commentType;
 
     @ApiModelProperty(value = "评论内容（纯文本 + 内嵌：emoji 是正文字符、图片写成 [图片](url)；前台拆串画、不走 v-html）。"

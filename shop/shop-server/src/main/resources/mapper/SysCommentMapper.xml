@@ -110,8 +110,8 @@
     </select>
 
     <!--
-      后台「评论管理」那一页：除内容之外还要看清这条评论挂在哪个商品/门店/品牌/广场消息上，
-      所以照「用户收藏」那一份的写法，四个联表把类型判断写在 ON 上、businessName 用 CASE 按类型挑。
+      后台「评论管理」那一页：除内容之外还要看清这条评论挂在哪个商品/门店/品牌/广场消息/公园上，
+      所以照「用户收藏」那一份的写法，五个联表把类型判断写在 ON 上、businessName 用 CASE 按类型挑。
       对象被删掉后评论还要能看见，一律 LEFT JOIN、过滤条件不写在 WHERE 上（不写就整条从列表里消失）。
       广场消息那一档取的是标题：这一格可空（必填的是正文），没标题联上了也是空，前端按 id 显示，
       和消息被删掉时是同一个表现 —— 这一列只是给后台看清"挂在哪"，不指望它当正文。
@@ -136,6 +136,7 @@
             WHEN 2 THEN st.store_name
             WHEN 3 THEN b.brand_name
             WHEN 4 THEN pm.title
+            WHEN 5 THEN k.park_name
             END AS businessName
         FROM
         sys_comment c
@@ -145,6 +146,7 @@
         LEFT JOIN shop_store st ON st.id = c.business_id AND c.comment_type = 2
         LEFT JOIN shop_brand b ON b.id = c.business_id AND c.comment_type = 3
         LEFT JOIN shop_plaza_message pm ON pm.id = c.business_id AND c.comment_type = 4
+        LEFT JOIN shop_trendy_park k ON k.id = c.business_id AND c.comment_type = 5
         <where>
             c.is_deleted = 0
             <if test="query.businessId != null">

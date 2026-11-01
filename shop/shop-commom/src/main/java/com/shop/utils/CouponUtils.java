@@ -183,24 +183,43 @@ public class CouponUtils {
         if (template == null) {
             return new ArrayList<>();
         }
+        // 一整盒拆出来的那几行（source_type=1）只让代金券抵：它们不挂在某一件商品、某一个分类上，
+        // 满减/折扣/免邮那几档判的都是"抵的是哪些货、门槛看谁的货值"，盒那几行掺进去要么圈不准、
+        // 要么把整单的门槛算歪。代金券抵的是这一单的现金，跟货是什么无关，所以照旧抵得着它们。
+        List<ShopOrderItem> candidates = Integer.valueOf(TYPE_VOUCHER).equals(coupon.getCouponType())
+                ? items : withoutBoxLines(items);
         Integer scopeType = coupon.getScopeType();
         if (scopeType == null || scopeType == SCOPE_ALL) {
-            return new ArrayList<>(items);
+            return new ArrayList<>(candidates);
         }
         if (scopeType == SCOPE_PRODUCT) {
             Set<Long> productIds = new HashSet<>(scopeIds(template.getScopeValue(), SCOPE_PRODUCT));
-            return matched(items, line -> productIds.contains(productIdOf(line, productBySku)));
+            return matched(candidates, line -> productIds.contains(productIdOf(line, productBySku)));
         }
         if (scopeType == SCOPE_CATEGORY) {
             Set<Long> categoryIds = withDescendants(categoryIndex, scopeIds(template.getScopeValue(), SCOPE_CATEGORY));
-            return matched(items, line -> categoryIds.contains(categoryOf(line, productBySku)));
+            return matched(candidates, line -> categoryIds.contains(categoryOf(line, productBySku)));
         }
         if (scopeType == SCOPE_STORE) {
             Long storeId = template.getStoreId();
-            return storeId == null ? new ArrayList<>(items)
-                    : matched(items, line -> storeId.equals(line.getStoreId()));
+            return storeId == null ? new ArrayList<>(candidates)
+                    : matched(candidates, line -> storeId.equals(line.getStoreId()));
         }
         return new ArrayList<>();
+    }
+
+    /** 剔掉一整盒拆出来的那几行（普通商品行原样留着）；调用方传 null 就当没有行 */
+    private static List<ShopOrderItem> withoutBoxLines(List<ShopOrderItem> items) {
+        if (items == null) {
+            return new ArrayList<>();
+        }
+        List<ShopOrderItem> out = new ArrayList<>(items.size());
+        for (ShopOrderItem line : items) {
+            if (line != null && !Integer.valueOf(ShopOrderItem.SOURCE_BOX).equals(line.getSourceType())) {
+                out.add(line);
+            }
+        }
+        return out;
     }
 
     /**
@@ -232,6 +251,18 @@ public class CouponUtils {
      */
     public static BigDecimal shippingDiscount(BigDecimal deliveryFee, BigDecimal maxDiscount) {
         return cap(money(deliveryFee), maxDiscount);
+    }
+
+    /**
+     * 模板 scope_value 里「指定商品」那份名单（脏值和拆不动都返回空表，口径同 {@link #matchLines} 判范围那一步）。
+     *
+     * 为什么要公开这一段：集齐实物奖励要反过来按商品去查"哪张券圈得住它"（见 shop-api 的
+     * ShopTrendyCollectRewardServiceImpl），那一次不在下单算钱的链上、手里没有明细行，只能自己把名单读出来。
+     * 读这段 json 的规矩（键名、非数字跳过、拆不动就整段作废）必须只有这一份，抄两遍就会出现
+     * "下单认这张券、集齐发不了这张券"。
+     */
+    public static List<Long> productScopeIds(String scopeValue) {
+        return scopeIds(scopeValue, SCOPE_PRODUCT);
     }
 
     /**

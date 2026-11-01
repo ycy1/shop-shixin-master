@@ -3,7 +3,13 @@ import { computed } from 'vue';
 import { useI18n } from '@/i18n';
 import type { WebProduct } from '@/lib/products';
 
-const props = defineProps<{ product: WebProduct; active?: boolean }>();
+const props = withDefaults(
+  defineProps<{ product: WebProduct; active?: boolean; basePath?: string }>(),
+  { active: false, basePath: '/product' },
+);
+
+/** 落点：整站默认跳通用商品详情页；潮玩专区那一架传 /trendy/product，点进去还在专区里（左侧导航不丢） */
+const to = computed(() => `${props.basePath}/${props.product.id}`);
 
 /** 卡片不是岛：语种由外面那颗岛（首页/搜索页/详情页）useI18n() 时钉到棵上，这里 inject 拿同一份 */
 const { d, href } = useI18n();
@@ -33,7 +39,7 @@ const metaLine = computed(() =>
   >
     <!-- 图和名合成一个链接跳详情。链接接管了卡片剩下的那格 flex-1，图在它里面照样 flex-1，排版不变。
          「加入购物车」挪到详情页了：一件商品下面好几个规格、每个规格各自一个价，列表这一格定不下来要哪一个 -->
-    <a :href="href(`/product/${product.id}`)" class="flex min-h-0 flex-1 flex-col">
+    <a :href="href(to)" class="flex min-h-0 flex-1 flex-col">
       <img
         v-if="product.mainImage"
         :src="product.mainImage"
@@ -68,7 +74,7 @@ const metaLine = computed(() =>
       </span>
       <!-- 这一颗是链接不是按钮：加购要先定规格，那一格只有详情页有 -->
       <a
-        :href="href(`/product/${product.id}`)"
+        :href="href(to)"
         class="shrink-0 whitespace-nowrap rounded-lg bg-blue-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-800 dark:bg-blue-600 dark:hover:bg-blue-700"
         @click.stop
       >{{ d.card.pickSpec }}</a>

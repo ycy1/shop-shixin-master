@@ -301,6 +301,8 @@ public class ShopOrderPointsServiceImpl implements ShopOrderPointsService {
      * 逐行算这一单该送几分：明细行 id → 这一行送的分（每件档位 × 这一行的件数）。
      *
      * 没得分的行不进这张表（既不回写也不占位），所以整单都是 0 时调用方看到的就是空表。
+     * 一整盒拆出来的那几行（source_type=1）一分不送 —— 那一单的钱是端盒的钱，不是逐件货的购物，
+     * 送分再按每件档位累加就等于把同一件货的激励给了一盒的钱（口径同券：盒只吃代金券）。
      */
     private Map<Long, Integer> gainPointsByLine(List<ShopOrderItem> lines) {
         List<Long> skuIds = lines.stream().map(ShopOrderItem::getSkuId)
@@ -311,6 +313,9 @@ public class ShopOrderPointsServiceImpl implements ShopOrderPointsService {
         Map<Long, Integer> perSku = gainPointsPerSku(skuIds);
         Map<Long, Integer> gained = new LinkedHashMap<>();
         for (ShopOrderItem line : lines) {
+            if (Integer.valueOf(ShopOrderItem.SOURCE_BOX).equals(line.getSourceType())) {
+                continue;
+            }
             Integer each = perSku.get(line.getSkuId());
             if (each == null || each <= 0 || line.getId() == null
                     || line.getQuantity() == null || line.getQuantity() <= 0) {

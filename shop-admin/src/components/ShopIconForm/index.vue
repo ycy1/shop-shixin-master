@@ -16,9 +16,11 @@
       </el-row>
       <el-row :gutter="20">
         <el-col :span="12">
-          <el-form-item label="所属类目" prop="categoryId">
-            <shop-category-select v-model="form.categoryId" :data="categoryOptions" placeholder="可不选"
-              style="width: 100%" />
+          <el-form-item label="图标分类" prop="iconCategory">
+            <!-- 三档就是公共选择器的那三个 tab，落进哪一档只能在那一档里被选到 -->
+            <el-radio-group v-model="form.iconCategory">
+              <el-radio v-for="item in ICON_CATEGORIES" :key="item.value" :value="item.value">{{ item.label }}</el-radio>
+            </el-radio-group>
           </el-form-item>
         </el-col>
         <el-col :span="12">
@@ -27,6 +29,11 @@
           </el-form-item>
         </el-col>
       </el-row>
+      <!-- 所属类目只对商品分类这一档有意义：系统图标不挂在商品类目下 -->
+      <el-form-item v-if="form.iconCategory === CATEGORY_PRODUCT" label="所属类目" prop="categoryId">
+        <shop-category-select v-model="form.categoryId" :data="categoryOptions" placeholder="可不选"
+          style="width: 100%" />
+      </el-form-item>
       <el-form-item label="图标类型" prop="iconType">
         <el-radio-group v-model="form.iconType" @change="handleTypeChange">
           <el-radio v-for="item in ICON_TYPES" :key="item.value" :value="item.value">{{ item.label }}</el-radio>
@@ -72,12 +79,15 @@
 import { computed, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { addShopIconApi, detailShopIconApi, updateShopIconApi } from '@/api/shop/icon'
+import { addIconApi, detailIconApi, updateIconApi } from '@/api/system/icon'
 import { getCategoryTreeApi } from '@/api/shop/category'
 import ShopIcon from '@/components/ShopIcon/index.vue'
-import { ICON_TYPES } from '@/components/ShopIcon/constants'
+import { ICON_TYPES, ICON_CATEGORIES, ICON_CATEGORY_DEFAULT } from '@/components/ShopIcon/constants'
 import ShopCategorySelect from '@/components/ShopCategorySelect/index.vue'
 import UploadImage from '@/components/Upload/Image.vue'
+
+/** 商品分类那一档的 value：只有这一档要填「所属类目」 */
+const CATEGORY_PRODUCT = 2
 
 const props = defineProps<{
   visible: boolean
@@ -85,6 +95,8 @@ const props = defineProps<{
   id?: number | string
   /** 新增时预填的所属类目：图标选择器按类目筛选时，新建的图标要落在同一个类目里 */
   presetCategoryId?: number | string
+  /** 新增时预填的图标分类：选择器停在哪个 tab，新建的图标就落到哪一档 */
+  presetIconCategory?: number | string
 }>()
 
 const emit = defineEmits<{
@@ -109,6 +121,7 @@ const form = reactive<any>({})
 const rules = reactive<FormRules>({
   iconName: [{ required: true, message: '图标名称不能为空', trigger: 'blur' }],
   iconCode: [{ required: true, message: '图标编码不能为空', trigger: 'blur' }],
+  iconCategory: [{ required: true, message: '请选择图标分类', trigger: 'change' }],
   iconType: [{ required: true, message: '请选择图标类型', trigger: 'change' }],
   iconValue: [{ required: true, message: '图标内容不能为空', trigger: 'blur' }]
 })
@@ -136,6 +149,7 @@ const reset = () => {
     iconCode: undefined,
     iconType: 1,
     iconValue: undefined,
+    iconCategory: Number(props.presetIconCategory ?? ICON_CATEGORY_DEFAULT),
     categoryId: props.presetCategoryId,
     sort: 0,
     status: 1,
@@ -150,7 +164,7 @@ const handleOpen = async () => {
   if (!isEdit.value) return
   loading.value = true
   try {
-    const { data } = await detailShopIconApi(props.id)
+    const { data } = await detailIconApi(props.id)
     Object.assign(form, data)
   } catch (error) {
     dialogVisible.value = false
@@ -165,12 +179,12 @@ const submitForm = () => {
     submitLoading.value = true
     try {
       if (isEdit.value) {
-        await updateShopIconApi(form)
+        await updateIconApi(form)
         ElMessage.success('修改成功')
         emit('saved', { ...form })
       } else {
         // 新增接口回的是自增主键，补进记录里调用方才拿得到
-        const { data } = await addShopIconApi(form)
+        const { data } = await addIconApi(form)
         ElMessage.success('新增成功')
         emit('saved', { ...form, id: data })
       }

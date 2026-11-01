@@ -35,6 +35,14 @@ export function deleteNotificationApi(ids: any) {
   })
 }
 
+// 重试发送失败的通知（失败次数归零、重新投递一次；走同一条 MQ 链路）
+export function retryNotificationApi(id: number) {
+  return request({
+    url: `/sys/notification/retry/${id}`,
+    method: 'post'
+  })
+}
+
 // 查询消息阅读记录（关联表，分页，可按阅读人搜索）
 export function getNotificationReceiverListApi(notificationId: number, params: any = {}) {
   return request({
@@ -103,10 +111,12 @@ export function readAllMyNotificationApi(category?: number) {
   })
 }
 
-// 删掉自己名下的一条（只是对自己隐藏，别的人才看不见）
-export function deleteMyNotificationApi(id: number) {
+// 清空名下全部（只是对自己隐藏，别人才看不见）：服务端一条 SQL 铺完，category 不传两档一起
+// 铃铛那颗「清空全部」原本按 id 一条条调 delete/{id}，几十条就是几十趟往返（库在公网），换成这一条
+export function deleteAllMyNotificationApi(category?: number) {
   return request({
-    url: `/api/comm/shop/notification/delete/${id}`,
-    method: 'post'
+    url: '/api/comm/shop/notification/deleteAll',
+    method: 'post',
+    params: category ? { category } : {}
   })
 }

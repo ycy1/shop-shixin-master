@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // i-carbon-code
+import { useDroplet } from '@/composables/useDroplet'
 import { customTabbarEnable, needHideNativeTabbar, tabbarCacheEnable } from './config'
 import { tabbarList, tabbarStore } from './store'
 import TabbarItem from './TabbarItem.vue'
@@ -93,17 +94,30 @@ const inactiveColor = '#666'
 function getColorByIndex(index: number) {
   return tabbarStore.curIdx === index ? activeColor : inactiveColor
 }
+
+/**
+ * 水滴胶囊（方案 A · 胶囊拉伸）：这一排每格 flex-1 ⇒ 格子等宽，
+ * 位置就按「第几格 / 共几格」的百分比给，不用量盒子（量盒子在小程序里还得等渲染完成，切换会慢半拍）。
+ */
+const { style: pillStyle } = useDroplet(
+  computed(() => tabbarStore.curIdx),
+  computed(() => tabbarList.value.length),
+)
 </script>
 
 <template>
   <view v-if="customTabbarEnable" class="h-100rpx pb-safe">
     <view class="border-and-fixed" @touchmove.stop.prevent>
-      <view class="h-100rpx flex items-center">
+      <view class="relative h-100rpx flex items-center">
+        <!-- 水滴胶囊：DOM 顺序排在各格之前，各格自己带 relative ⇒ 图标文字浮在它上面 -->
+        <view class="drop-pill drop-pill--bar" :style="pillStyle">
+          <view class="drop-pill__face" />
+        </view>
         <view
           v-for="(item, index) in tabbarList"
           :key="index"
           hover-class="fx-tap"
-          class="fx-press flex flex-1 flex-col items-center justify-center"
+          class="fx-press relative flex flex-1 flex-col items-center justify-center"
           :style="{ color: getColorByIndex(index) }"
           @click="handleClick(index)"
         >

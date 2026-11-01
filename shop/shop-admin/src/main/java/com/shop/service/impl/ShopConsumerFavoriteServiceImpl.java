@@ -10,11 +10,13 @@ import com.shop.entity.ShopBrand;
 import com.shop.entity.ShopConsumerFavorite;
 import com.shop.entity.ShopProduct;
 import com.shop.entity.ShopStore;
+import com.shop.entity.ShopTrendyPark;
 import com.shop.exception.ServiceException;
 import com.shop.mapper.ShopBrandMapper;
 import com.shop.mapper.ShopConsumerFavoriteMapper;
 import com.shop.mapper.ShopProductMapper;
 import com.shop.mapper.ShopStoreMapper;
+import com.shop.mapper.ShopTrendyParkMapper;
 import com.shop.mapper.SysUserMapper;
 import com.shop.service.ShopConsumerFavoriteService;
 import com.shop.utils.LoginUserUtils;
@@ -49,11 +51,16 @@ public class ShopConsumerFavoriteServiceImpl extends ServiceImpl<ShopConsumerFav
 
     private static final int TARGET_TYPE_BRAND = 3;
 
+    /** 主题公园：字典 favorite_target_type 往后接的一档（评论那边公园是 5，两本字典各数各的） */
+    private static final int TARGET_TYPE_PARK = 4;
+
     private final ShopProductMapper shopProductMapper;
 
     private final ShopStoreMapper shopStoreMapper;
 
     private final ShopBrandMapper shopBrandMapper;
+
+    private final ShopTrendyParkMapper shopTrendyParkMapper;
 
     private final SysUserMapper sysUserMapper;
 
@@ -241,7 +248,14 @@ public class ShopConsumerFavoriteServiceImpl extends ServiceImpl<ShopConsumerFav
             }
             return brand.getBrandName();
         }
-        throw new ServiceException("收藏类型只能是 1商品、2门店 或 3品牌");
+        if (targetType == TARGET_TYPE_PARK) {
+            ShopTrendyPark park = shopTrendyParkMapper.selectById(favorite.getTargetId());
+            if (park == null) {
+                throw new ServiceException("所选公园不存在");
+            }
+            return park.getParkName();
+        }
+        throw new ServiceException("收藏类型只能是 1商品、2门店、3品牌 或 4公园");
     }
 
     private String duplicateMessage() {

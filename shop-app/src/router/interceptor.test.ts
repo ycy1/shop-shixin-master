@@ -18,17 +18,30 @@ async function invoke(url: string, userInfo?: { roles?: string[] }) {
   return navigateToInterceptor.invoke({ url })
 }
 
-// 用真实的 tabbar 配置跑：其中 'pages/about/about' 配了 roles: ['admin']
+// 这一档原来靠真实配置里那个 roles:['admin'] 的示例 tab 跑，示例页已删；改成自带一份假配置，
+// 用例要验的是角色守卫本身，不该绑着某个业务页在不在。
 describe('navigateToInterceptor 角色守卫', () => {
+  beforeEach(() => {
+    vi.doMock('@/tabbar/config', () => ({
+      TABBAR_STRATEGY_MAP: { NO_TABBAR: 0, NATIVE_TABBAR: 1, CUSTOM_TABBAR: 2 },
+      selectedTabbarStrategy: 2,
+      tabbarList: [
+        { text: '首页', pagePath: 'pages/index/index', iconType: 'unocss', icon: 'i-carbon-home' },
+        { text: '我的', pagePath: 'pages/me/me', iconType: 'unocss', icon: 'i-carbon-user' },
+        { text: '客服', pagePath: 'pages/service/service', iconType: 'unocss', icon: 'i-carbon-menu', roles: ['admin'] },
+      ],
+    }))
+  })
+
   it('角色不足时阻止进入受限 tabbar 页，并回退到可见的 tabbar 页', async () => {
-    const result = await invoke('/pages/about/about')
+    const result = await invoke('/pages/service/service')
 
     expect(result).toBe(false)
     expect(uni.reLaunch).toHaveBeenCalledWith({ url: '/pages/index/index' })
   })
 
   it('角色满足时放行', async () => {
-    const result = await invoke('/pages/about/about', { roles: ['admin'] })
+    const result = await invoke('/pages/service/service', { roles: ['admin'] })
 
     expect(result).not.toBe(false)
     expect(uni.reLaunch).not.toHaveBeenCalled()
@@ -50,7 +63,7 @@ describe('navigateToInterceptor 角色守卫', () => {
 
   it('回退目标一定是当前用户可见的 tab，不会二次触发拦截', async () => {
     const { getTabbarRedirectPath } = await import('@/tabbar/store')
-    const redirectPath = getTabbarRedirectPath('/pages/about/about')
+    const redirectPath = getTabbarRedirectPath('/pages/service/service')
 
     expect(redirectPath).toBeTruthy()
     // 对回退目标再判断一次，返回 '' 说明放行，不存在 reLaunch 死循环

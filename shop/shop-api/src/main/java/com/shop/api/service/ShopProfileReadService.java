@@ -17,6 +17,7 @@ import com.shop.entity.ShopActivityPointsLog;
 import com.shop.entity.ShopActivitySignin;
 import com.shop.entity.ShopConsumerWallet;
 import com.shop.entity.ShopConsumerWalletLog;
+import com.shop.entity.ShopParkUserTicket;
 
 import java.util.List;
 
@@ -50,6 +51,20 @@ public interface ShopProfileReadService {
      * @param query 状态可挑（0未使用 1已使用 2已过期 3已作废），userId 由服务端覆盖成登录 id
      */
     IPage<ShopActivityCouponUser> couponPage(ShopActivityCouponUser query);
+
+    /**
+     * 名下主题公园的票（「我的订单」那一块下面的「我的票种」tab）：一行一张票，读用户票那张表
+     *（shop_trendy_park_user_ticket）。
+     *
+     * 票名/类型/票价那一格读本行出票时定格的快照，不联票种表 —— 后台改了票种的价格也不会串到已经发到手上的票上。
+     * 走的是后台「订单管理 → 用户票种」那一条 SQL（联 sys_user 带昵称手机号、联园区带园区名），
+     * 但那份是按账号类型收窄的（平台/门店/ERP 看全平台），这一条不给那个口子：
+     * userId 无条件覆盖成登录 id，能点名别人就等于看别人手上有哪些票。
+     *
+     * @param query 状态可挑（0未使用 1已核销 2已过期 3已退款），游玩日期区间 beginVisitDate/endVisitDate 可选，
+     *              userId 由服务端覆盖成登录 id
+     */
+    IPage<ShopParkUserTicket> parkTicketPage(ShopParkUserTicket query);
 
     /**
      * 名下徽章（「个人信息」那一块下面的「徽章」tab）：一行一枚，名称/文字/图标那三格是发放时定格的快照。

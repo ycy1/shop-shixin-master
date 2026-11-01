@@ -35,7 +35,9 @@ public class SysMenu implements Serializable {
     @ApiModelProperty(value = "显示顺序")
     private Integer sort;
 
-    @ApiModelProperty(value = "菜单图标")
+    // 全局 field-strategy=not_empty 会把空串从 UPDATE 的 SET 里整个跳过，不标 IGNORED 就清不掉已有图标
+    @TableField(updateStrategy = FieldStrategy.IGNORED)
+    @ApiModelProperty(value = "菜单图标：存 sys_icon.id，或历史遗留的 el-icon 组件名（如 Setting），前端 MenuIcon 两种都认")
     private String icon;
 
     @ApiModelProperty(value = "菜单类型（CATALOG目录 MENU菜单 BUTTON按钮）")

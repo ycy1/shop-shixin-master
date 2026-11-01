@@ -41,6 +41,11 @@ public class SysNotificationServiceImpl extends ServiceImpl<SysNotificationsMapp
     }
 
     @Override
+    public void retry(Long id) {
+        notificationsUtil.retryById(id);
+    }
+
+    @Override
     public boolean insert(SysNotifications notifications) {
         // 这三列在 sys_notifications 里是 NOT NULL，缺了会在 INSERT 才报错，提前拦
         if (StringUtils.isBlank(notifications.getBusinessType())) {

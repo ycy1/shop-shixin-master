@@ -57,6 +57,14 @@ public class SysNotifications implements Serializable {
     @ApiModelProperty(value = "通知关联的链接，可为空")
     private String link;
 
+    /**
+     * 消费失败次数：每次失败 +1，发送成功时归零。
+     * 所以它同时当"发送状态"用：0 = 已发送；>0 = 还没发出去（重试中 / 停下等人工）。
+     * 满 3 次停止自动重试并通知管理员，后台按这一格显示「重试」按钮。
+     */
+    @ApiModelProperty(value = "通知消费失败次数：每次失败 +1、发送成功归零；>0 即还没发出去")
+    private Integer failCount;
+
     @TableField(exist = false)
     @ApiModelProperty(value = "待筛选的业务类型列表（逗号分隔，不入库）")
     private String businessTypes;

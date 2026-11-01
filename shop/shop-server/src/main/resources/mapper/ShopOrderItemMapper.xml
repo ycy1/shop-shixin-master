@@ -23,6 +23,10 @@
         i.warehouse_id,
         i.order_no,
         i.sku_id,
+        <!-- 来源两格：一整盒拆出来的那几行带着 source_type=1 + source_id=哪台盒，
+             页面上把同一盒的几行收拢成一张卡、退货按它整组退都读这两格（普通行是 0 / 0） -->
+        i.source_type,
+        i.source_id,
         i.product_name,
         i.spec_text,
         i.image,
@@ -42,6 +46,8 @@
         p.product_code,
         st.store_name,
         w.warehouse_name,
+        <!-- 来源名称：那一行来自哪台盒叫什么，按 source_id 现联（盒后来被删了就联不出，页面退回只说「一整盒」） -->
+        tb.box_name AS source_name,
         u.nickname,
         u.username,
         o.status AS order_status,
@@ -58,6 +64,9 @@
         LEFT JOIN shop_product p ON p.id = sk.product_id AND p.is_deleted = 0
         LEFT JOIN shop_store st ON st.id = i.store_id AND st.is_deleted = 0
         LEFT JOIN shop_erp_warehouse w ON w.id = i.warehouse_id AND w.is_deleted = 0
+        <!-- 只有盲盒那几行才去联那台盒：普通行 source_id=0，本来就对不上任何一台盒；
+             source_type=1 也写在 ON 上，是让那种行照样能出现在列表里（口径同上面那段说明） -->
+        LEFT JOIN shop_trendy_box tb ON tb.id = i.source_id AND i.source_type = 1 AND tb.is_deleted = 0
         LEFT JOIN sys_user u ON u.id = i.user_id
     </sql>
 

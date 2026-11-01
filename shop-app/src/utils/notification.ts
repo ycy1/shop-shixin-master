@@ -4,12 +4,18 @@ import type { IShopNotificationRow } from '@/api/types/shop'
 /**
  * 这条消息点进去该去哪 —— 拼的是 App 自己的路由，交给 uni.navigateTo。
  *
- * 服务端 link 那一格九档全留空（发送那一刻不知道该端的路由长什么样），所以跳转由各端按 businessType 自己拼；
+ * 服务端 link 那一格多数档位留空（发送那一刻不知道该端的路由长什么样），所以跳转由各端按 businessType 自己拼；
  * 但 link 非空时优先认它：那是后台手工填的目标，这里拼的那份只是兜底。
+ * 两个例外要先摘掉：园区照片（park_photo）和潮玩集齐（collect）两档，服务端填的是 **web** 那一页的路径
+ *（照片属于哪家园区、集齐的是哪条系列只有后端那一行知道，web 端直接照它跳），而 App 里这两页都没有 ——
+ * 认了它就等于 navigateTo 一个不存在的路由，所以这两档在认 link 之前就回空串，只标已读。
  * 回空串 = 这一档 App 上没有对应页面（培训在门店页、签收在订单里、徽章和后台通知都没有独立详情页），
  * 调用方就把这一条只标已读、别把人带去一个空页。
  */
 export function messageTarget(row: IShopNotificationRow): string {
+  if (row.businessType === 'park_photo' || row.businessType === 'collect') {
+    return ''
+  }
   if (row.link) {
     return row.link
   }

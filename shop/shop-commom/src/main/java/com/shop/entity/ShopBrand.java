@@ -43,6 +43,15 @@ public class ShopBrand extends BaseEntity {
     @TableField(updateStrategy = FieldStrategy.IGNORED)
     private Long categoryId;
 
+    // 同上，NULL 表示这个品牌不属于任何专区
+    @ApiModelProperty(value = "专区id：section_type=1 时是潮玩系列id(shop_trendy.id)，NULL=不属于任何专区")
+    @TableField(updateStrategy = FieldStrategy.IGNORED)
+    private Long sectionId;
+
+    /** 专区类型（字典 section_type）：1 潮玩；0 = 不属于任何专区（后台保存时按有没有选专区自动写） */
+    @ApiModelProperty(value = "专区类型：1 潮玩；0=不属于任何专区")
+    private Integer sectionType;
+
     @ApiModelProperty(value = "排序")
     private Integer sort;
 

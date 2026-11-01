@@ -37,9 +37,8 @@
         <el-table-column label="菜单名称" prop="title" show-overflow-tooltip />
         <el-table-column label="图标" align="center" width="60">
           <template #default="{ row }">
-            <el-icon v-if="row.icon">
-              <component :is="row.icon" />
-            </el-icon>
+            <!-- 图标库 id 和历史 el-icon 名两种格式都由 MenuIcon 分辨，这里不做判断 -->
+            <menu-icon :icon="row.icon" />
           </template>
         </el-table-column>
         <el-table-column label="类型" align="center" width="80">
@@ -130,11 +129,10 @@
 
           <el-col :span="24" v-if="menuForm.type !== MenuTypeEnum.BUTTON">
             <el-form-item label="图标">
-              <el-input v-model="menuForm.icon" placeholder="点击选择图标" readonly>
+              <!-- 输入框里显示的是图标名称：这一格存的是 sys_icon.id，直接把值给人看就是一串数字 -->
+              <el-input :model-value="iconText" placeholder="点击选择图标" readonly clearable @clear="handleIconClear">
                 <template #prefix>
-                  <el-icon v-if="menuForm.icon">
-                    <component :is="menuForm.icon" />
-                  </el-icon>
+                  <menu-icon :icon="menuForm.icon" />
                 </template>
                 <template #append>
                   <el-button @click="showIconSelect = true">
@@ -200,18 +198,18 @@
       </template>
     </el-dialog>
 
-    <!-- 图标选择器组件 -->
-    <icon-select
-      v-model="menuForm.icon"
-      v-model:visible="showIconSelect"
-    />
+    <!-- 公共图标选择器：菜单这一档默认落在「系统图标」，从商品分类/其它档挑也行 -->
+    <shop-icon-select v-model="menuForm.icon" v-model:visible="showIconSelect" :icon-category="1"
+      @select="handleIconSelect" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance } from 'element-plus'
-import IconSelect from '@/components/IconSelect/index.vue'
+import MenuIcon from '@/components/MenuIcon/index.vue'
+import ShopIconSelect from '@/components/ShopIconSelect/index.vue'
+import { iconRecord } from '@/utils/iconLibrary'
 import {
   getMenuListApi,
   createMenuApi,
@@ -276,6 +274,32 @@ const menuForm = reactive<any>({
 // 模拟菜单数据
 const menuList = ref<any>([])
 
+/**
+ * 图标输入框显示的名称：这一格存的是 sys_icon.id（历史数据是 el-icon 名），
+ * 给人看 id 没意义。本次弹窗里选中的那条由 handleIconSelect 记住，
+ * 回显（打开修改弹窗）时图标库里查得到就用库里的名字，查不到就把原值显示出来。
+ */
+const selectedIconName = ref('')
+const iconText = computed(() => {
+  const value = menuForm.icon
+  if (!value) return ''
+  if (selectedIconName.value) return selectedIconName.value
+  const record = /^\d+$/.test(String(value)) ? iconRecord(String(value)) : undefined
+  if (record) return record.iconName
+  return String(value)
+})
+
+const handleIconSelect = (icon: any) => {
+  // 选择器回的是数字 id，sys_menu.icon 是 varchar，统一存成字符串（后端实体那一格是 String）
+  menuForm.icon = String(icon.id)
+  selectedIconName.value = icon.iconName
+}
+
+const handleIconClear = () => {
+  menuForm.icon = ''
+  selectedIconName.value = ''
+}
+
 // 菜单树选项
 const menuOptions = ref<any>([])
 
@@ -303,8 +327,7 @@ const submitForm = async () => {
       submitLoading.value = true
       try {
         const formData = { ...menuForm }
-        formData.icon = formatIconName(formData.icon)
-        
+
         if (dialogType.value === 'add') {
           await createMenuApi(formData)
           ElMessage.success('新增成功')
@@ -363,6 +386,7 @@ const resetForm = () => {
   menuForm.type = MenuTypeEnum.CATALOG
   menuForm.perm = ''
   menuForm.icon = ''
+  selectedIconName.value = ''
   menuForm.hidden = 0,
   menuForm.isExternal = 0
 }
@@ -382,27 +406,13 @@ const handleEdit = (row: any) => {
   resetForm()
   dialogType.value = 'edit'
   dialogVisible.value = true
-  // 格式化图标名称
-  const formData = { ...row }
-  formData.icon = formatIconName(formData.icon)
-  Object.assign(menuForm, formData)
+  Object.assign(menuForm, { ...row })
 }
 
 // 在组件挂载时获取数据
 onMounted(() => {
   getList()
 })
-
-// 处理图标名称转换
-const formatIconName = (icon: string) => {
-  if (!icon) return ''
-  // 如果是 el-icon- 开头，移除前缀
-  if (icon.startsWith('el-icon-')) {
-    return icon.replace('el-icon-', '')
-  }
-  // 确保首字母大写
-  return icon.charAt(0).toUpperCase() + icon.slice(1)
-}
 </script>
 
 <style scoped lang="scss">

@@ -35,6 +35,62 @@ const submitting = ref(false)
 const fromCart = ref(false)
 const cartIds = ref<number[]>([])
 
+/**
+ * 试算回来的那些行按「一盒一组」收拢：一整盒在明细里是盒内每款一行（锁库存、出库、退货都只认识具体规格），
+ * 确认订单那一页不该让人数出六行才知道自己端了一盒 —— 组头一句「一整盒 · 共 M 件 ¥总额」，
+ * 底下逐款只列名字和件数（摊到每款的单价是账本上的数，不在这页报给人看）。
+ * 普通商品行照旧一行一条。
+ */
+type PreviewLine = IShopOrderPreview['items'][number]
+
+interface PreviewGroup {
+  key: string
+  box: boolean
+  lines: PreviewLine[]
+}
+
+const quoteGroups = computed<PreviewGroup[]>(() => {
+  const out: PreviewGroup[] = []
+  const boxIndex = new Map<string, PreviewGroup>()
+  for (const line of quote.value?.items ?? []) {
+    if (Number(line.sourceType) === 1 && line.sourceId != null) {
+      const key = `box-${line.sourceId}`
+      const hit = boxIndex.get(key)
+      if (hit) {
+        hit.lines.push(line)
+        continue
+      }
+      const group: PreviewGroup = { key, box: true, lines: [line] }
+      boxIndex.set(key, group)
+      out.push(group)
+      continue
+    }
+    out.push({ key: `line-${line.skuId}`, box: false, lines: [line] })
+  }
+  return out
+})
+
+function groupAmount(group: PreviewGroup) {
+  return group.lines.reduce((sum, one) => sum + Number(one.totalAmount ?? 0), 0).toFixed(2)
+}
+
+function groupQuantity(group: PreviewGroup) {
+  return group.lines.reduce((sum, one) => sum + Number(one.quantity ?? 0), 0)
+}
+
+/** 盒那一组默认收起，点组头下拉展开（状态按组的 key 记，端过两盒就是两张卡各自开合） */
+const openedBoxes = ref<Set<string>>(new Set())
+
+function toggleBoxOpen(key: string) {
+  const next = new Set(openedBoxes.value)
+  if (next.has(key)) {
+    next.delete(key)
+  } else {
+    next.add(key)
+  }
+  openedBoxes.value = next
+}
+
 const addresses = ref<IShopAddressRow[]>([])
 /** 地址那一列读到过没有：没读到不能把「还没有收货地址」说成事实 */
 const addressLoaded = ref(false)
@@ -102,7 +158,8 @@ async function loadCartItems() {
     const rows = await getMyCart()
     const picked = rows.filter(one => one.buyable === 1 && one.selected === 1)
     cartIds.value = picked.map(one => one.id)
-    form.value = { ...form.value, items: picked.map(one => ({ skuId: one.skuId, quantity: one.quantity })) }
+    // cartId 一起报上去：单价按购物车那一行自己那一格算（抽中入车的是盲盒单抽价），不是这里报数
+    form.value = { ...form.value, items: picked.map(one => ({ skuId: one.skuId, quantity: one.quantity, cartId: one.id })) }
   }
   catch {
     // 拉不到车就留在「试算中」那一格，http 层已经把后端那句弹出来了
@@ -227,28 +284,58 @@ onShow(async () => {
         <view class="text-[28rpx] text-gray-600">
           商品
         </view>
-        <view
-          v-for="line in quote.items"
-          :key="line.skuId"
-          class="mt-24rpx flex items-start justify-between border-b border-gray-50 pb-24rpx"
-        >
-          <view class="flex-1">
-            <view class="text-[28rpx]">
-              {{ line.productName }}
+        <template v-for="group in quoteGroups" :key="group.key">
+          <!-- 一整盒：组头报盒和总额，默认收起（这一页要核对的是"买了什么、多少钱"，盒里那十几行不该把整页冲长）；
+               点组头下拉展开逐款和件数 —— 摊到每款的单价不在这里报，钱只有整盒那一个数 -->
+          <view v-if="group.box" class="mt-24rpx border-b border-gray-50 pb-8rpx">
+            <view
+              class="flex items-start justify-between"
+              hover-class="fx-tap"
+              @click="toggleBoxOpen(group.key)"
+            >
+              <text class="mr-8rpx inline-block shrink-0 text-[20rpx] text-[#e6a23c] transition-transform" :class="openedBoxes.has(group.key) ? 'rotate-90' : ''">▶</text>
+              <text class="min-w-0 flex-1 text-[28rpx]">
+                一整盒（{{ group.lines.length }} 款 / 共 {{ groupQuantity(group) }} 件）
+              </text>
+              <text class="ml-16rpx shrink-0 text-[28rpx]">
+                ¥{{ groupAmount(group) }}
+              </text>
             </view>
-            <view class="mt-8rpx text-[24rpx] text-gray-400">
-              {{ line.specText || '默认规格' }} × {{ line.quantity }}
+            <view
+              v-for="line in (openedBoxes.has(group.key) ? group.lines : [])"
+              :key="line.skuId"
+              class="mt-8rpx flex items-baseline justify-between pl-24rpx text-[24rpx] text-gray-400"
+            >
+              <text class="min-w-0 flex-1 truncate">
+                {{ line.productName }} · {{ line.specText || '默认规格' }}
+              </text>
+              <text class="ml-16rpx shrink-0">
+                × {{ line.quantity }}
+              </text>
             </view>
           </view>
-          <view class="text-right">
-            <view class="text-[28rpx]">
-              ¥{{ line.totalAmount }}
+          <view
+            v-else
+            class="mt-24rpx flex items-start justify-between border-b border-gray-50 pb-24rpx"
+          >
+            <view class="flex-1">
+              <view class="text-[28rpx]">
+                {{ group.lines[0].productName }}
+              </view>
+              <view class="mt-8rpx text-[24rpx] text-gray-400">
+                {{ group.lines[0].specText || '默认规格' }} × {{ group.lines[0].quantity }}
+              </view>
             </view>
-            <view class="mt-8rpx text-[22rpx] text-gray-400">
-              单价 ¥{{ line.price }}
+            <view class="text-right">
+              <view class="text-[28rpx]">
+                ¥{{ group.lines[0].totalAmount }}
+              </view>
+              <view class="mt-8rpx text-[22rpx] text-gray-400">
+                单价 ¥{{ group.lines[0].price }}
+              </view>
             </view>
           </view>
-        </view>
+        </template>
       </view>
 
       <view class="mt-40rpx border-t border-gray-100 pt-32rpx">

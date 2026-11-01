@@ -60,6 +60,14 @@ public class SysNotificationController {
         return Result.success();
     }
 
+    @PostMapping("/retry/{id}")
+    @ApiOperation(value = "重试发送失败的通知（失败次数归零、重新投递一次）")
+    @SaCheckPermission("sys:notification:retry")
+    public Result<Void> retry(@PathVariable Long id) {
+        sysNotificationService.retry(id);
+        return Result.success();
+    }
+
     @GetMapping("/receiver/list")
     @ApiOperation(value = "查询消息阅读记录（分页，可按阅读人搜索）")
     @SaCheckPermission("sys:notification:receiver")

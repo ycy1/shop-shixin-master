@@ -14,6 +14,7 @@ import com.shop.entity.ShopActivityPointsLog;
 import com.shop.entity.ShopActivitySignin;
 import com.shop.entity.ShopConsumerWallet;
 import com.shop.entity.ShopConsumerWalletLog;
+import com.shop.entity.ShopParkUserTicket;
 import com.shop.entity.SysUser;
 import com.shop.exception.ServiceException;
 import com.shop.mapper.ShopActivityBadgeUserMapper;
@@ -26,6 +27,7 @@ import com.shop.mapper.ShopConsumerFavoriteMapper;
 import com.shop.mapper.ShopConsumerWalletLogMapper;
 import com.shop.mapper.ShopConsumerWalletMapper;
 import com.shop.mapper.ShopOrderItemMapper;
+import com.shop.mapper.ShopParkUserTicketMapper;
 import com.shop.mapper.ShopActivitySigninMapper;
 import com.shop.mapper.SysRoleMapper;
 import com.shop.mapper.SysUserMapper;
@@ -70,6 +72,9 @@ public class ShopProfileReadServiceImpl implements ShopProfileReadService {
      * SQL 全部复用后台那几条（优惠券的「发放记录」、徽章管理的「获取记录」、积分管理的列表和「积分流水」），这里只把归属钉死。
      */
     private final ShopActivityCouponUserMapper shopActivityCouponUserMapper;
+
+    /** 「我的订单 → 我的票种」那一本：读的是 shop_trendy_park_user_ticket（一张票一行），同上那一句只钉归属 */
+    private final ShopParkUserTicketMapper shopParkUserTicketMapper;
 
     private final ShopActivityBadgeUserMapper shopActivityBadgeUserMapper;
 
@@ -126,6 +131,20 @@ public class ShopProfileReadServiceImpl implements ShopProfileReadService {
     public IPage<ShopActivityCouponUser> couponPage(ShopActivityCouponUser query) {
         query.setUserId(LoginUserUtils.requireLoginUser("后查看我的优惠券").getId());
         return shopActivityCouponUserMapper.selectRecordPage(PageUtil.getPage(), query);
+    }
+
+    /**
+     * 名下主题公园的票：SQL 是 ShopParkUserTicketMapper.xml 的 selectUserTicketPage（后台「用户票种」那一本同一条），
+     * 票名/类型/票价读本行出票时的快照、联表只带昵称/手机号和园区名。
+     *
+     * 后台那一条按账号类型分叉（平台/门店/ERP 看全平台、消费者只看自己），这一条不给那个口子：
+     * userId 无条件覆盖成登录 id，否则前台带一个 userId 就能捞别人手上有哪些票。
+     * 消费者在「我的订单 → 我的票种」那一本里只能看和退自己的票，核销/改票都不在这条路上。
+     */
+    @Override
+    public IPage<ShopParkUserTicket> parkTicketPage(ShopParkUserTicket query) {
+        query.setUserId(LoginUserUtils.requireLoginUser("后查看我的票种").getId());
+        return shopParkUserTicketMapper.selectUserTicketPage(PageUtil.getPage(), query);
     }
 
     /**

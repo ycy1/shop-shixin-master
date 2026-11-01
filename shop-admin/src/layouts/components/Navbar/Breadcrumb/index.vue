@@ -6,9 +6,7 @@
           v-if="index === breadcrumbs.length - 1" 
           class="no-redirect breadcrumb-item"
         >
-        <el-icon>
-          <component :is="item.meta?.icon" /> 
-        </el-icon>
+        <menu-icon :icon="item.meta?.icon" />
         {{ item.meta?.title }}
       </span>
         <a 
@@ -16,9 +14,7 @@
           class="redirect breadcrumb-item" 
           @click.prevent="handleLink(item)"
         >
-        <el-icon>
-          <component :is="item.meta?.icon" /> 
-        </el-icon>
+        <menu-icon :icon="item.meta?.icon" />
         {{ item.meta?.title }}
       </a>
       </el-breadcrumb-item>
@@ -28,6 +24,7 @@
 
 <script setup lang="ts">
 import { useRoute, useRouter, RouteLocationMatched } from 'vue-router'
+import MenuIcon from '@/components/MenuIcon/index.vue'
 
 const route = useRoute()
 const router = useRouter()

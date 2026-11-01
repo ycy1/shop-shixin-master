@@ -2,17 +2,37 @@
   font-family: "iconfont"; /* Project id 5234755 */
   /* Color fonts */
   src: 
-       url('//at.alicdn.com/t/c/font_5234755_b262rvr1xsn.woff2?t=1789739023032') format('woff2'),
-       url('//at.alicdn.com/t/c/font_5234755_b262rvr1xsn.woff?t=1789739023032') format('woff'),
-       url('//at.alicdn.com/t/c/font_5234755_b262rvr1xsn.ttf?t=1789739023032') format('truetype');
+       url('//at.alicdn.com/t/c/font_5234755_r5rz615zfqm.woff2?t=1793087462915') format('woff2'),
+       url('//at.alicdn.com/t/c/font_5234755_r5rz615zfqm.woff?t=1793087462915') format('woff'),
+       url('//at.alicdn.com/t/c/font_5234755_r5rz615zfqm.ttf?t=1793087462915') format('truetype');
 }
 
 .iconfont {
   font-family: "iconfont" !important;
-  font-size: 24px;
+  font-size: 16px;
   font-style: normal;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+.icon-park:before {
+  content: "\e744";
+}
+
+.icon-tujian:before {
+  content: "\e62f";
+}
+
+.icon-ip:before {
+  content: "\e605";
+}
+
+.icon-manghe:before {
+  content: "\e600";
+}
+
+.icon-chaowan:before {
+  content: "\e603";
 }
 
 .icon-zuanjie:before {

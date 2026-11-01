@@ -13,6 +13,8 @@ import com.shop.mapper.ShopBrandMapper;
 import com.shop.mapper.ShopCategoryMapper;
 import com.shop.mapper.ShopProductMapper;
 import com.shop.mapper.ShopStoreMapper;
+import com.shop.mapper.ShopTrendyMapper;
+import com.shop.enums.SectionTypeEnum;
 import com.shop.service.ShopBrandService;
 import com.shop.utils.LoginUserUtils;
 import com.shop.utils.PageUtil;
@@ -38,6 +40,9 @@ public class ShopBrandServiceImpl extends ServiceImpl<ShopBrandMapper, ShopBrand
 
     /** 只用来看有没有门店还绑着这个品牌；注入 mapper 而不是 service，避免两边互相依赖 */
     private final ShopStoreMapper storeMapper;
+
+    /** 只用来看「所选潮玩系列存不存在」这一道判据 */
+    private final ShopTrendyMapper trendyMapper;
 
     @Override
     public IPage<ShopBrand> selectPage(ShopBrand query) {
@@ -93,6 +98,9 @@ public class ShopBrandServiceImpl extends ServiceImpl<ShopBrandMapper, ShopBrand
 
     @Override
     public void insert(ShopBrand brand) {
+        // 专区类型按有没有选专区自动写：选了 = 1 潮玩、清空 = 0（表单里没有这一格）
+        brand.setSectionType(brand.getSectionId() == null
+                ? SectionTypeEnum.NONE.getCode() : SectionTypeEnum.TRENDY.getCode());
         validate(brand, null);
         normalizeSpokesperson(brand);
         if (brand.getStatus() == null) {
@@ -121,6 +129,8 @@ public class ShopBrandServiceImpl extends ServiceImpl<ShopBrandMapper, ShopBrand
         }
         // 判库里那行的归属，不判请求体：否则把 userId 一起改掉就自己把自己转出去了
         assertWritable(Collections.singletonList(exists));
+        brand.setSectionType(brand.getSectionId() == null
+                ? SectionTypeEnum.NONE.getCode() : SectionTypeEnum.TRENDY.getCode());
         validate(brand, brand.getId());
         normalizeSpokesperson(brand);
         try {
@@ -186,6 +196,10 @@ public class ShopBrandServiceImpl extends ServiceImpl<ShopBrandMapper, ShopBrand
         // category_id 可空，但填了就必须存在
         if (brand.getCategoryId() != null && categoryMapper.selectById(brand.getCategoryId()) == null) {
             throw new ServiceException("所选分类不存在");
+        }
+        // trendy_id 同样可空（不是潮玩品牌），口径同上
+        if (brand.getSectionId() != null && trendyMapper.selectById(brand.getSectionId()) == null) {
+            throw new ServiceException("所选潮玩系列不存在");
         }
         Long count = baseMapper.selectCount(new LambdaQueryWrapper<ShopBrand>()
                 .eq(ShopBrand::getBrandName, brand.getBrandName())

@@ -22,6 +22,7 @@
         p.product_desc,
         p.category_id,
         p.brand_id,
+        p.section_id,
         p.store_id,
         p.main_image,
         p.product_specs,
@@ -70,6 +71,19 @@
             <if test="q.brandId != null">
                 AND p.brand_id = #{q.brandId}
             </if>
+            <if test="q.storeId != null">
+                AND p.store_id = #{q.storeId}
+            </if>
+            <!-- 潮玩绑定面板那两层：主列表按系列筛，挑候选那一层只要没绑过任何系列的。
+                 两个条件互斥（noTrendy 只在没传 sectionId 时才生效），免得传串了查出一张空表 -->
+            <choose>
+                <when test="q.sectionId != null">
+                    AND p.section_id = #{q.sectionId}
+                </when>
+                <when test="q.noTrendy != null and q.noTrendy">
+                    AND p.section_id IS NULL
+                </when>
+            </choose>
             <!-- 按 id 批量取：回显用的（手里只有 id 串，要把名字补回来），和关键字那几条是并列的筛选项 -->
             <if test="q.ids != null and q.ids.size() > 0">
                 AND p.id IN
@@ -122,6 +136,7 @@
         p.status,
         p.carousel_enable,
         p.cultural_enable,
+        p.section_id,
         (SELECT MIN(s.product_price)
         FROM shop_product_sku s
         WHERE s.product_id = p.id AND s.is_deleted = 0) AS price_min,
@@ -134,7 +149,8 @@
         c.category_name,
         b.brand_name,
         b.logo AS brand_logo,
-        st.store_name
+        st.store_name,
+        t.trendy_name
     </sql>
 
     <sql id="webJoins">
@@ -142,6 +158,8 @@
         LEFT JOIN shop_category c ON c.id = p.category_id AND c.is_deleted = 0
         LEFT JOIN shop_brand b ON b.id = p.brand_id AND b.is_deleted = 0
         LEFT JOIN shop_store st ON st.id = p.store_id AND st.is_deleted = 0
+        <!-- 专区名（现只有潮玩系列）：p.section_id 原样给（NULL=不属于任何专区），名字联出来带；系列被删掉就是没名字，页面显示成普通商品 -->
+        LEFT JOIN shop_trendy t ON t.id = p.section_id AND t.is_deleted = 0
     </sql>
 
     <!-- 状态这一档钉死在 WHERE 里，不跟请求参数走：前台能看见的必须是「已上架」的整件商品。
@@ -180,6 +198,10 @@
         <!-- 门店详情页商品区那两档 tab：文创 / 普通商品各一条查询，两档都带 store_id 一起筛。 -->
         <if test="q.culturalEnable != null">
             AND p.cultural_enable = #{q.culturalEnable}
+        </if>
+        <!-- 潮玩专区：潮玩商品没有第二张表，判据就是「挂了系列」这一列非空 -->
+        <if test="q.trendyOnly != null and q.trendyOnly == 1">
+            AND p.section_id IS NOT NULL
         </if>
         <!-- 状态已经恒定，排序沿用后台同款：先运营排的 sort，再新上的在前 -->
         ORDER BY p.sort ASC, p.id DESC

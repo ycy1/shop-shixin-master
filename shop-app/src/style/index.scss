@@ -60,6 +60,92 @@ page {
 }
 
 /*
+ * 水滴胶囊：tabbar 切换、轮播 dot、顶部 tab 三处共用一套。
+ * 移动和形变由 composables/useDroplet 以「transform」写进内联样式（百分比 + scaleX），left 恒为 0、
+ * width 恒等于一格 —— 只动 transform 是因为 left / width 都要重排，Chromium 给不了合成器，
+ * 切 tab 时下面整块内容重挂会把动画整段卡住（看着就是「很慢很黏」）。
+ * 那份内联里不能出现 rpx（uni-h5 不做换算），所以这一份只管形状：高低、圆角、内缩、底色。
+ * 「先拉长、再收住」那一下 = 这里这条过渡 + 组件里那一拍 transition:none 铺跨度，两者缺一不可。
+ * --dp-bg 由各面自己给（tabbar 是主题色软底、dot 是实心白点、tab 是品牌红），不给就用品牌红。
+ */
+.drop-pill {
+  position: absolute;
+  left: 0;
+  z-index: 0;
+  pointer-events: none;
+  /* 跨度帧左端钉在起始格、收住那一帧右端不动，全靠这个原点 */
+  transform-origin: left center;
+  will-change: transform;
+  transition: transform 320ms cubic-bezier(0.22, 0.9, 0.24, 1);
+}
+
+.drop-pill__face {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--dp-bg, rgb(209 67 40 / 12%));
+}
+
+/* 底部 tabbar：一整列后面铺一块软底，图标和文字浮在它上面 */
+.drop-pill--bar {
+  top: 10rpx;
+  bottom: 10rpx;
+}
+
+.drop-pill--bar .drop-pill__face {
+  margin: 0 12rpx;
+  /* 这一排的高亮色走 wot 主题（蓝），软底给中性灰才不会和它打架 */
+  background: var(--dp-bg, rgba(0, 0, 0, 0.06));
+}
+
+/* 轮播 dot：底槽里那颗水珠 —— 一条 transform 过渡同时管「滑过去（带过冲，过头一点再弹回）」和「挤长再收圆」 */
+.drop-pill--dot {
+  top: 50%;
+  height: 16rpx;
+  margin-top: -8rpx;
+  /* 这一档原点在中间：撑长是对称的，珠子不会一路往右偏出去（tab 那排要的是「起点钉住」，所以那边留在左边） */
+  transform-origin: center;
+  transition: transform 460ms cubic-bezier(0.34, 1.42, 0.5, 1);
+}
+
+.drop-pill--dot .drop-pill__face {
+  margin: 0 12rpx;
+  background: var(--dp-bg, #fff);
+}
+
+/* 顶部 tab：把原来那根 border-b 下划线换成会拉伸的水滴，其余观感不变 */
+.drop-pill--tab {
+  bottom: 0;
+  height: 6rpx;
+}
+
+.drop-pill--tab .drop-pill__face {
+  margin: 0 20rpx;
+  background: var(--dp-bg, #d14328);
+}
+
+/* 刻意不加 @media (prefers-reduced-motion: reduce) 来关掉这段形变：这台机器系统里开着「减少动效」，
+   一加那条胶囊就永远不播（和 web 那边换页淡入同一个口径，见 shop-web/src/styles/global.css 的 page-enter 注释）。 */
+
+/*
+ * tab 切换时内容那一块的淡入（他选的「淡入就够，不加位移」）。
+ * 挂在各页 tab 对应内容的第一个块上就够：v-if 切档时那一带是新插入的节点，动画自然重播，
+ * 所以不用给整页套一层带 :key 的容器（那一层要搬动一大片兄弟节点，风险比效果大）。
+ */
+.fx-fade {
+  animation: fx-fade 160ms ease-out;
+}
+
+@keyframes fx-fade {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/*
  * 登录/注册两页共用的背景：一张实景照片铺满整页，上面压两条 ——
  * 顶部一条品牌红（白标题站在它上面才读得清）、下半截一条灰白（照片淡出去，白卡落上去不花）。
  * 三层都是绝对定位，所以页面内容那一层要带 position:relative（下面用的 relative 工具类）才浮得上来。

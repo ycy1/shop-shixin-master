@@ -14,7 +14,7 @@ import java.util.List;
 public interface ShopCategoryMapper extends BaseMapper<ShopCategory> {
 
     /**
-     * 按条件查询扁平类目列表，联表 shop_icon 带出图标类型与内容
+     * 按条件查询扁平类目列表，联表 sys_icon 带出图标类型与内容
      */
     List<ShopCategory> selectCategoryList(@Param("q") ShopCategory query);
 }

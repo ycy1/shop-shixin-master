@@ -164,9 +164,14 @@ public class ShopRefundCreateServiceImpl implements ShopRefundCreateService {
             }
             if (want > remaining) {
                 // 报出去的三个数分开说：已退是"钱已经退掉了"，在途是"另一张退款单先把这几件占住了"，
-                // 处理完那一张（审核拒绝/退款失败/取消都算）这几件会还回来
+                // 处理完那一张（审核拒绝/退款失败/取消都还回来）这几件会还回来
                 throw new ServiceException(name + "最多还能退 " + Math.max(remaining, 0) + " 件（本单共 "
                         + quantity + " 件，已退 " + returned + " 件，另有 " + inFlight + " 件在别的退款单里没处理完）");
+            }
+            // 一整盒拆出来的行只能整行退：「退半盒」没有定义 —— 盒不是按件挑的，那一行是这一盒里那一款的全部
+            if (Integer.valueOf(ShopOrderItem.SOURCE_BOX).equals(line.getSourceType()) && want != quantity) {
+                throw new ServiceException(name + "是一整盒里的一款，只能整盒退（这一行的 " + quantity
+                        + " 件一起退，不能只退几件）");
             }
             BigDecimal paid = shopOrderSupport.paidAmount(line, name, "无法计算退款金额");
             // 整行退完取这一行的全部实付，只退一部分才按件摊：摊出来的分位才不会把整行的钱摊丢。
@@ -184,6 +189,26 @@ public class ShopRefundCreateServiceImpl implements ShopRefundCreateService {
             refundAmount = refundAmount.add(amount);
             returnQuantity += want;
         }
+
+        // 一整盒要退就整盒一起退：同一台盒（source_id 相同）在订单上的每一行都必须出现在这次提交里 ——
+        // 只退其中一款，剩下那几件就成了「钱退了、货没退全」的半盒，仓库那边也说不清退回去的是什么
+        Map<Long, List<ShopOrderItem>> boxLinesByBox = lines.stream()
+                .filter(one -> Integer.valueOf(ShopOrderItem.SOURCE_BOX).equals(one.getSourceType())
+                        && one.getSourceId() != null)
+                .collect(Collectors.groupingBy(ShopOrderItem::getSourceId));
+        for (List<ShopOrderItem> group : boxLinesByBox.values()) {
+            boolean touched = group.stream().anyMatch(one -> used.contains(one.getId()));
+            if (!touched) {
+                continue;
+            }
+            for (ShopOrderItem sibling : group) {
+                if (!used.contains(sibling.getId())) {
+                    throw new ServiceException("一整盒要退就得整盒一起退：这台盒还有一行「"
+                            + sibling.getProductName() + "」没在这次提交里");
+                }
+            }
+        }
+
         refundAmount = refundAmount.setScale(2, RoundingMode.HALF_UP);
 
         // ② 这一单退出去的钱（已到账 + 在流程里的）加上这次，不能超过实付金额

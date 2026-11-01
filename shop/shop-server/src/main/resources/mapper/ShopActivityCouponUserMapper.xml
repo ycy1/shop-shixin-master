@@ -92,5 +92,18 @@
           AND status = 1
           AND order_id = #{orderId}
     </update>
+    <!-- 过期扫描（定时任务 expireTask.expireUserCoupons 走这一条）：0 未使用 且 过期时间已经过了 → 2 已过期。
+         status = 0 压在 WHERE 里 ⇒ 已经用掉的（1）、已经作废的（3）绝不回头改状态，重复跑只补当天新进过窗口的那几张。
+         一条 UPDATE 收全平台，不按人捞。
+         用券那条链上"拿 expire_time 现判"的一处仍然留着 —— 这一条是按天扫的，刚过期那几个小时内状态还是 0，
+         不能让一张过期的券抵掉钱；任务只是把账面摊平，不是取代现判。
+         update_time 靠库的 ON UPDATE CURRENT_TIMESTAMP 自己走 -->
+    <update id="markExpired">
+        UPDATE shop_activity_coupon_user
+        SET status = 2
+        WHERE is_deleted = 0
+          AND status = 0
+          AND expire_time &lt; #{now}
+    </update>
 
 </mapper>

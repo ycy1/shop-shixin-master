@@ -57,4 +57,19 @@ public interface ShopActivityCouponUserMapper extends BaseMapper<ShopActivityCou
      * @param orderId 要退出哪张订单（sys_order.id）
      */
     int giveBack(@Param("id") Long id, @Param("orderId") Long orderId);
+
+    /**
+     * 过期扫描（定时任务 expireTask.expireUserCoupons 走这一条，一天一次）：
+     * 0 未使用 且 过期时间已经过了的券 → 2 已过期。
+     *
+     * status = 0 压在 WHERE 里 ⇒ 已经用掉的、已经作废的绝不回头改状态，重复跑只补当天新进过窗口的那几张。
+     * 一条 UPDATE 收全平台，别按人捞（形状同用户票那张表的 markExpired）。
+     *
+     * 用券那条链上"拿 expire_time 现判过期"的那一处仍然保留（这一条是按天扫的，
+     * 刚过期的那几个小时里状态还是 0，不能让一张过期的券抵掉钱）—— 任务只是把账面摊平，不是取代现判。
+     *
+     * @param now 判过期的基准时刻（任务里传当前时间）
+     * @return 这次落成已过期的张数
+     */
+    int markExpired(@Param("now") LocalDateTime now);
 }

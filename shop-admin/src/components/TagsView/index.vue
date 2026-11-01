@@ -9,9 +9,7 @@
         :to="{ path: tag.path, query: tag.query }"
         @contextmenu.prevent="openMenu($event, tag)"
       >
-        <el-icon v-if="tag.meta?.icon" class="tag-icon">
-          <component :is="tag.meta.icon" />
-        </el-icon>
+        <menu-icon :icon="tag.meta?.icon" class="tag-icon" />
         {{ tag.meta?.title }}
         <el-icon 
           v-if="!isAffix(tag)" 
@@ -65,6 +63,7 @@ import {
 } from '@element-plus/icons-vue'
 import { useTagsViewStore } from '@/store/modules/tagsView'
 import { useSettingsStore } from '@/store/modules/settings'
+import MenuIcon from '@/components/MenuIcon/index.vue'
 
 const route = useRoute()
 const router = useRouter()

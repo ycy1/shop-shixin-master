@@ -2,18 +2,14 @@
   <template v-if="isLeafOrDashboard">
     <!-- 叶子菜单：点击统一走 handleMenuClick（外链新窗口打开 / 内部路由跳转） -->
     <el-menu-item :index="resolvePath(route.path)" @click="handleMenuClick(route)">
-      <el-icon v-if="route.meta?.icon">
-        <component :is="route.meta.icon" />
-      </el-icon>
+      <menu-icon :icon="route.meta?.icon" />
       <template #title>{{ route.meta?.title }}</template>
     </el-menu-item>
   </template>
   <template v-else>
     <el-sub-menu :index="resolvePath(route.path)">
       <template #title>
-        <el-icon v-if="route.meta?.icon">
-          <component :is="route.meta.icon" />
-        </el-icon>
+        <menu-icon :icon="route.meta?.icon" />
         <span>{{ route.meta?.title }}</span>
       </template>
       <template v-for="child in route.children" :key="child.path">
@@ -32,6 +28,7 @@ import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 import validate from '@/utils/validate'
+import MenuIcon from '@/components/MenuIcon/index.vue'
 
 const props = defineProps<{
   route: any

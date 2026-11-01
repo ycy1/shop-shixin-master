@@ -168,6 +168,39 @@ public class GeneratorNoUtils {
     }
 
     /**
+     * 获取盲盒编号
+     *
+     * 和商品编码一样：库里 box_no 是唯一键，新增时页面不给填，由服务端生成
+     */
+    public static String getTrendyBoxNo() {
+        return "TBOX_" + getNo();
+    }
+
+    /**
+     * 获取主题公园园区编号（库里 park_no 是唯一键，新增时页面不给填，由服务端生成）
+     */
+    public static String getParkNo() {
+        return "PARK_" + getNo();
+    }
+
+    /**
+     * 获取主题公园票种编号（同上，库里 ticket_no 是唯一键）
+     */
+    public static String getParkTicketNo() {
+        return "TICKET_" + getNo();
+    }
+
+    /**
+     * 获取入园票码（发到用户手上那张票的码，库里 ticket_code 是唯一键）
+     *
+     * 和上面那几个模板编号一样是「时间戳+3位随机数」，够后台一张张点的场景用；
+     * 将来接上线上下单批量出票时要换规则（同一秒连着插的会撞），口径见 getCouponNo() 的那段注意
+     */
+    public static String getParkUserTicketCode() {
+        return "TK_" + getNo();
+    }
+
+    /**
      * 获取编号
      * @return
      */

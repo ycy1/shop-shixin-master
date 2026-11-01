@@ -19,6 +19,7 @@
         <module>shop-auth</module>
         <module>shop-wx</module>
         <module>shop-ai</module>
+        <module>shop-mq</module>
     </modules>
 
     <parent>

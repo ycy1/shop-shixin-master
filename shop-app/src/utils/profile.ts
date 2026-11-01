@@ -27,8 +27,32 @@ export const ORDER_STATUS_TEXT: Record<number, string> = {
   5: '已关闭',
 }
 
-/** shop_order_item.ship_status：0 待发货 1 已发货 2 已退货 3 已出库 4 部分退货 */
-export const SHIP_STATUS_TEXT: Record<number, string> = {
+/** shop_trendy_park_user_ticket.status：0 未使用 1 已核销 2 已过期 3 已退款（字典 user_ticket_status） */
+export const PARK_TICKET_STATUS_TEXT: Record<number, string> = {
+  0: '未使用',
+  1: '已核销',
+  2: '已过期',
+  3: '已退款',
+}
+
+/** shop_trendy_park_ticket.ticket_type：1 日票 2 年卡 3 套票 4 快速通行 5 限定款购买资格（字典 ticket_type） */
+export const PARK_TICKET_TYPE_TEXT: Record<number, string> = {
+  1: '日票',
+  2: '年卡',
+  3: '套票',
+  4: '快速通行',
+  5: '限定款',
+}
+
+/** 入园时段：0 全天 1 上午 2 下午 3 夜场（字典 ticket_time_slot；一张票约的是其中一个档） */
+export const PARK_TICKET_SLOT_TEXT: Record<number, string> = {
+  0: '全天',
+  1: '上午',
+  2: '下午',
+  3: '夜场',
+}
+
+/** shop_order_item.ship_status：0 待发货 1 已发货 2 已退货 3 已出库 4 部分退货 */export const SHIP_STATUS_TEXT: Record<number, string> = {
   0: '待发货',
   1: '已发货',
   2: '已退货',

@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import type { IShopOrderDetail } from '@/api/types/shop'
+import type { IShopOrderDetail, IShopOrderItemRow } from '@/api/types/shop'
 import { getMyOrderDetail } from '@/api/profile'
 import OrderPayPopup from '@/components/OrderPayPopup.vue'
 import {
@@ -31,6 +31,63 @@ definePage({
 const orderId = ref(0)
 const detail = ref<IShopOrderDetail | null>(null)
 const loadError = ref('')
+
+/**
+ * 明细按「一盒一张卡」收拢：一整盒在库里是盒内每款一行（锁库存、出库、退货都只认识具体规格），
+ * 但人不该数出六行才知道自己端了一盒 —— 同一台盒（sourceId 相同）的那几行画成一组，
+ * 组头念盒名和这几行的合计。普通商品行照旧一行一组。
+ */
+interface LineGroup {
+  key: string
+  box: boolean
+  boxName: string | null
+  items: IShopOrderItemRow[]
+}
+
+const lineGroups = computed<LineGroup[]>(() => {
+  const out: LineGroup[] = []
+  const boxIndex = new Map<string, LineGroup>()
+  for (const item of detail.value?.items ?? []) {
+    if (item.sourceType === 1 && item.sourceId != null) {
+      const key = `box-${item.sourceId}`
+      const hit = boxIndex.get(key)
+      if (hit) {
+        hit.items.push(item)
+        if (!hit.boxName && item.sourceName) {
+          hit.boxName = item.sourceName
+        }
+        continue
+      }
+      const group: LineGroup = { key, box: true, boxName: item.sourceName ?? null, items: [item] }
+      boxIndex.set(key, group)
+      out.push(group)
+      continue
+    }
+    out.push({ key: `line-${item.id}`, box: false, boxName: null, items: [item] })
+  }
+  return out
+})
+
+function groupQuantity(group: LineGroup) {
+  return group.items.reduce((sum, one) => sum + Number(one.quantity ?? 0), 0)
+}
+
+function groupTotal(group: LineGroup) {
+  return group.items.reduce((sum, one) => sum + Number(one.totalAmount ?? 0), 0)
+}
+
+/** 盒那一组默认收起：端过两盒就是十几行明细，会把整张订单冲长；点组头才下拉展开盒内每款 */
+const openedBoxes = ref<Set<string>>(new Set())
+
+function toggleBoxOpen(key: string) {
+  const next = new Set(openedBoxes.value)
+  if (next.has(key)) {
+    next.delete(key)
+  } else {
+    next.add(key)
+  }
+  openedBoxes.value = next
+}
 
 /** 待支付那一单在本页也能付：弹窗收的是这份详情（它本身就是订单一行加明细） */
 const payOpen = ref(false)
@@ -104,13 +161,30 @@ onLoad((query) => {
     <template v-else-if="detail">
       <!-- 上面这块按「这一单买了什么」来排：一行一件商品，图 + 名 + 规格 + 单价×数量 + 行状态 -->
       <view class="mx-24rpx mb-24rpx rounded-xl bg-white px-32rpx py-16rpx">
-        <view
-          v-for="item in detail.items ?? []"
-          :key="item.id"
-          hover-class="fx-tap"
-          class="fx-press flex border-b border-gray-50 py-24rpx last:border-b-0"
-          @click="toProduct(item.productId)"
-        >
+          <!-- 一整盒的组头：盒名 + 这几款的合计（库里同一盒是每款一行，页面上收成一组）；默认收起，点它下拉展开 -->
+          <template v-for="group in lineGroups" :key="group.key">
+          <view
+            v-if="group.box"
+            class="flex items-center justify-between border-b border-gray-50 bg-[#fdf6ec] px-16rpx py-12rpx text-[24rpx] text-[#e6a23c]"
+            hover-class="fx-tap"
+            @click="toggleBoxOpen(group.key)"
+          >
+            <text
+              class="mr-8rpx inline-block shrink-0 text-[20rpx] transition-transform"
+              :class="openedBoxes.has(group.key) ? 'rotate-90' : ''"
+            >▶</text>
+            <text class="min-w-0 flex-1 truncate">
+              一整盒 · {{ group.boxName || '端盒抽中的' }}（{{ group.items.length }} 款 / 共 {{ groupQuantity(group) }} 件）
+            </text>
+            <text class="ml-16rpx shrink-0">{{ moneyOf(groupTotal(group)) }}</text>
+          </view>
+          <view
+            v-for="item in (group.box && !openedBoxes.has(group.key) ? [] : group.items)"
+            :key="item.id"
+            hover-class="fx-tap"
+            class="fx-press flex border-b border-gray-50 py-24rpx last:border-b-0"
+            @click="toProduct(item.productId)"
+          >
           <image
             v-if="item.image"
             hover-class="fx-tap"
@@ -154,6 +228,7 @@ onLoad((query) => {
             </view>
           </view>
         </view>
+        </template>
         <view v-if="!detail.items?.length" class="py-48rpx text-center text-[26rpx] text-gray-400">
           这一单没有商品明细行
         </view>

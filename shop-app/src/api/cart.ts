@@ -27,6 +27,44 @@ export function setAllCartSelected(selected: 0 | 1) {
   return http.put<void>('/api/app/shop/cart/selectAll', undefined, { selected })
 }
 
+/**
+ * 这一行按多少钱算：车里的 price 优先（抽中入车的那几条挂的是盲盒单抽价），
+ * 那一格没写过（老行、后台代客加购的行）才退回这条规格的现价 productPrice。
+ *
+ * 统一下单取价读的是同一个格子（服务端按 cartId 去查那一行），所以页面上显示的、合计里加的
+ * 和最后真收的钱是同一个数 —— 两边各写一遍 ?? 迟早算出两个说法。
+ */
+export function payPriceOf(one: IShopCartRow) {
+  return Number(one.price ?? one.productPrice ?? 0)
+}
+
+/**
+ * 这一行是不是一整盒（端盒那一趟在车里就是一行）：库里那一行不挂在某条规格上，
+ * skuId 落的是 0 这个哨兵，盒内有哪几款各几件看 boxItemList。
+ */
+export function isWholeBoxRow(one: IShopCartRow) {
+  return Number(one.skuId) === 0
+}
+
+/** 整盒那一行没有商品主图可取（它不挂商品），页面拿盒内第一款那张当封面 */
+export function rowImageOf(one: IShopCartRow) {
+  return one.mainImage ?? one.boxItemList?.[0]?.styleImage ?? null
+}
+
+/** 这一行上一共有几件实物：盒内每款件数 × 这一行是几盒（同一台盒端第二次并成一行，款式是按盒 id 现查的） */
+export function boxPieceCount(one: IShopCartRow) {
+  const perBox = (one.boxItemList ?? []).reduce((sum, item) => sum + Number(item.quantity ?? 0), 0)
+  return perBox * Number(one.quantity ?? 1)
+}
+
+/**
+ * 步进能加到几件：普通行按这一条规格的可用库存封顶，整盒那一行不封顶 ——
+ * 它买的是「几盒」，某一款的仓存不是这一行的上限（库存要等下单那一刻按盒内每款逐条复核）。
+ */
+export function stockCapOf(one: IShopCartRow) {
+  return isWholeBoxRow(one) ? Number.POSITIVE_INFINITY : (one.availableStock ?? 0)
+}
+
 export function deleteCart(ids: number[]) {
   return http.delete<void>(`/api/app/shop/cart/delete/${ids.join(',')}`)
 }

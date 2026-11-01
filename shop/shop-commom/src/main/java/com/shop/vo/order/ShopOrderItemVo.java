@@ -38,6 +38,15 @@ public class ShopOrderItemVo extends ShopOrderItem {
     @ApiModelProperty(value = "发货仓库名称（联表带出）")
     private String warehouseName;
 
+    /**
+     * 来源名称：这一行来自哪一台盒（按 source_id 现联 shop_trendy_box.box_name）。
+     *
+     * 一整盒在下单时拆成盒内每款一行，页面按 source_id 把这几行收拢成一张卡，卡上要念盒名；
+     * 普通商品行、以及那台盒后来被删掉了，这一格都是 NULL（卡片退回只说「一整盒」）。
+     */
+    @ApiModelProperty(value = "来源名称（盲盒那几行=那台盒的名字，联表带出），NULL=普通商品行或盒已删除")
+    private String sourceName;
+
     @ApiModelProperty(value = "下单消费者昵称（联表带出）")
     private String nickname;
 

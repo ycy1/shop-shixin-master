@@ -3,6 +3,8 @@ import type { IShopProductDetail, IShopProductSku } from '@/api/types/shop'
 import { addToCart } from '@/api/cart'
 import { COMMENT_TYPE_PRODUCT, getCommentTotal } from '@/api/comment'
 import CommentSection from '@/components/CommentSection.vue'
+import DropDots from '@/components/DropDots.vue'
+import DropTabs from '@/components/DropTabs.vue'
 import { getProductDetail } from '@/api/product'
 import { useTokenStore } from '@/store/token'
 import { parseImageUrls } from '@/utils'
@@ -40,6 +42,12 @@ const shots = computed(() => {
   return urls
 })
 
+/** 轮播当前那一页（swiper 不往外露这个数，@change 现记），底下那排水滴 dot 跟着它走 */
+const shotIdx = ref(0)
+function onShotChange(e: { detail: { current: number } }) {
+  shotIdx.value = e.detail.current
+}
+
 /** 「商品详情」那块铺的是选中规格的图文详情，换一档就换一组图 */
 const detailImages = computed(() => parseImageUrls(activeSku.value?.detailImages ?? null))
 
@@ -53,8 +61,16 @@ const TABS = [
 ] as const
 type TabKey = (typeof TABS)[number]['key']
 const tab = ref<TabKey>('detail')
+
 /** 评论那一档标签上印的条数：还没回来（或捞失败）留 null，那一格整格不出现，别闪一个（0）在那里 */
 const commentCount = ref<number | null>(null)
+
+/** 递给 DropTabs 的那一份：评论那一档多带一个数（原来这行是模板里手写 <text> 拼的） */
+const tabItems = computed(() => TABS.map(one => ({
+  key: one.key as string,
+  label: one.label,
+  count: one.key === 'comment' ? commentCount.value : null,
+})))
 
 function specTextOf(sku: IShopProductSku) {
   return sku.specText || '默认规格'
@@ -168,11 +184,17 @@ onShow(() => {
 
 <template>
   <view v-if="detail" class="bg-white pb-192rpx">
-    <swiper v-if="shots.length" class="aspect-square w-full" :indicator-dots="shots.length > 1">
-      <swiper-item v-for="(url, index) in shots" :key="index">
-        <image :src="url" mode="aspectFill" class="h-full w-full" />
-      </swiper-item>
-    </swiper>
+    <!-- 图组：dot 换成自绘的水滴胶囊（swiper 自带那层画在组件内部，动效插不进去） -->
+    <view v-if="shots.length" class="relative">
+      <swiper class="aspect-square w-full" @touchstart="markSwipeZone" @touchend="markSwipeZone" @change="onShotChange">
+        <swiper-item v-for="(url, index) in shots" :key="index">
+          <image :src="url" mode="aspectFill" class="h-full w-full" />
+        </swiper-item>
+      </swiper>
+      <view class="absolute bottom-16rpx left-0 right-0 z-10 flex justify-center">
+        <DropDots :count="shots.length" :current="shotIdx" tone="dark" />
+      </view>
+    </view>
     <view v-else class="aspect-square w-full bg-gray-100" />
 
     <view class="px-32rpx pt-32rpx">
@@ -228,23 +250,14 @@ onShow(() => {
       </view>
     </view>
 
-    <!-- tab 条形状照门店详情页那两档（红下划线落在选中那一颗上）；这一页用 border-t 和上面的规格区隔开，
-         免得和那颗自己的 border-b-2 叠成两条线 -->
-    <view class="mt-32rpx flex items-center gap-48rpx border-t border-gray-100 px-32rpx">
-      <view
-        v-for="one in TABS"
-        :key="one.key"
-        hover-class="fx-tap"
-        class="fx-press border-b-2 py-24rpx text-[28rpx] -mb-px"
-        :class="tab === one.key ? 'border-[#d14328] text-[#d14328] font-medium' : 'border-transparent text-gray-500'"
-        @click="tab = one.key"
-      >
-        {{ one.label }}<text v-if="one.key === 'comment' && commentCount !== null" class="ml-8rpx text-[24rpx] text-gray-400">（{{ commentCount }}）</text>
-      </view>
+    <!-- tab 条：等分那一排 + 水滴胶囊（原来红下划线落在选中那颗文字下面，现在由胶囊担当，切换时会拉长再收住）；
+         这一页用 border-t 和上面的规格区隔开，免得和胶囊底那条线叠成两条 -->
+    <view class="mt-32rpx border-t border-gray-100 bg-white px-32rpx">
+      <DropTabs :model-value="tab" :items="tabItems" @update:model-value="key => tab = key as TabKey" />
     </view>
 
     <template v-if="tab === 'detail'">
-      <view v-if="detail.productDesc" class="px-32rpx py-32rpx">
+      <view v-if="detail.productDesc" class="fx-fade px-32rpx py-32rpx">
         <view class="text-[28rpx] text-gray-600">
           商品描述
         </view>

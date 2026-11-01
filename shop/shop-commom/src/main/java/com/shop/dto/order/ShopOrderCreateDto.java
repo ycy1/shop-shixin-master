@@ -45,7 +45,7 @@ public class ShopOrderCreateDto {
             + "传了会原样落到 sys_order.address_id，支付回调分仓和后面的配送都读这一列")
     private Long addressId;
 
-    @ApiModelProperty(value = "订单类型：1普通订单 2秒杀 3拼团 4充值（字典 order_type），不传按 1")
+    @ApiModelProperty(value = "订单类型：1普通订单 2充值/提现 3盲盒（字典 order_type），不传按 1")
     private Integer orderType;
 
     @ApiModelProperty(value = "订单备注（买家留言）")
@@ -85,6 +85,17 @@ public class ShopOrderCreateDto {
 
         @ApiModelProperty(value = "购买数量，大于 0")
         private Integer quantity;
+
+        /**
+         * 这一行是购物车里哪一条（shop_consumer_cart.id）—— **只有从购物车结算那一路才带**，
+         * 详情页「立即购买」和后台代客下单都不带。带了就意味着"这一行按车里那一格的单价算"：
+         * 抽中入车的那几条挂的是盲盒的单抽价（盒上配的 price），不是这款规格的商品原价，
+         * 下单时刻现联 SKU 取不到那个数。服务端按这个 id 去读那一格（价格依然不是客户端报上来的），
+         * 归属和 sku_id 都对不上就拒单，见 ShopOrderCreateServiceImpl#buildItem。
+         * 不带（null）还是按这条规格 shop_product_sku.product_price 的现价算，和以前一模一样。
+         */
+        @ApiModelProperty(value = "来源购物车行ID(shop_consumer_cart.id)，从购物车结算才带；带了就按那一行的单价算钱")
+        private Long cartId;
 
         @ApiModelProperty(value = "这一行用掉多少积分（shop_activity_points 上这个下单人的可用积分），不用分就不传或传 0。"
                 + "只有\"这一行要花掉几分\"是买家自己选的，能抵多少钱一律由服务端按 sys_config 的 points_exchange 折算："

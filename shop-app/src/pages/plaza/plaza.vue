@@ -2,6 +2,8 @@
 import type { IShopPlazaMessage } from '@/api/types/shop'
 import { getPlazaPage, getRecommendedPlazaPage, PLAZA_RELATION_ACTIVITY, PLAZA_RELATION_BRAND, PLAZA_RELATION_NONE, PLAZA_RELATION_PRODUCT, PLAZA_RELATION_STORE, PLAZA_RELATION_TEXT, plazaLabel, plazaLeadImage, togglePlazaLike, trackPlazaShare } from '@/api/plaza'
 import ListState from '@/components/ListState.vue'
+import AppNavBar from '@/components/AppNavBar.vue'
+import AppSearchBar from '@/components/AppSearchBar.vue'
 import { usePagedList } from '@/composables/usePagedList'
 import { useTokenStore } from '@/store/token'
 import { toLoginPage } from '@/utils/toLoginPage'
@@ -13,6 +15,8 @@ defineOptions({
 definePage({
   style: {
     navigationBarTitleText: '广场',
+    // 导航条自绘，同首页（components/AppNavBar.vue）
+    navigationStyle: 'custom',
     enablePullDownRefresh: true,
     onReachBottomDistance: 100,
   },
@@ -188,6 +192,11 @@ onReachBottom(() => {
 
 <template>
   <view class="bg-[#f5f6f7] pb-192rpx">
+    <AppNavBar title="广场" />
+
+    <!-- 搜索入口 + 抽屉那颗：和首页同一排公共件（components/AppSearchBar.vue），四张 tab 页都有 -->
+    <AppSearchBar />
+
     <view class="mx-24rpx mt-24rpx">
       <view class="text-[26rpx] text-gray-500">
         大家发的图文动态，往下滑接着翻

@@ -147,7 +147,7 @@ onReachBottom(() => {
           @search="posts.reload()"
           @clear="posts.reload()"
         />
-        <scroll-view scroll-x class="overflow-hidden whitespace-nowrap">
+        <scroll-view scroll-x class="overflow-hidden whitespace-nowrap" @touchstart="markSwipeZone" @touchend="markSwipeZone">
           <view class="inline-flex px-8rpx pb-8rpx">
             <!-- 这一格必须是 view 不能是 text：uni-text 是 white-space: pre-line，模板里那两下换行会当真换行渲染 -->
             <view
@@ -162,7 +162,7 @@ onReachBottom(() => {
             </view>
           </view>
         </scroll-view>
-        <scroll-view scroll-x class="mt-8rpx overflow-hidden whitespace-nowrap">
+        <scroll-view scroll-x class="mt-8rpx overflow-hidden whitespace-nowrap" @touchstart="markSwipeZone" @touchend="markSwipeZone">
           <view class="inline-flex px-8rpx pb-8rpx">
             <view
               v-for="one in AUDIT_CHIPS"

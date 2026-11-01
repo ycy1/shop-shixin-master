@@ -251,7 +251,7 @@ public class ShopOrderCouponServiceImpl implements ShopOrderCouponService {
     /**
      * 把扁平类目表折成「父 id → 子 id 列表」的索引（一次读全表，写法同分类管理那页内存建树那一刀）。
      *
-     * 只取 id 和 parent_id 两列：判下级不需要名称，也不带 shop_icon 那条联表。
+     * 只取 id 和 parent_id 两列：判下级不需要名称，也不带 sys_icon 那条联表。
      * 全局逻辑删除会替我把删掉的类目滤掉 —— 已经删掉的分类底下的商品不该再被券命中。
      * 这张表由调用方读好交给 CouponUtils#matchLines 展开（规则一次库都不查）。
      */

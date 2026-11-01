@@ -1,5 +1,15 @@
 <template>
   <div class="app-container">
+    <!-- 两个 tab：第一本是订单（sys_order + 名下明细），第二本是主题公园发到他手上的票（shop_trendy_park_user_ticket）。
+         两本各查各的、各筛各的，切过去才发那一趟查询（订单那本沿用页面进来就查，票种那本第一次点开才查）。
+         这一页两本都是只读：写动作各有各的地方 —— 订单的收货/退货在详情弹窗底部，票的核销/退款在
+         「订单管理 → 用户票种」那页（那颗「入园核销」要有权限，不放给消费者账号） -->
+    <el-tabs v-model="activeTab" class="page-tabs" @tab-change="handleTabChange">
+      <el-tab-pane label="我的订单" name="order" />
+      <el-tab-pane label="我的票种" name="ticket" />
+    </el-tabs>
+
+    <template v-if="activeTab === 'order'">
     <!-- 搜索表单 -->
     <div class="search-wrapper">
       <el-form ref="queryFormRef" :model="queryParams" inline class="search-form">
@@ -163,7 +173,38 @@
 
         <!-- 商品明细：一行一个商品。名称/主图/单价都是下单时的快照，商品以后改名改价不回刷已下的单 -->
         <div class="item-title">商品明细</div>
-        <el-table :data="detail.items || []" size="small" border>
+        <el-table :data="orderItemRows" size="small" border row-key="key" :row-class-name="itemRowClass">
+          <!-- 一整盒那一行的展开列：盒内每款一行（每款自己的发货状态、已退、单价都在）；
+               普通商品行不给箭头（见 itemRowClass），别让人以为那一行还藏着什么 -->
+          <el-table-column type="expand">
+            <template #default="{ row }">
+              <el-table v-if="row.box" class="box-lines" size="small" border :data="row.items">
+                <el-table-column label="盒内款式" align="center" min-width="180">
+                  <template #default="{ row: one }">{{ one.productName || '商品已删除' }}</template>
+                </el-table-column>
+                <el-table-column label="规格" align="center" min-width="150">
+                  <template #default="{ row: one }">{{ one.specText || '-' }}</template>
+                </el-table-column>
+                <el-table-column label="发货状态" align="center" width="95">
+                  <template #default="{ row: one }">
+                    <el-tag size="small" :type="dict.tag(SHIP_DICT_TYPE, one.shipStatus)">
+                      {{ dict.label(SHIP_DICT_TYPE, one.shipStatus) }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="摊到每件" align="right" width="95">
+                  <template #default="{ row: one }">{{ priceText(one.price) }}</template>
+                </el-table-column>
+                <el-table-column label="件数" prop="quantity" align="center" width="70" />
+                <el-table-column label="已退" align="center" width="70">
+                  <template #default="{ row: one }">{{ one.returnedQuantity || 0 }}</template>
+                </el-table-column>
+                <el-table-column label="小计" align="right" width="100">
+                  <template #default="{ row: one }">{{ priceText(one.totalAmount) }}</template>
+                </el-table-column>
+              </el-table>
+            </template>
+          </el-table-column>
           <!-- 表级的 show-overflow-tooltip 会被每一列继承，纯图片列要显式关掉，否则悬停弹一个空 tooltip -->
           <el-table-column label="商品图" align="center" width="80" :show-overflow-tooltip="false">
             <template #default="{ row }">
@@ -184,14 +225,26 @@
           </el-table-column>
           <el-table-column label="发货状态" align="center" width="95">
             <template #default="{ row }">
-              <el-tag size="small" :type="dict.tag(SHIP_DICT_TYPE, row.shipStatus)">
+              <!-- 一整盒那几款的发货状态可能不一样（发了一半）：合起来没有一个统一值时不硬贴一个 tag -->
+              <span v-if="row.box && row.shipStatus == null" class="text-gray-400">见展开</span>
+              <el-tag v-else size="small" :type="dict.tag(SHIP_DICT_TYPE, row.shipStatus)">
                 {{ dict.label(SHIP_DICT_TYPE, row.shipStatus) }}
               </el-tag>
             </template>
           </el-table-column>
           <el-table-column label="规格" align="center" min-width="110">
             <template #default="{ row }">
-              <span>{{ row.specText || '-' }}</span>
+              <span>{{ row.box ? `盒内 ${row.items.length} 款` : (row.specText || '-') }}</span>
+            </template>
+          </el-table-column>
+          <!-- 一整盒在库里是盒内每款一行（锁库存/出库/退货只认识具体规格）；这几行带着来源，运营才知道它们是同一盒的，
+               要退也只能这一组一起退（后端那条判据见 ShopRefundCreateServiceImpl） -->
+          <el-table-column label="来源" align="center" min-width="150">
+            <template #default="{ row }">
+              <el-tag v-if="Number(row.sourceType) === 1" size="small" type="warning">
+                一整盒{{ row.sourceName ? ` · ${row.sourceName}` : '' }}
+              </el-tag>
+              <span v-else>-</span>
             </template>
           </el-table-column>
           <el-table-column label="单价" align="right" width="95">
@@ -278,30 +331,68 @@
           </el-row>
 
           <el-divider content-position="left">退货明细</el-divider>
-          <el-table :data="refundForm.items" size="small" border show-overflow-tooltip>
-            <el-table-column label="商品名称" prop="productName" align="center" min-width="170" />
-            <el-table-column label="商品编码" prop="productCode" align="center" min-width="140" />
+          <el-table :data="refundTableRows" size="small" border show-overflow-tooltip row-key="key">
+            <el-table-column label="商品名称" align="center" min-width="190">
+              <template #default="{ row }">
+                <span v-if="row.kind === 'box'">
+                  一整盒{{ row.boxName ? ` · ${row.boxName}` : '' }}
+                  <el-button type="primary" link @click="toggleBoxExpand(row.key)">
+                    {{ boxExpanded.has(row.key) ? '收起' : `展开看 ${row.lines.length} 款` }}
+                  </el-button>
+                </span>
+                <span v-else :class="{ 'child-name': row.kind === 'child' }">
+                  {{ row.item.productName || '-' }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="商品编码" align="center" min-width="140">
+              <template #default="{ row }">
+                <span v-if="row.kind === 'box'">—</span>
+                <span v-else>{{ row.item.productCode || '-' }}</span>
+              </template>
+            </el-table-column>
             <el-table-column label="规格" align="center" min-width="110">
-              <template #default="{ row }">{{ row.specText || '-' }}</template>
+              <template #default="{ row }">
+                <span v-if="row.kind === 'box'">盒内 {{ row.lines.length }} 款</span>
+                <span v-else>{{ row.item.specText || '-' }}</span>
+              </template>
             </el-table-column>
             <el-table-column label="购买" align="center" width="80">
-              <template #default="{ row }">{{ row.buyQuantity }}</template>
+              <template #default="{ row }">
+                <span v-if="row.kind === 'box'">{{ boxSum(row, 'buyQuantity') }}</span>
+                <span v-else>{{ row.item.buyQuantity }}</span>
+              </template>
             </el-table-column>
             <el-table-column label="已退" align="center" width="70">
-              <template #default="{ row }">{{ row.returnedQuantity }}</template>
+              <template #default="{ row }">
+                <span v-if="row.kind === 'box'">{{ boxSum(row, 'returnedQuantity') }}</span>
+                <span v-else>{{ row.item.returnedQuantity }}</span>
+              </template>
             </el-table-column>
             <!-- 在途 = 别的还没处理完的退款单（待审核 / 等退款 / 退款中）先把这几件占走了；
                  那一张被拒、失败或取消就还回来，所以这一格不是"已经退了"，是"这会儿不能再提" -->
             <el-table-column label="在途" align="center" width="70">
-              <template #default="{ row }">{{ row.refundingQuantity }}</template>
+              <template #default="{ row }">
+                <span v-if="row.kind === 'box'">{{ boxSum(row, 'refundingQuantity') }}</span>
+                <span v-else>{{ row.item.refundingQuantity }}</span>
+              </template>
             </el-table-column>
             <el-table-column label="还能退" align="center" width="90">
-              <template #default="{ row }">{{ row.returnableQuantity }}</template>
-            </el-table-column>
-            <el-table-column label="本次退货件数" align="center" width="130">
               <template #default="{ row }">
-                <el-input-number v-model="row.quantity" :min="0" :max="Number(row.returnableQuantity || 0)"
-                  :controls="false" style="width: 100%" />
+                <span v-if="row.kind === 'box'">{{ boxSum(row, 'returnableQuantity') }}</span>
+                <span v-else>{{ row.item.returnableQuantity }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="本次退货件数" align="center" width="150">
+              <template #default="{ row }">
+                <!-- 一整盒只能整盒退：勾一下就是这几款一起提，不给逐款填数（后端那条判据同口径） -->
+                <el-checkbox v-if="row.kind === 'box'" :model-value="boxChecked(row)"
+                  @change="toggleBox(row, $event)">
+                  整盒退（{{ boxSum(row, 'returnableQuantity') }} 件）
+                </el-checkbox>
+                <span v-else-if="row.kind === 'child'" class="child-tag">随整盒一起退</span>
+                <el-input-number v-else v-model="row.item.quantity" :min="0"
+                  :max="Number(row.item.returnableQuantity || 0)" :controls="false" style="width: 100%" />
               </template>
             </el-table-column>
           </el-table>
@@ -309,6 +400,8 @@
             <span class="items-tip">这次不退的商品把「本次退货件数」留 0 即可；剩下的量下次还能再提
               <span v-if="Number(detail.pendingRefundCount || 0) > 0">（这一单已有 {{ detail.pendingRefundCount }}
                 张在途退款单没处理完，它们占掉的件数已经从上面的「还能退」里减掉了）</span>
+              <br />一整盒（端盒抽中的那几行）只能连盒一起退：勾卡上那一颗就是把盒里几款一起提，
+              只退其中一款后端会拒
             </span>
             <span class="items-total">本次退货件数 {{ refundTotalQuantity }}</span>
           </div>
@@ -425,6 +518,166 @@
       <!-- 这一单那条配送单的详情：只读，内容交给公共组件按 id 自己查（和「商品出库」「配送管理」看的是同一个弹窗） -->
       <delivery-detail v-model:visible="deliveryDetailOpen" :id="deliveryDetailId" />
     </el-card>
+    </template>
+
+    <!--
+      第二个 tab：我的票种。一行是一张发到本人（或这个消费者）手上的票。
+      票名/类型/票价读的都是这一行出票那一刻定格的快照，票种后来改名改价不回刷（所以这一本没有联票种表）。
+      玩到哪一步看「状态」那格，两个时间点各是各的动作：核销时间、退款时间，没走过就是 '-'。
+    -->
+    <template v-else>
+      <div class="search-wrapper">
+        <el-form ref="ticketQueryFormRef" :model="ticketQuery" inline class="search-form">
+          <el-form-item label="关键字" prop="keyword">
+            <el-input v-model="ticketQuery.keyword" placeholder="票码/票种名/持票人姓名电话" clearable
+              @keyup.enter="handleTicketQuery" />
+          </el-form-item>
+          <el-form-item label="状态" prop="status">
+            <el-select v-model="ticketQuery.status" placeholder="全部" clearable>
+              <el-option v-for="item in dict.options(TICKET_STATUS_DICT_TYPE)" :key="item.value" :label="item.label"
+                :value="item.value" />
+            </el-select>
+          </el-form-item>
+          <div class="search-row">
+            <el-form-item label="游玩日期" prop="visitRange">
+              <el-date-picker v-model="ticketVisitRange" type="daterange" value-format="YYYY-MM-DD" range-separator="至"
+                start-placeholder="开始日期" end-placeholder="结束日期" />
+            </el-form-item>
+            <el-form-item class="search-actions">
+              <el-button type="primary" icon="Search" @click="handleTicketQuery">搜索</el-button>
+              <el-button icon="Refresh" @click="resetTicketQuery">重置</el-button>
+            </el-form-item>
+          </div>
+        </el-form>
+      </div>
+
+      <el-card class="box-card">
+        <el-table v-loading="ticketLoading" :data="ticketList" show-overflow-tooltip>
+          <el-table-column label="票码" prop="ticketCode" align="center" min-width="170" />
+          <!-- 票面二维码：出票那一刻由服务端按票码生成、传进文件存储（ShopParkTicketIssueService 那一条）。
+               这一本只给看和点开放大，不给重出 —— 重出是运营那侧的动作，在「订单管理 → 用户票种」那页点；
+               没生成出来的行就是 '-'（出图失败不拦出票，那一张票照样能用票码手输核销） -->
+          <el-table-column label="票面二维码" align="center" width="100" :show-overflow-tooltip="false">
+            <template #default="{ row }">
+              <el-image v-if="row.qrImg" :src="row.qrImg" :preview-src-list="[row.qrImg]" preview-teleported
+                fit="contain" style="width: 46px; height: 46px; border-radius: 4px" />
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="票种（快照）" prop="ticketName" align="center" min-width="150" />
+          <el-table-column label="园区" align="center" min-width="140">
+            <template #default="{ row }">
+              <span>{{ row.parkName || (row.parkId ? `已删除园区 #${row.parkId}` : '-') }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="类型" align="center" width="110">
+            <template #default="{ row }">
+              <el-tag size="small" :type="dict.tag(TICKET_TYPE_DICT_TYPE, row.ticketType)">
+                {{ dict.label(TICKET_TYPE_DICT_TYPE, row.ticketType) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="票价" align="right" width="100">
+            <template #default="{ row }">{{ priceText(row.price) }}</template>
+          </el-table-column>
+          <el-table-column label="游玩日期" align="center" width="120">
+            <template #default="{ row }">{{ row.visitDate || '-' }}</template>
+          </el-table-column>
+          <el-table-column label="时段" align="center" width="90">
+            <template #default="{ row }">{{ dict.label(TICKET_SLOT_DICT_TYPE, row.timeSlot) }}</template>
+          </el-table-column>
+          <el-table-column label="持票人" align="center" min-width="140">
+            <template #default="{ row }">
+              <span>{{ row.holderName || '-' }}</span>
+              <span v-if="row.holderPhone" class="sub-text">（{{ row.holderPhone }}）</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" align="center" width="100">
+            <template #default="{ row }">
+              <el-tag size="small" :type="dict.tag(TICKET_STATUS_DICT_TYPE, row.status)">
+                {{ dict.label(TICKET_STATUS_DICT_TYPE, row.status) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="核销时间" align="center" width="150">
+            <template #default="{ row }">{{ row.usedTime ? validate.formatTime(row.usedTime, 'YYYY-MM-DD HH:mm') : '-' }}</template>
+          </el-table-column>
+          <el-table-column label="出票时间" align="center" width="150">
+            <template #default="{ row }">{{ validate.formatTime(row.createTime, 'YYYY-MM-DD HH:mm') }}</template>
+          </el-table-column>
+          <!-- 这一本两个动作：详情（看这一张票的全部格子，含身份证、退款时间这些列表上没铺的）和退款。
+               核销不给在这里点（那是闸机/后台那侧的写动作，权限也没给到这一页），
+               退过的（3）那颗退款按钮就收掉 —— 服务端那条判据同样在（status IN (0,1,2) 才放行） -->
+          <el-table-column label="操作" align="center" width="150" fixed="right">
+            <template #default="{ row }">
+              <!-- 详情不给权限：那条读接口（GET /shop/userTicket/{id}）本身没挂 @SaCheckPermission，
+                   越权在服务层按登录态收（消费者账号只能看自己名下的），能看到这一行就能看它的全貌 -->
+              <el-button type="primary" link icon="View" @click="handleTicketDetail(row)">详情</el-button>
+              <el-button v-if="row.status !== 3" v-permission="['shop:userTicket:refund']" type="warning" link
+                icon="RefreshLeft" @click="handleTicketRefund(row)">退款</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <div class="pagination-container">
+          <el-pagination background v-model:current-page="ticketQuery.pageNum" v-model:page-size="ticketQuery.pageSize"
+            :page-sizes="[10, 20, 30, 50]" :total="ticketTotal" layout="total, sizes, prev, pager, next, jumper"
+            @size-change="handleTicketSizeChange" @current-change="getTicketList" />
+        </div>
+
+        <div class="pane-tip">
+          这一本给两个动作：详情（看这一张票的全部格子）和退款（未使用 / 已核销 / 已过期的都能退，退过的不给再点）。
+          入园核销不在后台点（这一期还没接闸机/扫码那侧）；改游玩日期、换持票人去「订单管理 → 用户票种」那页。
+        </div>
+      </el-card>
+
+      <!-- 一张票的详情：票面那几格读的是出票那一刻定格的快照（后台后来改了票种也不串到这张票上）；
+           园区名、下单人那两格是列表那一趟联出来的（详情那条接口不联表，只回这一行自己的列） -->
+      <el-dialog v-model="ticketDetailOpen" title="票种详情" width="820px" append-to-body destroy-on-close
+        v-loading="ticketDetailLoading">
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="票码">{{ ticketDetail.ticketCode || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="状态">
+            <el-tag size="small" :type="dict.tag(TICKET_STATUS_DICT_TYPE, ticketDetail.status)">
+              {{ dict.label(TICKET_STATUS_DICT_TYPE, ticketDetail.status) }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="票种（快照）">{{ ticketDetail.ticketName || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="类型">{{ ticketDetail.ticketType == null ? '-' :
+            dict.label(TICKET_TYPE_DICT_TYPE, ticketDetail.ticketType) }}</el-descriptions-item>
+          <el-descriptions-item label="票价">{{ priceText(ticketDetail.price) }}</el-descriptions-item>
+          <el-descriptions-item label="园区">
+            {{ ticketDetail.parkName || (ticketDetail.parkId ? `已删除园区 #${ticketDetail.parkId}` : '-') }}
+          </el-descriptions-item>
+          <el-descriptions-item label="游玩日期">{{ ticketDetail.visitDate || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="入园时段">{{ dict.label(TICKET_SLOT_DICT_TYPE, ticketDetail.timeSlot) || '不限时段'
+            }}
+          </el-descriptions-item>
+          <el-descriptions-item label="持票人">{{ ticketDetail.holderName || '-' }}<span
+              v-if="ticketDetail.holderPhone">（{{ ticketDetail.holderPhone }}）</span></el-descriptions-item>
+          <el-descriptions-item label="身份证号">{{ ticketDetail.holderIdCard || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="账号">{{ ticketDetail.userName || `已删除用户 #${ticketDetail.userId}` }}</el-descriptions-item>
+          <el-descriptions-item label="手机号">{{ ticketDetail.mobile || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="出票时间">{{ validate.formatTime(ticketDetail.createTime) }}</el-descriptions-item>
+          <el-descriptions-item label="核销时间">
+            {{ ticketDetail.usedTime ? validate.formatTime(ticketDetail.usedTime, 'YYYY-MM-DD HH:mm') : '-' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="退款时间">
+            {{ ticketDetail.refundTime ? validate.formatTime(ticketDetail.refundTime, 'YYYY-MM-DD HH:mm') : '-' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="备注">{{ ticketDetail.remark || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="票面二维码" :span="2">
+            <!-- 出票那一刻按票码生成、传进文件存储；那趟失败这一格就是空的（点开放大是对着闸机扫） -->
+            <el-image v-if="ticketDetail.qrImg" :src="ticketDetail.qrImg" :preview-src-list="[ticketDetail.qrImg]"
+              preview-teleported fit="contain" style="width: 120px; height: 120px; border-radius: 4px" />
+            <span v-else>没生成 —— 要补一张去「订单管理 → 用户票种」那页点「重出二维码」</span>
+          </el-descriptions-item>
+        </el-descriptions>
+        <template #footer>
+          <el-button @click="ticketDetailOpen = false">关 闭</el-button>
+        </template>
+      </el-dialog>
+    </template>
   </div>
 </template>
 
@@ -432,6 +685,8 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance } from 'element-plus'
 import { listShopOrderApi, detailShopOrderApi, receiveShopOrderApi, createShopRefundApi, listShopOrderRefundApi } from '@/api/consumer/orderItem'
+// 第二个 tab「我的票种」的那一本票：和「订单管理 → 用户票种」那页读同一个接口，消费者账号进来由服务端收窄成本人
+import { listUserTicketApi, detailUserTicketApi, refundUserTicketApi } from '@/api/order/userTicket'
 import { optionsShopStoreApi } from '@/api/store/store'
 import UserSelect from '@/components/UserSelect/index.vue'
 import DeliveryDetail from '@/components/DeliveryDetail/index.vue'
@@ -445,7 +700,12 @@ const ORDER_DICT_TYPE = 'order_status'
 const SHIP_DICT_TYPE = 'order_ship_status'
 /** 退款单的状态（sys_refund.status）：0待审核 2审核拒绝 3退款中（审核通过就落这一档） 4退款成功 5退款失败 6已取消 */
 const REFUND_DICT_TYPE = 'refund_status'
-const dict = useDict(ORDER_DICT_TYPE, SHIP_DICT_TYPE, REFUND_DICT_TYPE, 'order_type', 'pay_type')
+/** 主题公园那三套枚举（票种类型 / 入园时段 / 用户票状态），第二个 tab 用 */
+const TICKET_TYPE_DICT_TYPE = 'ticket_type'
+const TICKET_SLOT_DICT_TYPE = 'ticket_time_slot'
+const TICKET_STATUS_DICT_TYPE = 'user_ticket_status'
+const dict = useDict(ORDER_DICT_TYPE, SHIP_DICT_TYPE, REFUND_DICT_TYPE, 'order_type', 'pay_type',
+  TICKET_TYPE_DICT_TYPE, TICKET_SLOT_DICT_TYPE, TICKET_STATUS_DICT_TYPE)
 
 /**
  * 退款类型（sys_refund.refund_type）：1 全额 / 2 部分。没建字典，口径照抄「退款管理」那页
@@ -500,6 +760,67 @@ const storeOptions = ref<any[]>([])
 
 /** 金额的显示口径，列表和详情用同一个，避免出现两种小数位 */
 const priceText = (amount: any) => (amount == null || amount === '' ? '-' : `￥${Number(amount).toFixed(2)}`)
+
+function sumBy(rows: any[], field: string) {
+  return rows.reduce((sum, one) => sum + Number(one[field] || 0), 0)
+}
+
+/**
+ * 详情那张商品明细表的数据：一整盒在库里是盒内每款一行（锁库存、出库、退货只认具体规格），
+ * 这里按来源（source_type=1 + source_id=那台盒）收成一行，盒内每款挪进展开列。
+ * 收成一行后各格给的是这一组的合计，只有盒自己给不出的那一格（单价：一款一个摊价，没有代表值）留空。
+ */
+const orderItemRows = computed(() => {
+  const out: any[] = []
+  const boxIndex = new Map<string, any>()
+  for (const item of detail.value.items || []) {
+    if (Number(item.sourceType) !== 1 || item.sourceId == null) {
+      out.push({ ...item, key: `line-${item.id}`, box: false, items: [item] })
+      continue
+    }
+    const key = `box-${item.sourceId}`
+    const hit = boxIndex.get(key)
+    if (hit) {
+      hit.items.push(item)
+      if (!hit.sourceName && item.sourceName) {
+        hit.sourceName = item.sourceName
+      }
+      continue
+    }
+    const group = { key, box: true, sourceId: item.sourceId, sourceType: 1, items: [item] }
+    boxIndex.set(key, group)
+    out.push(group)
+  }
+  return out.map((row) => {
+    if (!row.box) return row
+    const statuses = Array.from(new Set(row.items.map((one: any) => one.shipStatus)))
+    // 一整盒这一行按「盒」报，不按「件」：库里每款一条明细（一盒里每款一件），所以组里件数最大的那条就是盒数。
+    // 盒价库里没落（落的是摊到每件的单价），拿 小计 ÷ 盒数 反算回来就是当初那一盒付的钱，
+    // 这样右边那一格 单价 × 数量 正好等于小计，跟购物车里那一行念的是同一个数
+    const boxes = Math.max(...row.items.map((one: any) => Number(one.quantity || 0)), 1)
+    const total = sumBy(row.items, 'totalAmount')
+    return {
+      ...row,
+      productName: `一整盒${row.sourceName ? ` · ${row.sourceName}` : ''}`,
+      image: row.items[0]?.image,
+      price: total / boxes,
+      quantity: boxes,
+      // 盒只能整盒退（后端那条判据），所以每款退的件数一样，跟着上面那一格按盒报
+      returnedQuantity: Math.max(...row.items.map((one: any) => Number(one.returnedQuantity || 0)), 0),
+      totalAmount: total,
+      discountAmount: sumBy(row.items, 'discountAmount'),
+      usedPoints: sumBy(row.items, 'usedPoints'),
+      gainPoints: sumBy(row.items, 'gainPoints'),
+      shipStatus: statuses.length === 1 ? statuses[0] : null,
+      storeName: row.items.find((one: any) => one.storeName)?.storeName
+    }
+  })
+})
+
+/** 普通商品行没有下一层：把展开列那颗箭头收掉（连点击一起禁），别让人以为那一行还藏着什么 */
+function itemRowClass({ row }: any) {
+  return row.box ? '' : 'no-expand'
+}
 
 /** 查询列表 */
 const getList = async () => {
@@ -633,6 +954,11 @@ const refundableItems = computed(() => {
       productName: item.productName,
       productCode: item.productCode,
       specText: item.specText,
+      // 一整盒拆出来的那几行带着来源（source_type=1 + source_id=那台盒）：弹窗里收成一行只能整盒勾，
+      // 判据在后端（少一款不给提，退一半也不给提），这里先把形状做成对的
+      sourceType: Number(item.sourceType || 0),
+      sourceId: item.sourceId == null ? null : Number(item.sourceId),
+      sourceName: item.sourceName || '',
       buyQuantity: Number(item.quantity || 0),
       returnedQuantity: Number(item.returnedQuantity || 0),
       refundingQuantity: Number(item.refundingQuantity || 0),
@@ -642,6 +968,71 @@ const refundableItems = computed(() => {
     }))
     .filter((item: any) => item.returnableQuantity > 0)
 })
+
+/**
+ * 弹窗里那一列可选项：普通商品行一行可选（逐行填件数）；一整盒收成一行，只能整盒勾 ——
+ * 盒不是按件挑的，只退其中一款在后端必被拒（还回去的货也凑不成一盒），所以这里不给那个口子。
+ * 组行下面那些灰行是展开出来的盒内款式，只给看、不给填。
+ */
+const boxExpanded = ref<Set<string>>(new Set())
+
+const refundTableRows = computed(() => {
+  const grouped: any[] = []
+  const boxIndex = new Map<string, any>()
+  for (const item of refundForm.items) {
+    if (Number(item.sourceType) === 1 && item.sourceId != null) {
+      const key = `box-${item.sourceId}`
+      const hit = boxIndex.get(key)
+      if (hit) {
+        hit.lines.push(item)
+        if (!hit.boxName && item.sourceName) {
+          hit.boxName = item.sourceName
+        }
+        continue
+      }
+      const group = { kind: 'box', key, boxName: item.sourceName || '', lines: [item] }
+      boxIndex.set(key, group)
+      grouped.push(group)
+      continue
+    }
+    grouped.push({ kind: 'line', key: `line-${item.orderItemId}`, item })
+  }
+  const out: any[] = []
+  for (const row of grouped) {
+    out.push(row)
+    if (row.kind === 'box' && boxExpanded.value.has(row.key)) {
+      row.lines.forEach((line: any) => out.push({ kind: 'child', key: `${row.key}-${line.orderItemId}`, item: line }))
+    }
+  }
+  return out
+})
+
+function boxSum(group: any, field: string) {
+  return group.lines.reduce((sum: number, line: any) => sum + Number(line[field] || 0), 0)
+}
+
+/** 整盒那一行勾没勾：组里每一行都填上了件数才算勾上（点开一次就是把这几款一起提） */
+function boxChecked(group: any) {
+  return group.lines.every((line: any) => Number(line.quantity) > 0)
+}
+
+function toggleBox(group: any, checked: any) {
+  const full = checked === true || checked === 1
+  group.lines.forEach((line: any) => {
+    // 盒行只能整行退（后端那条 want == 购买件数），所以这里直接给满「还能退」那一格
+    line.quantity = full ? Number(line.returnableQuantity || 0) : 0
+  })
+}
+
+function toggleBoxExpand(key: string) {
+  const next = new Set(boxExpanded.value)
+  if (next.has(key)) {
+    next.delete(key)
+  } else {
+    next.add(key)
+  }
+  boxExpanded.value = next
+}
 
 /**
  * 退货按钮的判据（和后端 ShopRefundCreateServiceImpl 那几道复核同口径，这里只决定按钮显不显）：
@@ -732,6 +1123,105 @@ const handleCurrentChange = () => {
   getList()
 }
 
+/**
+ * 第二个 tab（我的票种）：一行是一张发到本人手上的主题公园票（shop_trendy_park_user_ticket）。
+ * 一套独立的筛选和分页，和上面那一本订单互不影响；第一次切过来才发那一趟查询
+ *（开着这一页但只看订单的人，不该白挨一趟票的查询）。
+ */
+const activeTab = ref('order')
+const ticketLoading = ref(false)
+const ticketList = ref<any[]>([])
+const ticketTotal = ref(0)
+const ticketQueryFormRef = ref<FormInstance>()
+const ticketQuery = reactive<any>({
+  pageNum: 1,
+  pageSize: 10,
+  keyword: undefined,
+  status: undefined
+})
+const ticketVisitRange = ref<string[]>([])
+/** 票种那一本已经查过一次没有：切回来只重查一次，之后靠分页/搜索自己走 */
+const ticketLoaded = ref(false)
+
+const getTicketList = async () => {
+  ticketLoading.value = true
+  try {
+    const params: any = { ...ticketQuery }
+    if (ticketVisitRange.value && ticketVisitRange.value.length === 2) {
+      params.beginVisitDate = ticketVisitRange.value[0]
+      params.endVisitDate = ticketVisitRange.value[1]
+    }
+    const { data } = await listUserTicketApi(params)
+    ticketList.value = data.records || []
+    ticketTotal.value = data.total || 0
+    ticketLoaded.value = true
+  } catch (error) {
+  } finally {
+    ticketLoading.value = false
+  }
+}
+
+/** 切 tab：票种那一本第一次进来补那一趟查询（订单那一本页面初始化时已经查过） */
+const handleTabChange = (name: any) => {
+  if (name === 'ticket' && !ticketLoaded.value) getTicketList()
+}
+
+const handleTicketQuery = () => {
+  ticketQuery.pageNum = 1
+  getTicketList()
+}
+
+const resetTicketQuery = () => {
+  ticketQueryFormRef.value?.resetFields()
+  ticketQuery.keyword = undefined
+  ticketQuery.status = undefined
+  ticketVisitRange.value = []
+  handleTicketQuery()
+}
+
+const handleTicketSizeChange = () => {
+  ticketQuery.pageNum = 1
+  getTicketList()
+}
+
+/**
+ * 这一本票的退款：调的是「订单管理 → 用户票种」那页同一颗接口（服务端 assertConsumerOwns 已经保证
+ * 消费者账号只能退自己名下的票），提交前后各说一句 —— 只把状态改成 3 已退款、记下退款时间，
+ * 钱不在这儿退（这一期没有购票支付链路，和那一页同一个口径）。
+ */
+const handleTicketRefund = (row: any) => {
+  ElMessageBox.confirm(
+    `确认给票码「${row.ticketCode}」退款吗？这一期只把状态改成已退款、记下退款时间，钱不在这儿退。`,
+    '提示',
+    { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
+  ).then(async () => {
+    await refundUserTicketApi(row.id)
+    ElMessage.success('已退款')
+    getTicketList()
+  }).catch(() => { })
+}
+
+/**
+ * 一张票的详情：现捞一次（列表那一趟之后可能已被别处核销/退款），
+ * 园区名和下单人那三格是列表联出来的（详情那条只回这一行自己的列，那三格是空的），所以从行上补。
+ */
+const ticketDetailOpen = ref(false)
+const ticketDetailLoading = ref(false)
+const ticketDetail = ref<any>({})
+
+const handleTicketDetail = async (row: any) => {
+  ticketDetail.value = {}
+  ticketDetailOpen.value = true
+  ticketDetailLoading.value = true
+  try {
+    const { data } = await detailUserTicketApi(row.id)
+    ticketDetail.value = { ...data, parkName: row.parkName, userName: row.userName, mobile: row.mobile }
+  } catch (error) {
+  } finally {
+    ticketDetailLoading.value = false
+  }
+}
+
 onMounted(() => {
   getList()
   getStoreOptions()
@@ -806,6 +1296,49 @@ onMounted(() => {
 .item-title {
   margin: 16px 0 8px;
   font-weight: 600;
+}
+
+/* 两个 tab 那一排：和下面那块搜索之间留点缝（默认 tabs 的下边距是给内容在 pane 里用的，
+   这里 pane 是空的、内容由 v-if 接在下面，所以要自己补这一刀） */
+.page-tabs {
+  margin-bottom: 8px;
+}
+
+/* 手机号、持票人电话那种补充信息压个浅色，别和主信息一样抢眼（第二个 tab 用） */
+.sub-text {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+/* 退货弹窗里展开的那几行：它们不是可选项（一整盒只能一起退），所以缩进 + 压灰，
+   「本次退货件数」那一格只给一句说法，不给输入框 */
+.child-name {
+  padding-left: 24px;
+  color: var(--el-text-color-secondary);
+}
+
+.child-tag {
+  color: var(--el-text-color-placeholder);
+  font-size: 12px;
+}
+
+/* 第二个 tab 表格下面那排说明：口径同退货弹窗里的 .items-tip，只是这里不在 .items-footer 里 */
+
+/* 商品明细表展开列里那一层盒内款式表：给点内边距，别贴着外层表格的边框线 */
+.box-lines {
+  margin: 8px 16px;
+}
+
+/* 普通商品行没有下一层：箭头藏掉并把点击也禁了，只剩一个空格子 */
+:deep(.el-table__row.no-expand .el-table__expand-icon) {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.pane-tip {
+  margin-top: 12px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
 }
 
 /* 退货弹窗表格下面那一排：左边提示、右边本次合计（照抄采购退货那两处） */

@@ -42,6 +42,20 @@ public class ShopStore extends BaseEntity {
     @TableField(exist = false)
     private String brandLogo;
 
+    // 专区同样可空、"取消绑定"是正常操作 ⇒ IGNORED（口径同上面的 brandId）
+    @ApiModelProperty(value = "专区id：section_type=1 时是潮玩系列id(shop_trendy.id)，NULL=不属于任何专区")
+    @TableField(updateStrategy = FieldStrategy.IGNORED)
+    private Long sectionId;
+
+    /** 专区类型（字典 section_type）：1 潮玩；0 = 不属于任何专区（后台保存时按有没有选专区自动写） */
+    @ApiModelProperty(value = "专区类型：1 潮玩；0=不属于任何专区")
+    private Integer sectionType;
+
+    // 系列名不是本表列，服务层按 section_id 查 shop_trendy 回填，只给列表那一列「潮玩系列」显示用
+    @ApiModelProperty(value = "潮玩系列名称（服务层回填，非本表列）")
+    @TableField(exist = false)
+    private String trendyName;
+
     // 下面这些列都可空，且"清空"是正常操作：全局 field-strategy=not_empty 会把 null 和空串一起
     // 从 UPDATE 的 SET 里跳过，不显式声明 IGNORED 的话前端清空后保存不生效
     @ApiModelProperty(value = "联系人")

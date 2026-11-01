@@ -119,8 +119,9 @@ const items = computed(() => rows.value.flatMap((row) => {
 type FlowLine = ({ kind: 'comment' } & CommentItem) | { kind: 'composer', key: 'composer', indent: number }
 const flow = computed<FlowLine[]>(() => {
   const lines: FlowLine[] = items.value.map(item => ({ kind: 'comment', ...item }))
-  // 预览态平时不排输入框那一格（要新发表就去「全部评论」那一页），但点了「回复」就得把它摆出来 —— 详情页也能回一条
-  if (props.preview && !replyTo.value) {
+  // 预览态平时不排输入框那一格（要新发表就去「全部评论」那一页），两种情况例外：点了「回复」，以及一条评论都还没有 ——
+  // 后者底下那颗「查看全部」本来也不画（没东西可看），不就地给输入框的话，第一条压根发不出去。
+  if (props.preview && !replyTo.value && items.value.length) {
     return lines
   }
   const target = replyTo.value

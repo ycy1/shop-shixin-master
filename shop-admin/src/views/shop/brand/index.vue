@@ -119,6 +119,12 @@
             <shop-category-select v-model="form.categoryId" :data="categoryOptions" placeholder="可不选"
               style="width: 100%" />
           </el-form-item>
+          <el-form-item label="潮玩系列" prop="sectionId">
+            <el-select v-model="form.sectionId" placeholder="不是潮玩品牌" clearable filterable style="width: 100%">
+              <el-option v-for="item in trendySelectOptions" :key="item.id" :label="item.trendyName"
+                :value="item.id" />
+            </el-select>
+          </el-form-item>
           <el-form-item label="品牌LOGO" prop="logo">
             <upload-image v-model="form.logo" :size="120" source="brand" />
           </el-form-item>
@@ -163,6 +169,7 @@ import {
   deleteShopBrandApi
 } from '@/api/shop/brand'
 import { getCategoryTreeApi } from '@/api/shop/category'
+import { optionsShopTrendyApi } from '@/api/trendy/trendy'
 import ButtonGroup from '@/components/ButtonGroup/index.vue'
 import ShopCategorySelect from '@/components/ShopCategorySelect/index.vue'
 import UploadImage from '@/components/Upload/Image.vue'
@@ -197,6 +204,27 @@ const form = reactive<any>({})
 
 // 分类树选项
 const categoryOptions = ref<any[]>([])
+
+/** 潮玩系列候选：只有启用中的能被选上（口径同门店页那格品牌） */
+const trendyOptions = ref<any[]>([])
+const getTrendyOptions = async () => {
+  try {
+    const { data } = await optionsShopTrendyApi()
+    trendyOptions.value = data || []
+  } catch (error) {
+  }
+}
+
+/**
+ * 下拉实际用的候选：options 只列启用中的，所以绑着已停用/已删除潮玩的老品牌会选不出来，
+ * 这一格接口也不带回潮玩名，兜底只能拿 id 顶着显示（同门店页「已停用品牌 #id」那一档）。
+ */
+const trendySelectOptions = computed(() => {
+  const id = form.sectionId
+  if (!id) return trendyOptions.value
+  if (trendyOptions.value.some((item: any) => String(item.id) === String(id))) return trendyOptions.value
+  return [{ id, trendyName: `已停用潮玩 #${id}` }, ...trendyOptions.value]
+})
 
 // 品牌分页走的是 BaseMapper，没有联表回写分类名，所以列表用本地这层映射显示
 const categoryNameMap = computed<Record<string, string>>(() => {
@@ -251,6 +279,7 @@ const reset = () => {
     description: undefined,
     contact: undefined,
     categoryId: undefined,
+    sectionId: undefined,
     sort: 0,
     status: 1
   })
@@ -363,6 +392,7 @@ const handleCurrentChange = () => {
 onMounted(() => {
   getList()
   getCategoryOptions()
+  getTrendyOptions()
 })
 </script>
 

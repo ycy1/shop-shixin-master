@@ -43,6 +43,11 @@ public class ShopProductWebQueryDto {
     @ApiModelProperty(value = "是否文创商品：1只取文创商品 0只取普通商品；不传=两档都取")
     private Integer culturalEnable;
 
+    // 潮玩专区（shop-web /trendy）那一页的判据：潮玩商品就是「挂了潮玩系列」的商品，
+    // 没有第二张表可查，所以这一格只认 1（=trendy_id 非空），不传就是全量货架。
+    @ApiModelProperty(value = "只取潮玩商品（挂了潮玩系列的）：传 1 生效；不传=不限")
+    private Integer trendyOnly;
+
     /**
      * 由服务层按 categoryId 展开的整棵子树（含它自己），SQL 只认这一格。
      *

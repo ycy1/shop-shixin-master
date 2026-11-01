@@ -9,6 +9,12 @@
 @source "../../node_modules/flowbite";
 @source "../../node_modules/flowbite-vue/dist";
 
+/* 把本站源码钉成候选源：dev 下 Tailwind 是「这一页请求到哪些模块，就编这些模块里的类」，
+   而 Astro 的 ClientRouter 换页时认得同一份 global.css 就不换那份 <style> —— 于是从别的页面点进
+   一个新页面时，那个页面独有的工具类（md:w-1/2 这种）压根不在样式里，整块布局会挤成一坨。
+   显式扫整个 src/ 之后每页编出来的都是全量，换页前后一份样式就够了。生产包本来就是全量，不受影响。 */
+@source "../**/*.{astro,html,vue,js,ts}";
+
 /* Tailwind v4 的 dark: 默认跟着系统的 prefers-color-scheme 走，这里改成只认 <html> 上的 .dark：
    页头那颗按钮是用户自己点的，得让页面说了算（没选过偏好才回落系统设置，见 Base.astro）。 */
 @custom-variant dark (&:where(.dark, .dark *));
@@ -34,35 +40,22 @@
    astro:after-swap 脚本挂上去。刻意没用 astro 的 transition:animate / view transition：它生成的每一条动画
    都被它自带的 @media (prefers-reduced-motion) 罩着（::view-transition-*(*), [data-astro-transition-scope] 一律
    animation: none !important，连浏览器给 root 的默认交叉淡变也一起吃掉），这台机器系统里关了动效，那条路怎么走都不动。
-   这里就是一条普通 CSS 动画，罩子管不到它。要让它跟着系统的「减少动效」走，把这两个类挪进下面那条媒体查询里即可。
-   两段都只动 opacity、不加 translateY 之类的位移：动画期间带 transform 的元素会变成它那些 fixed 定位弹窗
-   （收货地址表单、确认框）的包含块，遮罩就盖不满视口了。 */
+   这里就是一条普通 CSS 动画，罩子管不到它。要让它跟着系统的「减少动效」走，把这一类挪进下面那条媒体查询里即可。
+   只动 opacity、不加 translateY 之类的位移：动画期间带 transform 的元素会变成它那些 fixed 定位弹窗
+   （收货地址表单、确认框）的包含块，遮罩就盖不满视口了。
+
+   只做「上屏」这一半：旧内容在换页前一直亮着，不再先淡到 0 —— 淡到底那一帧 body 露出来就是那条闪白；
+   新的从 0.55 起步，肉眼是「换好了、再亮实」，中间没有全透明的帧。 */
 .page-enter {
-  animation: page-enter 320ms ease-out;
+  animation: page-enter 240ms ease-out;
 }
 
 @keyframes page-enter {
   from {
-    opacity: 0;
+    opacity: 0.55;
   }
   to {
     opacity: 1;
-  }
-}
-
-/* 淡出那一半：类由 astro:before-preparation 挂上，astro 要等那一页取回来、且这段至少播满 LEAVE_MS 才换页（见 Base.astro）。
-   forwards 是必须的 —— 换页那一趟还要跑后端，动画播完就松手的话旧内容会在透明之后又亮回来。
-   摘掉它的有两处：after-swap 一处、一条超时兜底一处（导航被后面的点击抢掉时不会有 after-swap）。 */
-.page-leave {
-  animation: page-leave 160ms ease-in forwards;
-}
-
-@keyframes page-leave {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
   }
 }
 
@@ -156,16 +149,33 @@ html.dark[data-astro-route-loading] body::after {
   margin-bottom: 1.5rem;
 }
 
+/* 潮玩专区左侧那条导航吸顶（.plaza-pin 同一套定式）：页头是 sticky + z-40 + 实心底、高度还会随窄屏菜单
+   撑成两行，所以 --trendy-pin-top 由 layouts/Trendy.astro 里现量页头实高写成内联变量递进来；
+   兜底那档照旧宁小勿大（顶多被页头压住几 px，不要在下沿留一条透光的缝）。
+   末尾那 8px 是这一格自己的一口气，不贴页头下沿。窄屏这条导航收成一行横滑，不吸。 */
+@media (width >= 48rem) {
+  .trendy-pin {
+    position: sticky;
+    top: calc(var(--trendy-pin-top, 3.5rem) + 8px);
+    z-index: 30;
+  }
+}
+
 /* 筛选那一排吸在页头下面。页头是 sticky + z-40 + 实心底，所以钉在它下面的这一排要
-   - 停在它的下沿：--plaza-pin-top 由列表岛现量页头实高写成内联变量递进来（窄屏菜单展开会撑成两行，写死的数对不上）；
+   - 贴住它的下沿：--plaza-pin-top 由列表岛现量页头实高写成内联变量递进来（窄屏菜单展开会撑成两行，写死的数对不上）。
+     刻意不留上边距：钉住后这排和页头之间但凡有几px 缝，正在滚的卡片就从缝里露一截，看着像没贴住；
+     兜底那个数也宁可给小不给大 —— 顶多被 z-40 的页头压住一点，不会透出缝。
    - 自己也得铺底：不然卡片从底下穿过时和这一排叠在一起，看着像花屏。底色就是 body 那一档灰。
-   底下多铺 8 又把它从外边距扣回来：留白的 8px 不铺底就会漏出正在滚动的卡片，而这一排和主列表之间照常留 16。 */
+   下边距全放在 padding 里（不是 margin）：margin 不铺底，卡片会在页头下方那条带里先露 8px 才被裁掉，
+   又回到上面那条缝的老问题；铺进 padding 里，卡片就整齐地从这排的下沿起被裁走。 */
 .plaza-pin {
   position: sticky;
-  top: var(--plaza-pin-top, 4rem);
+  top: var(--plaza-pin-top, 3.5rem);
   z-index: 30;
-  padding-bottom: 1.5rem;
-  margin-bottom: -0.5rem;
+  /* 钉住后输入行不能贴看页头下沿，得留 16 的口气；这 16 同样铺底（和下面那 32 一路），
+     所以它不是 margin —— 上面那条缝的要求照旧成立：留白归留白，但不透。 */
+  padding-top: 1rem;
+  padding-bottom: 2rem;
   background: rgb(247 248 250);
 }
 
@@ -187,8 +197,8 @@ html.dark[data-astro-route-loading] body::after {
     order: 2;
     position: sticky;
     /* 停在页头 + 筛选排的下沿：只避开页头的话，往下滚一段这一整块会钻到筛选排底下去，
-       --plaza-filter-h 同样是列表岛现量的（chip 换行会改它的高度） */
-    top: calc(var(--plaza-pin-top, 4rem) + var(--plaza-filter-h, 0px));
+       --plaza-filter-h 同样是列表岛现量的（chip 换行会改它的高度），末尾那 8 是这一块自己的一口气 */
+    top: calc(var(--plaza-pin-top, 3.5rem) + var(--plaza-filter-h, 0px));
     flex-shrink: 0;
     /* 轨道在 768 那一档先给窄的，到 lg 再放宽一档，免得左边主列表被挤得太窄 */
     width: 16rem;
@@ -356,3 +366,155 @@ span.plaza-cover {
   object-fit: cover;
   cursor: zoom-in;
 }
+
+/* ===== 水滴指示块（轮播 dot + 顶部 tab 共用一套）=====
+   形状写在这一份里，不放组件自己的 <style scoped>：那份样式只在 island 头一次被加载那一趟注入，
+   跳走再点回来就不再有 ⇒ 胶囊没了底（理由同上面 .plaza-cols 那一段）。
+   移动和形变由 lib/droplet.ts 以 transform 递进内联样式（translateX + scaleX），left 恒 0、width 恒等于一格 ——
+   只动 transform 是因为 left / width 都要重排，Chromium 给不了合成器，页面一忙过渡就整段卡住再补帧。
+   内联那份只有 px，没有换算问题；这边管高低、圆角、内缩、底色。
+   --dp-bg 由各面自己覆（dot 铺在照片上要用白、tab 跟着站点的主色）。 */
+.drop-pill {
+  position: absolute;
+  left: 0;
+  z-index: 0;
+  pointer-events: none;
+  /* 跨度帧左端钉在起始格、收住那一帧右端不动，全靠这个原点 */
+  transform-origin: left center;
+  will-change: transform;
+  transition: transform 320ms cubic-bezier(0.22, 0.9, 0.24, 1);
+}
+
+/* display:block 是必须的：这一层是个空的 <span>，行内盒没有内容就量不出宽 ⇒ 整颗珠子画不出来（dot/tab 都曾因此「没动画」） */
+.drop-pill__face {
+  display: block;
+  height: 100%;
+  border-radius: 9999px;
+  background: var(--dp-bg, rgb(37 99 235 / 14%));
+}
+
+/* 轮播 dot：珠子在那条半透明底槽里跑 —— 一条 transform 过渡同时管「滑过去（带过冲）」和「挤长再收圆」 */
+.drop-pill--dot {
+  top: 50%;
+  height: 8px;
+  margin-top: -4px;
+  /* 这一档原点在中间：撑长对称，珠子不会往右偏出格子（tab 那排要「起点钉住」，所以那边原点留在左边） */
+  transform-origin: center;
+  transition: transform 460ms cubic-bezier(0.34, 1.42, 0.5, 1);
+}
+
+.drop-pill--dot .drop-pill__face {
+  margin: 0 4px;
+  background: var(--dp-bg, #fff);
+}
+
+/* 铺在白卡片上的那一档（首页「轮播推荐」底下那排 dot）：没有半透明底槽，水珠跟着站点主色走 */
+.drop-dots--plain {
+  --dp-bg: #2563eb;
+}
+
+.dark .drop-dots--plain {
+  --dp-bg: #60a5fa;
+}
+
+/* 顶部 tab：把原来落在选中那颗文字底下的 border-b 换成会拉伸的水滴，其余观感不变 */
+.drop-pill--tab {
+  bottom: 0;
+  height: 3px;
+}
+
+.drop-pill--tab .drop-pill__face {
+  margin: 0 10px;
+  background: var(--dp-bg, #2563eb);
+}
+
+/* 水珠量到位置了（内联那份样式非空）才让它接管那根线。
+   SSR 那一趟没有盒子可量，胶囊宽 0 ⇒ 画不出线，所以先由选中那颗自己的 border-b-2 顶着；
+   交棒和胶囊第一次落位是同一拍（都跟着同一个 ref 刷），看不出换了人。 */
+.drop-live .drop-item[aria-selected="true"] {
+  border-bottom-color: transparent;
+}
+
+/* 暗色那一档跟着文字走蓝 400，不然这条线在深底上看着像没亮 */
+.dark .drop-pill--tab .drop-pill__face {
+  background: var(--dp-bg, #60a5fa);
+}
+
+/* 排序那种 tab（只有选中色、原来压根没有下划线）：胶囊改成压在标签背后的一块软底，
+   不然为它凭空添一条线，比不动还怪。 */
+.drop-pill--wash {
+  top: 0;
+  bottom: 0;
+}
+
+.drop-pill--wash .drop-pill__face {
+  margin: 0 2px;
+  background: var(--dp-bg, rgb(37 99 235 / 12%));
+}
+
+.dark .drop-pill--wash .drop-pill__face {
+  background: var(--dp-bg, rgb(96 165 250 / 18%));
+}
+
+/* 潮玩专区左侧那排导航的水滴（Trendy.astro 末尾那段脚本量盒子；换页时从旧那一档滑到新那一档）：
+   底色抄上面 wash 那一档的软底 —— 换成实心蓝块的话，滑过去那 360ms 里新那一档的浅色字先落在卡片底上，
+   看着像闪了一下；软底配蓝字两头都不会失去对比。 */
+.trendy-drop {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 0;
+  border-radius: 0.5rem;
+  background: rgb(37 99 235 / 12%);
+  pointer-events: none;
+  transition:
+    transform 360ms cubic-bezier(0.34, 1.3, 0.64, 1),
+    width 360ms ease,
+    height 360ms ease,
+    left 360ms ease,
+    top 360ms ease;
+}
+
+.dark .trendy-drop {
+  background: rgb(96 165 250 / 18%);
+}
+
+/* 首屏落位、窗口尺寸变了这类「不算一次切换」的写法：量完先关过渡，下一拍再开回来 */
+.trendy-drop--instant {
+  transition: none;
+}
+
+/* 个人中心那一列菜单（竖着排）：选中项那块蓝底换成一颗上下跑的水珠。
+   底子给成 rounded-lg 那一档（不是 9999px 的胶囊）—— 菜单是方块行，铺成圆头胶囊会和上面的图标、右边的卡片打架。 */
+.drop-pill--menu {
+  top: 0;
+  bottom: 0;
+}
+
+.drop-pill--menu .drop-pill__face {
+  border-radius: 8px;
+  background: var(--dp-bg, rgb(37 99 235 / 8%));
+}
+
+.dark .drop-pill--menu .drop-pill__face {
+  background: var(--dp-bg, rgb(96 165 250 / 16%));
+}
+
+/* tab 切换时内容那一块的淡入（只动 opacity，不加位移）：挂在各 tab 内容的第一个块上，
+   v-if 切档时那是新插入的节点，动画自然重播，不用给整块内容套一层带 :key 的容器。 */
+.fx-fade {
+  animation: fx-fade 160ms ease-out;
+}
+
+@keyframes fx-fade {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* 刻意不写 @media (prefers-reduced-motion: reduce) 把这段关掉：这台机器系统里开着「减少动效」，
+   一加那条上面所有过渡和淡入就全成了摆设（换页那两条淡入同理，见本文件 page-enter 那段注释）。 */

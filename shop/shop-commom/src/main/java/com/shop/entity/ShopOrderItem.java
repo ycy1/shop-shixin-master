@@ -83,6 +83,27 @@ public class ShopOrderItem extends BaseEntity {
     @ApiModelProperty(value = "商品SKU ID(shop_product_sku.id)；下单选的就是某个具体规格，整件商品的事在 shop_product")
     private Long skuId;
 
+    /** 来源：这一行不是某个来源带来的（自己下单买的那件商品） */
+    public static final int SOURCE_PRODUCT = 0;
+    /** 来源：端盒/抽中入车那一行拆出来的（字典和判据同 shop_consumer_cart.source_type） */
+    public static final int SOURCE_BOX = 1;
+    /** 没有来源时那一格的值 —— 库里写 0，不写空（NULL 在 MySQL 的比较里谁也不等于，判据和索引都会骗人） */
+    public static final long SOURCE_ID_NONE = 0L;
+
+    /**
+     * 来源类型（口径同 {@code shop_consumer_cart.source_type}，字典 cart_source_type）：0 普通商品 1 盲盒商品。
+     *
+     * 为什么明细行要认自己是谁：一整盒在车里是一行、下单要拆成盒内每款一行，拆出来的那几行从此和
+     * 「自己买的那件商品」长得一模一样 —— 页面上没法把同一盒的几行收拢成一张卡，退货也没法判
+     * 「这一款要退就得整盒一起退」。老单子那一格是 0（当时还没这条链，也不该替它编一个来源）。
+     */
+    @ApiModelProperty(value = "来源：0普通商品 1盲盒商品（一整盒拆出来的那几行），字典 cart_source_type")
+    private Integer sourceType;
+
+    /** 来源ID：那一行来自哪一台盒(shop_trendy_box.id) —— 页面聚合和按盒退货都按它整组算；普通商品行为 0 */
+    @ApiModelProperty(value = "来源ID：盲盒那几行=拆它们之前躺在车里的那台盒(shop_trendy_box.id)；普通商品行为0")
+    private Long sourceId;
+
     @ApiModelProperty(value = "商品名称（下单时快照）")
     private String productName;
 

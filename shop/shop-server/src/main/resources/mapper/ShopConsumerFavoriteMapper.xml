@@ -5,7 +5,7 @@
     <!--
       注意：自定义 XML SQL 不会被 MyBatis-Plus 的全局逻辑删除自动接管，
       所以下面每个查询都要手写 is_deleted = 0，否则会把已删除的收藏行查出来。
-      一个 target_id 按 target_type 指向三张不同的表，所以三个联表都把类型判断写在 ON 上：
+      一个 target_id 按 target_type 指向四张不同的表，所以四个联表都把类型判断写在 ON 上：
       每行最多只会命中其中一张，另一张必然是 NULL，target_name 再用 CASE 按类型挑。
       对象被删掉时这条收藏本身还要能在列表里看到，所以一律 LEFT JOIN、过滤条件不写在 WHERE 上。
     -->
@@ -23,6 +23,7 @@
         WHEN 1 THEN p.product_name
         WHEN 2 THEN st.store_name
         WHEN 3 THEN b.brand_name
+        WHEN 4 THEN k.park_name
         END AS target_name,
         u.nickname,
         u.username
@@ -33,6 +34,7 @@
         LEFT JOIN shop_product p ON p.id = f.target_id AND f.target_type = 1 AND p.is_deleted = 0
         LEFT JOIN shop_store st ON st.id = f.target_id AND f.target_type = 2 AND st.is_deleted = 0
         LEFT JOIN shop_brand b ON b.id = f.target_id AND f.target_type = 3 AND b.is_deleted = 0
+        LEFT JOIN shop_trendy_park k ON k.id = f.target_id AND f.target_type = 4 AND k.is_deleted = 0
         LEFT JOIN sys_user u ON u.id = f.user_id
     </sql>
 
@@ -42,12 +44,13 @@
         <include refid="favoriteJoins"/>
         <where>
             f.is_deleted = 0
-            <!-- 关键字跨三张表搜：一行只会命中其中一张，所以 OR 起来不会误命中 -->
+            <!-- 关键字跨四张表搜：一行只会命中其中一张，所以 OR 起来不会误命中 -->
             <if test="q.keyword != null and q.keyword != ''">
                 AND (p.product_name LIKE CONCAT('%', #{q.keyword}, '%')
                 OR p.product_code LIKE CONCAT('%', #{q.keyword}, '%')
                 OR st.store_name LIKE CONCAT('%', #{q.keyword}, '%')
-                OR b.brand_name LIKE CONCAT('%', #{q.keyword}, '%'))
+                OR b.brand_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR k.park_name LIKE CONCAT('%', #{q.keyword}, '%'))
             </if>
             <if test="q.userId != null">
                 AND f.user_id = #{q.userId}

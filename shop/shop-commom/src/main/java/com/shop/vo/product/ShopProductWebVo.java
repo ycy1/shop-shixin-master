@@ -55,6 +55,14 @@ public class ShopProductWebVo {
     @ApiModelProperty(value = "所属门店名称（联表带出）")
     private String storeName;
 
+    // 潮玩专区认这一对：挂了系列的就是潮玩商品（trendy_id 为空 = 普通商品）。
+    // 系列名是联 shop_trendy 现带的，系列后来改了名跟着新名走（和分类名、品牌名同一口径）
+    @ApiModelProperty(value = "潮玩系列id，NULL=不是潮玩商品")
+    private Long sectionId;
+
+    @ApiModelProperty(value = "潮玩系列名称（联表带出）")
+    private String trendyName;
+
     @ApiModelProperty(value = "主图URL")
     private String mainImage;
 

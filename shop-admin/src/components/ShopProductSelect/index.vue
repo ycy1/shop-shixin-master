@@ -1,6 +1,6 @@
 <template>
   <div class="shop-product-select">
-    <el-input :model-value="displayText" :placeholder="placeholder" readonly :disabled="disabled" clearable
+    <el-input v-if="trigger" :model-value="displayText" :placeholder="placeholder" readonly :disabled="disabled" clearable
       @click="openDialog" @clear="handleClear">
       <template #append>
         <el-button :disabled="disabled" icon="Search" @click="openDialog" />
@@ -8,7 +8,7 @@
     </el-input>
 
     <el-dialog :title="title" v-model="dialogVisible" width="900px" append-to-body destroy-on-close>
-      <!-- 筛选：商品库自己那三格（关键字 / 分类 / 品牌） -->
+      <!-- 筛选：商品库自己那三格（关键字 / 分类 / 品牌），门店那一格按 storeFilter 开关给（默认不开，别页不受影响） -->
       <div class="search-wrapper">
         <el-form :inline="true" @submit.prevent>
           <el-form-item>
@@ -21,6 +21,11 @@
           <el-form-item>
             <el-select v-model="searchForm.brandId" placeholder="全部品牌" clearable filterable>
               <el-option v-for="item in brandOptions" :key="item.id" :label="item.brandName" :value="item.id" />
+            </el-select>
+          </el-form-item>
+          <el-form-item v-if="storeFilter">
+            <el-select v-model="searchForm.storeId" placeholder="全部门店" clearable filterable>
+              <el-option v-for="item in storeOptions" :key="item.id" :label="item.storeName" :value="item.id" />
             </el-select>
           </el-form-item>
           <el-form-item>
@@ -94,6 +99,7 @@
 import { listShopProductApi } from '@/api/shop/product'
 import { getCategoryTreeApi } from '@/api/shop/category'
 import { optionsShopBrandApi } from '@/api/shop/brand'
+import { optionsShopStoreApi } from '@/api/store/store'
 import ShopCategorySelect from '@/components/ShopCategorySelect/index.vue'
 import ShopBrandOption from '@/components/ShopBrandOption/index.vue'
 
@@ -107,13 +113,22 @@ const props = withDefaults(defineProps<{
   title?: string
   /** 复选框多选：确定时抛 id 数组 + 整行数组。默认 false 保持原来单击单选的行为 */
   multiple?: boolean
+  /** 要不要那颗输入框触发器。只要弹窗（父页面自己放一颗按钮去开）时传 false，配合 expose 的 openDialog */
+  trigger?: boolean
+  /** 额外的列表查询条件（如「只看没绑过潮玩系列的」），和筛选三格并列拼进同一条查询 */
+  query?: Record<string, any>
+  /** 加一格门店筛选。默认不开 —— 现有那几处用法不受影响 */
+  storeFilter?: boolean
 }>(), {
   modelValue: undefined,
   label: '',
   placeholder: '请选择商品',
   disabled: false,
   title: '选择商品',
-  multiple: false
+  multiple: false,
+  trigger: true,
+  query: undefined,
+  storeFilter: false
 })
 
 const emit = defineEmits<{
@@ -128,10 +143,11 @@ const loading = ref(false)
 const productList = ref<any[]>([])
 const total = ref(0)
 
-const searchForm = reactive<{ keyword: string; categoryId: any; brandId: any }>({
+const searchForm = reactive<{ keyword: string; categoryId: any; brandId: any; storeId: any }>({
   keyword: '',
   categoryId: undefined,
-  brandId: undefined
+  brandId: undefined,
+  storeId: undefined
 })
 const queryParams = reactive({
   pageNum: 1,
@@ -140,6 +156,7 @@ const queryParams = reactive({
 
 const categoryOptions = ref<any[]>([])
 const brandOptions = ref<any[]>([])
+const storeOptions = ref<any[]>([])
 let optionsLoaded = false
 
 const currentRow = ref<any>()
@@ -189,7 +206,17 @@ const loadOptions = async () => {
     optionsLoaded = true
   } catch (error) {
   }
+  if (props.storeFilter) await getStoreOptions()
   await getBrandOptions(searchForm.categoryId)
+}
+
+/** 门店候选：只在开了门店筛选那一格时才拉（现有几处用法不多发请求） */
+const getStoreOptions = async () => {
+  try {
+    const { data } = await optionsShopStoreApi()
+    storeOptions.value = data || []
+  } catch (error) {
+  }
 }
 
 /** 品牌候选：口径同商品管理表单，传分类时返回"该分类及其上级 + 未分类"，不传就是启用中的全部品牌 */
@@ -221,7 +248,10 @@ const getList = async () => {
       ...queryParams,
       keyword: searchForm.keyword.trim() || undefined,
       categoryId: searchForm.categoryId,
-      brandId: searchForm.brandId
+      brandId: searchForm.brandId,
+      storeId: searchForm.storeId,
+      // 父页面压进来的固定条件（比如「只看没绑过潮玩系列的」），和上面这几格是并列关系
+      ...props.query
     })
     productList.value = data.records || []
     total.value = data.total || 0
@@ -240,6 +270,7 @@ const resetSearch = () => {
   searchForm.keyword = ''
   searchForm.categoryId = undefined
   searchForm.brandId = undefined
+  searchForm.storeId = undefined
   // 分类清掉了，品牌候选也要退回全量，否则下拉里还留着上一个分类那几家
   getBrandOptions(undefined)
   queryParams.pageNum = 1
@@ -312,6 +343,9 @@ const handleClear = () => {
   emit('update:modelValue', props.multiple ? [] : undefined)
   emit('clear')
 }
+
+/** 不要触发器（trigger=false）的那档用法：父页面自己放一颗按钮，拿这个 ref 方法开弹窗 */
+defineExpose({ openDialog })
 </script>
 
 <style lang="scss" scoped>

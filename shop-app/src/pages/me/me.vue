@@ -8,6 +8,8 @@ import { LOGIN_PAGE } from '@/router/config'
 import { useUserStore } from '@/store'
 import { useTokenStore } from '@/store/token'
 import { clearCartBadge } from '@/utils/cartBadge'
+import AppNavBar from '@/components/AppNavBar.vue'
+import AppSearchBar from '@/components/AppSearchBar.vue'
 import { ACCOUNT_TYPE_TEXT, todayText } from '@/utils/profile'
 
 defineOptions({
@@ -17,24 +19,35 @@ defineOptions({
 definePage({
   style: {
     navigationBarTitleText: '我的',
+    // 导航条自绘，同首页（components/AppNavBar.vue）
+    navigationStyle: 'custom',
   },
 })
 
 /**
- * 个人中心七个入口：个人信息那一张里再分六档（基础信息 / 地址管理 / 优惠券 / 徽章 / 积分 / 钱包），
- * 订单、收藏、足迹、消息、广场消息各自一张列表，形状照 shop-web 的 /user 那一页搬（他点名的范本）。
+ * 「我的」这一页留三张主入口：订单管理、广场消息、我的购物车；其余五张搬进了右侧栏
+ * （components/SideMenu.vue，任意页面左滑开、tab 四页点头部导航右侧那颗，详情页没有那颗图标只能左滑）；
+ * 账号那一块（头像、登录、铃铛、签到、退出）和四行资料照旧留在这。
+ * 形状照 shop-web 的 /user 那一页搬（他点名的范本）。
  * 这一页自己有两处写：头部那颗签到（POST /api/comm/activity/signin，两端共用那一个动作）和它旁边那颗退出；
  * 改资料在「个人信息 → 基础信息」的修改页上，签到记录与补签在「签到记录」那一张页上，
  * 收货地址收在「个人信息 → 地址管理」那一档里（结算页也直接落到那一档），改密码那条 App 页面还没铺。
  */
-const ENTRIES = [
-  { key: 'info', label: '个人信息', url: '/pages/profile/info' },
-  { key: 'order', label: '我的订单', url: '/pages/order/list' },
-  { key: 'signin', label: '签到记录', url: '/pages/profile/signin' },
-  { key: 'favorite', label: '我的收藏', url: '/pages/profile/favorite' },
-  { key: 'browse', label: '浏览足迹', url: '/pages/profile/browse' },
-  { key: 'message', label: '我的消息', url: '/pages/message/center' },
+interface Entry {
+  key: string
+  label: string
+  url: string
+  /** tabbar 那一档的页面：navigateTo 跳不过去，得换 switchTab */
+  tab?: boolean
+}
+
+/** 头部那颗铃铛的落点：和抽屉里「我的消息」是同一张页，这一页清单里不列它（他点名清单只留订单、广场、购物车） */
+const MESSAGE: Entry = { key: 'message', label: '我的消息', url: '/pages/message/center' }
+
+const ENTRIES: Entry[] = [
+  { key: 'order', label: '订单管理', url: '/pages/order/list' },
   { key: 'plaza', label: '广场消息', url: '/pages/profile/plaza' },
+  { key: 'cart', label: '我的购物车', url: '/pages/cart/cart', tab: true },
 ]
 
 const userStore = useUserStore()
@@ -127,7 +140,7 @@ async function loadAccount() {
   }
 }
 
-// 哪一档都带去同一张登录页：那页上账号密码和微信登录两颗入口同屏，这一页不替用户选
+// 哪一档都带去同一张登录页：账号密码哪一档都输得成，微信那颗只在小程序和 App 画（H5 没网页授权凭据），这一页不替用户选
 async function handleLogin() {
   uni.navigateTo({ url: LOGIN_PAGE })
 }
@@ -159,20 +172,21 @@ function handleLogout() {
   })
 }
 
-function toCart() {
-  uni.switchTab({ url: '/pages/cart/cart' })
-}
-
 /**
- * 四个入口都要登录：这几张页读的全是「自己名下」的数据，没登录进去只能拿服务层那句「请先登录」
+ * 三个入口都要登录：这几张页读的全是「自己名下」的数据，没登录进去只能拿服务层那句「请先登录」
  * 换一屏红框。所以先在这一颗收住、直接带去登录页，登录后回来再点（口径同购物车那一路）。
  */
-function toEntry(url: string) {
+function toEntry(one: Entry) {
+  // tabbar 那一档 navigateTo 跳不过去（会静默失败），得走 switchTab
+  if (one.tab) {
+    uni.switchTab({ url: one.url })
+    return
+  }
   if (!tokenStore.updateNowTime().hasLogin) {
     uni.navigateTo({ url: LOGIN_PAGE })
     return
   }
-  uni.navigateTo({ url })
+  uni.navigateTo({ url: one.url })
 }
 
 onShow(() => {
@@ -190,9 +204,14 @@ onShow(() => {
 </script>
 
 <template>
-  <!-- pt-24rpx 是给第一张卡的：这块没内边距的话，卡片那个上边距会穿透到页面外面，看着就是第一张卡贴顶 -->
-  <view class="min-h-screen bg-[#f5f6f7] pb-192rpx pt-24rpx">
-    <view class="mx-24rpx mb-24rpx rounded-xl bg-white px-32rpx py-40rpx">
+  <!-- 顶上这格间距从页面根上搬到第一张卡：根上的 pt 会把自绘的导航栏一起顶下来，标题就和别的页差一截 -->
+  <view class="min-h-screen bg-[#f5f6f7] pb-192rpx">
+    <AppNavBar title="我的" />
+
+    <!-- 搜索入口 + 抽屉那颗：和首页同一排公共件（components/AppSearchBar.vue），四张 tab 页都有 -->
+    <AppSearchBar />
+
+    <view class="mx-24rpx mb-24rpx mt-24rpx rounded-xl bg-white px-32rpx py-40rpx">
       <view class="flex items-center">
         <!-- 没登录时这两块（头像 + 那行名字）跟着「登录」那颗一起是入口，点了都去登录页 -->
         <image
@@ -221,7 +240,7 @@ onShow(() => {
           <view
             hover-class="fx-tap"
             class="fx-press relative ml-16rpx shrink-0 rounded-full bg-gray-100 px-20rpx py-12rpx"
-            @click="toEntry('/pages/message/center')"
+            @click="toEntry(MESSAGE)"
           >
             <text class="text-[28rpx] leading-40rpx">
               🔔
@@ -263,16 +282,9 @@ onShow(() => {
         :key="one.key"
         hover-class="fx-tap"
         class="fx-press flex items-center justify-between border-b border-gray-50 py-32rpx last:border-b-0"
-        @click="toEntry(one.url)"
+        @click="toEntry(one)"
       >
         <text class="text-[28rpx] text-[#333]">{{ one.label }}</text>
-        <text class="text-[26rpx] text-gray-300">›</text>
-      </view>
-    </view>
-
-    <view class="mx-24rpx mb-24rpx rounded-xl bg-white px-32rpx">
-      <view hover-class="fx-tap" class="fx-press flex items-center justify-between py-32rpx" @click="toCart">
-        <text class="text-[28rpx] text-[#333]">我的购物车</text>
         <text class="text-[26rpx] text-gray-300">›</text>
       </view>
     </view>

@@ -73,7 +73,8 @@ public class ShopActivityCouponUser extends BaseEntity {
     private Integer scopeType;
 
     @ApiModelProperty(value = "状态：0未使用 1已使用 2已过期 3已作废（字典 coupon_user_status；1 由统一下单核销写，"
-            + "2/3 这一期没有写入方，所以过期是下单时拿 expire_time 现判的）")
+            + "2 由定时任务 expireTask.expireUserCoupons 一天扫一次，3 这一期还没有写入方；"
+            + "用券那侧照旧拿 expire_time 现判一道，任务只是把账面摊平）")
     private Integer status;
 
     @ApiModelProperty(value = "领取时间（发放时服务端盖）")

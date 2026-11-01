@@ -1,9 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, type CSSProperties } from 'vue';
+import DotTrack from '@/components/DotTrack.vue';
 import ProductCard from './ProductCard.vue';
+import { useI18n } from '@/i18n';
 import type { WebProduct } from '@/lib/products';
 
-const props = defineProps<{ products: WebProduct[] }>();
+/** 底下那排 dot 的说辞：首页那块岛（Storefront）已经往棵上钉过语种，inject 就行 */
+const { d } = useI18n();
+
+const props = withDefaults(defineProps<{ products: WebProduct[]; basePath?: string }>(), { basePath: '/product' });
 
 /** 卡片固定宽 288（w-72），环的半径按它算 */
 const CARD_WIDTH = 288;
@@ -138,6 +143,13 @@ function focus(index: number) {
   else if (index <= 0) dir = 1;
 }
 
+/** 左右两颗：走到头折回另一头（这一圈不满 12 张，转回去也就半圈，比在端点上按了没反应好读） */
+function step(delta: number) {
+  const n = props.products.length;
+  if (n < 2) return;
+  pick((active.value + delta + n) % n);
+}
+
 let timer: ReturnType<typeof setInterval> | undefined;
 
 onMounted(() => {
@@ -156,31 +168,72 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <!-- 透视挂在环外、preserve-3d 挂在环上：整圈一起转，转的是这一圈而不是单张卡片自己。
-       横向照旧要裁（两侧摊出去的卡片在窄屏上会顶出横向滚动条），但纵向这一截不能靠"只裁一个轴"来留：
-       实测 Chrome 把 overflow-x:clip + overflow-y:visible 当成两个轴一起裁（overflow-clip-margin 也不顶事），
-       卡片放大长出来的那 17px（420 的 8%÷2）上下各被切一截。所以改成给外层留 20px 的纵向余量，
-       让放大后的盒子整个落在裁切盒里，再用 -my-5 把版面拉回原位（实测下面那块的位置一格没动）。
-       HOVER_SCALE 再往上调的话这里的 py-5 要跟着加宽。 -->
-  <div
-    class="w-full perspective-distant overflow-x-clip py-5 -my-5"
-    @mousemove="trackPointer"
-    @mouseenter="hovered = true"
-    @mouseleave="hovered = false; hoverIndex = null"
-  >
+  <div class="w-full">
+    <!-- 透视挂在环外、preserve-3d 挂在环上：整圈一起转，转的是这一圈而不是单张卡片自己。
+         横向照旧要裁（两侧摊出去的卡片在窄屏上会顶出横向滚动条），但纵向这一截不能靠"只裁一个轴"来留：
+         实测 Chrome 把 overflow-x:clip + overflow-y:visible 当成两个轴一起裁（overflow-clip-margin 也不顶事），
+         卡片放大长出来的那 17px（420 的 8%÷2）上下各被切一截。所以改成给外层留 20px 的纵向余量，
+         让放大后的盒子整个落在裁切盒里，再用 -my-5 把版面拉回原位（实测下面那块的位置一格没动）。
+         HOVER_SCALE 再往上调的话这里的 py-5 要跟着加宽。 -->
     <div
-      ref="ringEl"
-      class="relative mx-auto h-[420px] w-72 transform-3d transition-transform duration-500"
-      :style="ringStyle"
+      class="w-full perspective-distant overflow-x-clip py-5 -my-5"
+      @mousemove="trackPointer"
+      @mouseenter="hovered = true"
+      @mouseleave="hovered = false; hoverIndex = null"
     >
       <div
-        v-for="(product, index) in products"
-        :key="product.id"
-        class="absolute inset-0 backface-hidden transition duration-300"
-        :style="cardStyle(index)"
-        @click="pick(index)"
+        ref="ringEl"
+        class="relative mx-auto h-[420px] w-72 transform-3d transition-transform duration-500"
+        :style="ringStyle"
       >
-        <ProductCard :product="product" :active="index === active" />
+        <div
+          v-for="(product, index) in products"
+          :key="product.id"
+          class="absolute inset-0 backface-hidden transition duration-300"
+          :style="cardStyle(index)"
+          @click="pick(index)"
+        >
+          <ProductCard :product="product" :active="index === active" :base-path="basePath" />
+        </div>
+      </div>
+    </div>
+
+    <!-- 底下这一排：毛玻璃一条，左右各一颗切换、中间是 dot（点第几颗就转到第几张）。
+         走 plain 那一档的 dot（自己不再铺那条半透明底槽，底槽由这一条毛玻璃担当）；
+         自动轮播走一格 dot 跟着走，两颗箭头和点卡片是同一个 pick()（含放大和位移闸门那套）。 -->
+    <!-- 上面那一圈靠 -my-5 把版面拉回过原位，等于把这一条顶到了卡片盒子底下（卡片放大多出来的那 17px 也压在这一截上）
+         ⇒ 自己补回 20px 的上间距，毛玻璃那条才真的浮在下面而不是贴着卡片底边。 -->
+    <div v-if="products.length > 1" class="flex justify-center mt-5 pb-4">
+      <div
+        class="flex items-center gap-1 rounded-full bg-white/60 p-1 shadow-sm ring-1 ring-black/5 backdrop-blur-md dark:bg-gray-900/55 dark:ring-white/10"
+      >
+        <button
+          type="button"
+          :aria-label="d.recommend.prev"
+          class="rounded-full p-1.5 text-gray-500 transition-colors hover:bg-gray-900/5 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-gray-200"
+          @click="step(-1)"
+        >
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m15 6-6 6 6 6" />
+          </svg>
+        </button>
+        <DotTrack
+          :count="products.length"
+          :current="active"
+          tone="plain"
+          :label="d.recommend.slideAria"
+          @select="pick"
+        />
+        <button
+          type="button"
+          :aria-label="d.recommend.next"
+          class="rounded-full p-1.5 text-gray-500 transition-colors hover:bg-gray-900/5 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-gray-200"
+          @click="step(1)"
+        >
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6" />
+          </svg>
+        </button>
       </div>
     </div>
   </div>

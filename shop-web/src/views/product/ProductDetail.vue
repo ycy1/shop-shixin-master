@@ -4,6 +4,7 @@ import { FwbButton } from 'flowbite-vue';
 import CartBadge from '@/components/CartBadge.vue';
 import CommentSection from '@/components/CommentSection.vue';
 import FavoriteButton from '@/components/FavoriteButton.vue';
+import TabDropper from '@/components/TabDropper.vue';
 import { useAuthStore } from '@/stores/auth';
 import { useCartStore } from '@/stores/cart';
 import { fetchProductDetail, parseImageUrls, type WebProductDetail, type WebProductSku } from '@/lib/products';
@@ -204,6 +205,10 @@ const TABS: { key: TabKey; label: string }[] = [
 ];
 
 const active = ref<TabKey>('detail');
+/** 递给 TabDropper 的那一排：评论那颗多带一个数（原来是模板里手写拼的） */
+const tabItems = computed(() =>
+  TABS.map(one => ({ key: one.key as string, label: one.label, count: one.key === 'comment' ? commentCount.value : null })),
+);
 /** 这次是往后切还是往前切（决定面板从哪边移进来）；sliding 只在那段过渡里挂，见 global.css 最后那一条 */
 const slideName = ref('tab-next');
 const sliding = ref(false);
@@ -426,25 +431,14 @@ async function addAll() {
       <!-- 下半区两块：商品详情（描述 + 规格参数 + 图文都并在这一 tab 里）/ 评论。
            那排标签的形状照搜索页的三个 tab（同一条 border-b + 选中那根蓝色下划线），只把居中改成靠左 ——
            这一页上面是两栏内容，居中那排会孤零零悬在中间。 -->
-      <div role="tablist" :aria-label="d.product.infoAria"
-        class="mt-8 flex gap-6 border-b border-gray-200 dark:border-gray-700">
-        <button
-          v-for="item in TABS"
-          :key="item.key"
-          type="button"
-          role="tab"
-          :aria-selected="active === item.key"
-          class="-mb-px border-b-2 pb-2 text-sm font-medium transition-colors"
-          :class="
-            active === item.key
-              ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
-              : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
-          "
-          @click="selectTab(item.key)"
-        >
-          {{ item.label }}<span v-if="item.key === 'comment' && commentCount !== null" class="ml-1 text-gray-400 dark:text-gray-500">({{ commentCount }})</span>
-        </button>
-      </div>
+      <!-- 等分那一排 + 水滴胶囊（原来落在选中那颗文字底下的 border-b-2 由胶囊担当，切换时拉长再收住） -->
+      <TabDropper
+        :label="d.product.infoAria"
+        list-class="mt-8 gap-6"
+        :model-value="active"
+        :items="tabItems"
+        @update:model-value="(key: string) => selectTab(key as TabKey)"
+      />
 
       <!-- 跟着 active 换 key ⇒ Vue 认成换了一个元素，<Transition> 就把旧那块左右移走完事再挂新的（方向见 slideName，CSS 在 global.css 最后那一条）。
            外层这一格只在过渡那一段挂 overflow-x-clip：28px 的位移会探出容器，不裁就闪一条横向滚动条；平时不挂，别牵连上面那个放大镜。 -->

@@ -55,6 +55,14 @@
                             dict.label(DICT_BUSINESS_TYPE, scope.row.businessType) }}</el-tag>
                     </template>
                 </el-table-column>
+                <!-- 失败次数兼做发送状态：0 = 已发送；>0 = 还没发出去（重试中 / 停下等人工） -->
+                <el-table-column label="失败次数" align="center" prop="failCount" width="90">
+                    <template #default="scope">
+                        <span :class="scope.row.failCount >= 3 ? 'text-red-500 font-medium' : ''">
+                            {{ scope.row.failCount ?? 0 }}
+                        </span>
+                    </template>
+                </el-table-column>
                 <el-table-column label="阅读数" align="center" prop="readCount" width="90">
                     <template #default="scope">
                         <el-link type="primary" :underline="false" @click="openRecords(scope.row)">
@@ -74,16 +82,17 @@
                         <span>{{ validate.formatTime(scope.row.createTime, 'YYYY-MM-DD') || '-' }}</span>
                     </template>
                 </el-table-column>
-                <el-table-column label="操作" align="center" fixed="right">
+                <!-- 操作列走公共「更多」件（maxVisible=3 ⇒ 总数不超过 3 颗就全部直出）。
+                     「阅读记录」那颗撤了：阅读数那一列本身就是可点的链接（点它开阅读记录），两处入口重复。
+                     正常行 = 修改 / 删除；有失败的行多一颗「重试」= 3 颗，仍不超过 maxVisible，不出「更多」。
+                     组件不吃 v-permission，权限写在每一条的 hidden 里（口径同园区照片那页）。 -->
+                <el-table-column label="操作" align="center" width="240" fixed="right">
                     <template #default="scope">
-                        <el-button type="info" link icon="Reading" @click="openRecords(scope.row)">阅读记录
-                        </el-button>
-                        <el-button type="primary" link icon="Edit" v-permission="['sys:notification:update']"
-                            @click="handleEdit(scope.row)">修改
-                        </el-button>
-                        <el-button v-if="scope.row.delFlag === 0" type="danger" link icon="Delete" v-permission="['sys:notification:delete']"
-                            @click="handleDelete(scope.row)">删除
-                        </el-button>
+                        <TableMoreActions :max-visible="3" :actions="[
+                            { label: '重试', type: 'warning', icon: 'RefreshRight', hidden: !(scope.row.failCount > 0) || !hasPermission('sys:notification:retry'), command: { type: 'retry', row: scope.row } },
+                            { label: '修改', icon: 'Edit', hidden: !hasPermission('sys:notification:update'), command: { type: 'update', row: scope.row } },
+                            { label: '删除', type: 'danger', icon: 'Delete', hidden: scope.row.delFlag !== 0 || !hasPermission('sys:notification:delete'), command: { type: 'delete', row: scope.row } }
+                        ]" @command="handleActionCommand" />
                     </template>
                 </el-table-column>
             </el-table>
@@ -207,11 +216,14 @@ import {
     getNotificationReceiverListApi,
     updateNotificationReceiverReadApi,
     deleteNotificationReceiverApi,
+    retryNotificationApi,
 } from '@/api/message/notification'
 import WangEditor from '@/components/WangEditor/index.vue'
 import NoticePushTransfer from '@/components/NoticePushTransfer/index.vue'
+import TableMoreActions from '@/components/TableMoreActions/index.vue'
 import validate from '@/utils/validate'
 import { useDict } from '@/utils/dictCache'
+import { useUserStore } from '@/store/modules/user'
 
 // 查询参数
 const queryParams = reactive({
@@ -384,6 +396,35 @@ const handleDelete = (row: any) => {
         } catch (error) {
         }
     })
+}
+
+// 重试：失败次数归零、重新投递一次（发送成功与否由后端决定，这里只负责发请求并刷新列表）
+const handleRetry = (row: any) => {
+    ElMessageBox.confirm(`确定重新发送「${row.title}」这条通知？`, '提示', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+    }).then(async () => {
+        try {
+            await retryNotificationApi(row.id)
+            ElMessage.success('已重新投递，稍后刷新看结果')
+            getList()
+        } catch (error) {
+        }
+    })
+}
+
+/** 操作列走 TableMoreActions，权限得在这里自己判（组件没有 v-permission 那套指令，只认 actions 上的 hidden） */
+const userStore = useUserStore()
+const permissions = computed(() => userStore.user.permissions || [])
+const hasPermission = (permission: string): boolean => permissions.value.includes(permission)
+
+/** 操作列那一排按 command.type 分发回原来那几颗按钮的处理函数 */
+const handleActionCommand = (action: any) => {
+    const { type, row } = action.command
+    if (type === 'retry') handleRetry(row)
+    else if (type === 'update') handleEdit(row)
+    else if (type === 'delete') handleDelete(row)
 }
 
 // 分页大小改变

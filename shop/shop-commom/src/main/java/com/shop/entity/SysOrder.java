@@ -28,7 +28,7 @@ public class SysOrder implements Serializable {
     @ApiModelProperty(value = "订单编号（业务唯一，对外展示）")
     private String orderNo;
 
-    @ApiModelProperty(value = "订单类型：1-普通订单 2-秒杀订单 3-拼团订单 4-充值订单（字典 order_type）")
+    @ApiModelProperty(value = "订单类型：1-普通订单 2-充值/提现订单 3-盲盒订单（字典 order_type）")
     private Integer orderType;
 
     @ApiModelProperty(value = "用户ID")

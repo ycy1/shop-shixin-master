@@ -12,6 +12,9 @@ export interface WebProduct {
   subTitle: string | null;
   categoryName: string | null;
   brandName: string | null;
+  // 潮玩专区认这一对：挂了专区的就是潮玩商品（卡片上那枚系列标），没挂就是普通商品
+  sectionId: number | null;
+  trendyName: string | null;
   // 销量和可用库存都不在商品这一层给：销量记在每一条规格上，库存是「一个规格 × 一个仓」那一格的账，
   // 摊成商品一个数会写着「有货」而缺货的正是人选中的那一档。读 WebProductSku 里的 salesCount/availableStock
 }
@@ -95,6 +98,8 @@ export interface ProductQuery {
   brandId?: number;
   // 门店详情页商品区那两档 tab：0 门店商品、1 文创商品（文创必须挂门店，所以总是和 storeId 一起传）
   culturalEnable?: number;
+  // 潮玩专区那一页：1 只取挂了潮玩系列的商品（潮玩商品没有第二张表，判据就是这一列非空）
+  trendyOnly?: number;
   pageNum?: number;
   pageSize?: number;
 }
