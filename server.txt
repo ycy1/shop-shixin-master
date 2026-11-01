@@ -1,0 +1,10 @@
+netstat -ano | findstr ":8800 :3000 :4321" | findstr LISTEN
+taskkill /PID <pid> /F /T
+cd /d F:\shop-shixin-master\shop && mvn clean package -DskipTests
+cd /d F:\shop-shixin-master\shop && java -jar shop-server\target\shop-admin.jar
+
+cd /d F:\shop-shixin-master\shop-admin && pnpm dev
+cd /d F:\shop-shixin-master\shop-web && pnpm dev
+
+cd /d F:\shop-shixin-master\shop-app && pnpm dev
+cd /d F:\shop-shixin-master\shop-app && pnpm dev:mp
