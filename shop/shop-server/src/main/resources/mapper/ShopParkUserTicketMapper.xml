@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopParkUserTicketMapper">
+
+    <!-- 自定义 SQL 不走全局逻辑删除，c.is_deleted = 0 必须手写。
+         票名/票价/时段那几格读本表自己的快照，不联 shop_trendy_park_ticket —— 联了就会把票种后来改过的价
+         显示到已经发出去的票上，而这一张表本来就是"当时那张票是什么值"的凭证（口径同用户券的发放记录）。
+         园区名是另一回事：它只是"这张票去哪一家"，园区改了名跟着新名走才对得上，所以联 park 带名字。
+         sys_user 没有 is_deleted 那一列（sys_* 表和 shop_* 表这套是相反的），那一条联表不带这一刀 -->
+    <select id="selectUserTicketPage" resultType="com.shop.entity.ShopParkUserTicket">
+        SELECT
+            c.id,
+            c.ticket_code,
+            c.user_id,
+            c.ticket_id,
+            c.park_id,
+            c.qr_img,
+            c.ticket_name,
+            c.ticket_type,
+            c.price,
+            c.visit_date,
+            c.time_slot,
+            c.holder_name,
+            c.holder_phone,
+            c.holder_id_card,
+            c.status,
+            c.used_time,
+            c.refund_time,
+            c.remark,
+            c.create_by,
+            c.update_by,
+            c.create_time,
+            c.update_time,
+            u.nickname AS userName,
+            u.mobile AS mobile,
+            p.park_name AS parkName
+        FROM shop_trendy_park_user_ticket c
+        LEFT JOIN sys_user u ON u.id = c.user_id
+        LEFT JOIN shop_trendy_park p ON p.id = c.park_id AND p.is_deleted = 0
+        <where>
+            c.is_deleted = 0
+            <!-- 数据范围（消费者账号）由服务层往 q.userId 上压，这里只认字段、不认角色：
+                 「消费者管理 → 我的订单」的票种 tab 也按这一条收本人名下的票 -->
+            <if test="q.userId != null">
+                AND c.user_id = #{q.userId}
+            </if>
+            <if test="q.parkId != null">
+                AND c.park_id = #{q.parkId}
+            </if>
+            <if test="q.ticketId != null">
+                AND c.ticket_id = #{q.ticketId}
+            </if>
+            <if test="q.ticketType != null">
+                AND c.ticket_type = #{q.ticketType}
+            </if>
+            <if test="q.status != null">
+                AND c.status = #{q.status}
+            </if>
+            <!-- 游玩日期区间：两端都含（传的是 yyyy-MM-dd，列本身就是 date，不用再拼时分秒） -->
+            <if test="q.beginVisitDate != null and q.beginVisitDate != ''">
+                AND c.visit_date &gt;= #{q.beginVisitDate}
+            </if>
+            <if test="q.endVisitDate != null and q.endVisitDate != ''">
+                AND c.visit_date &lt;= #{q.endVisitDate}
+            </if>
+            <!-- 一个输入框搜四样：票码、票种名（快照）、持票人姓名、持票人电话。
+                 括号内 OR 不会串到上面的筛选；搜的是快照列，不联票种表 -->
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (c.ticket_code LIKE CONCAT('%', #{q.keyword}, '%')
+                OR c.ticket_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR c.holder_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR c.holder_phone LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+        </where>
+        <!-- id DESC 就是出票时间倒序，比按秒级的 create_time 排稳定（同一秒里连着出的几张按 id 分先后） -->
+        ORDER BY c.id DESC
+    </select>
+
+    <!-- 入园核销：0 未使用 → 1 已核销。status = 0 压在 WHERE 里就是并发那道闸
+        （同一张票同时被两个闸机点，后到的那条一行都更新不到，服务层按返回 0 报"刚被核销过了"）。
+         票面那几格一个都不动：这一行留的是"当时那张票是什么值"的凭证。
+         update_time 靠库的 ON UPDATE CURRENT_TIMESTAMP 自己走 -->
+    <update id="verify">
+        UPDATE shop_trendy_park_user_ticket
+        SET status = 1,
+            used_time = #{usedTime}
+        WHERE id = #{id}
+          AND is_deleted = 0
+          AND status = 0
+    </update>
+
+    <!-- 退款：0 未使用 / 1 已核销 / 2 已过期 → 3 已退款。3 已退款不在放行名单里，
+         所以重复点这一颗第二次一行都更新不到（服务层按返回 0 报当前状态）。
+         2 已过期也放行：过期是 expireTask 那一条定时任务落的（一天一次），
+         过期没来玩得这张票正是最该退的一种，核销时间留着不动 —— 那张票确实核销过。
+         核销时间不清：这一行留的是"当时那张票是什么值"的凭证。
+         update_time 靠库的 ON UPDATE CURRENT_TIMESTAMP 自己走 -->
+    <update id="refund">
+        UPDATE shop_trendy_park_user_ticket
+        SET status = 3,
+            refund_time = #{refundTime}
+        WHERE id = #{id}
+          AND is_deleted = 0
+          AND status IN (0, 1, 2)
+    </update>
+
+    <!-- 过期扫描（定时任务 expireTask.expireParkTickets 走这一条）：
+         游玩日期过了当天、还从来没被核销过的票，一天落一次 2 已过期。
+         status = 0 压在 WHERE 里 ⇒ 已经核销/已经退过的绝不回头改，重复跑只补当天新进过窗口的那几张；
+         一条 UPDATE 收全平台，别按人捞（口径同优惠券那一条过期扫描） -->
+    <update id="markExpired">
+        UPDATE shop_trendy_park_user_ticket
+        SET status = 2
+        WHERE is_deleted = 0
+          AND status = 0
+          AND visit_date &lt; #{today}
+    </update>
+
+</mapper>

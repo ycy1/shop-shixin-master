@@ -11,7 +11,7 @@
  Target Server Version : 80040
  File Encoding         : 65001
 
- Date: 17/10/2026 20:01:01
+ Date: 01/11/2026 19:31:53
 */
 
 SET NAMES utf8mb4;
@@ -50,7 +50,7 @@ CREATE TABLE `ai_agents`  (
   INDEX `idx_created_by`(`created_by`) USING BTREE,
   INDEX `idx_create_time`(`create_time`) USING BTREE,
   INDEX `idx_deleted_at`(`deleted_at`) USING BTREE
-) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '智能体表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '智能体表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for ai_config_source
@@ -79,7 +79,7 @@ CREATE TABLE `ai_config_source`  (
   INDEX `idx_source_type`(`source_type`) USING BTREE,
   INDEX `idx_enabled`(`enabled`) USING BTREE,
   INDEX `idx_doc_storage_type`(`doc_storage_type`) USING BTREE
-) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '知识源配置表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '知识源配置表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for ai_conversations
@@ -109,7 +109,7 @@ CREATE TABLE `ai_conversations`  (
   INDEX `idx_create_time`(`create_time`) USING BTREE,
   INDEX `idx_deleted_at`(`deleted_at`) USING BTREE,
   CONSTRAINT `ai_conversations_ibfk_1` FOREIGN KEY (`agent_id`) REFERENCES `ai_agents` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
-) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '会话表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '会话表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for ai_memories
@@ -296,7 +296,7 @@ CREATE TABLE `shop_activity`  (
   INDEX `idx_store`(`store_id`) USING BTREE,
   INDEX `idx_status`(`status`) USING BTREE,
   INDEX `idx_time`(`start_time`, `end_time`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 9 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '广告表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 10 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '广告表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for shop_activity_badge
@@ -355,7 +355,7 @@ CREATE TABLE `shop_activity_badge_user`  (
   INDEX `idx_badge`(`badge_id`) USING BTREE,
   INDEX `idx_user_status`(`user_id`, `status`) USING BTREE,
   INDEX `idx_expire`(`end_time`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 6 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '徽章用户关联表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 8 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '徽章用户关联表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for shop_activity_click
@@ -378,7 +378,7 @@ CREATE TABLE `shop_activity_click`  (
   INDEX `idx_activity_event`(`activity_id`, `event_type`) USING BTREE,
   INDEX `idx_user`(`user_id`) USING BTREE,
   INDEX `idx_create_time`(`create_time`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 461 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '广告曝光/点击记录表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 1594 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '广告曝光/点击记录表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for shop_activity_coupon
@@ -416,7 +416,7 @@ CREATE TABLE `shop_activity_coupon`  (
   INDEX `idx_type`(`coupon_type`) USING BTREE,
   INDEX `idx_status`(`status`) USING BTREE,
   INDEX `idx_valid`(`valid_start`, `valid_end`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '优惠券模板表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 4 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '优惠券模板表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for shop_activity_coupon_user
@@ -452,7 +452,7 @@ CREATE TABLE `shop_activity_coupon_user`  (
   INDEX `idx_coupon`(`coupon_id`) USING BTREE,
   INDEX `idx_order`(`order_id`) USING BTREE,
   INDEX `idx_expire`(`expire_time`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 16 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '用户优惠券表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 19 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '用户优惠券表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for shop_activity_points
@@ -474,7 +474,7 @@ CREATE TABLE `shop_activity_points`  (
   PRIMARY KEY (`id`) USING BTREE,
   UNIQUE INDEX `uk_user`(`user_id`) USING BTREE,
   INDEX `idx_balance`(`balance`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '积分账户表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 4 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '积分账户表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for shop_activity_points_log
@@ -497,7 +497,7 @@ CREATE TABLE `shop_activity_points_log`  (
   INDEX `idx_user_time`(`user_id`, `create_time`) USING BTREE,
   INDEX `idx_biz`(`biz_type`, `biz_id`) USING BTREE,
   INDEX `idx_expire`(`expire_time`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 38 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '用户积分流水表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 67 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '用户积分流水表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for shop_activity_signin
@@ -519,7 +519,7 @@ CREATE TABLE `shop_activity_signin`  (
   PRIMARY KEY (`id`) USING BTREE,
   UNIQUE INDEX `uk_user_date`(`user_id`, `sign_date`) USING BTREE COMMENT '一人一天一行：正常签到和补签都靠这一条挡重复',
   INDEX `idx_sign_date`(`sign_date`) USING BTREE COMMENT '按天看全平台签到（这一页暂不用，按用户的查询走 uk_user_date 的左前缀）'
-) ENGINE = InnoDB AUTO_INCREMENT = 22 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '用户签到记录表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 33 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '用户签到记录表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for shop_brand
@@ -534,6 +534,8 @@ CREATE TABLE `shop_brand`  (
   `description` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '品牌介绍',
   `contact` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '联系方式',
   `category_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '所属分类ID',
+  `section_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '专区id：section_type=1 时是潮玩系列id(shop_trendy.id)',
+  `section_type` tinyint(0) NOT NULL DEFAULT 0 COMMENT '专区类型：1 潮玩；0=不属于任何专区',
   `sort` int(0) NOT NULL DEFAULT 0 COMMENT '排序',
   `status` tinyint(0) NOT NULL DEFAULT 1 COMMENT '1启用 0禁用',
   `create_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) COMMENT '创建时间',
@@ -545,7 +547,8 @@ CREATE TABLE `shop_brand`  (
   UNIQUE INDEX `uk_brand_name`(`brand_name`) USING BTREE,
   INDEX `idx_status_sort`(`status`, `sort`) USING BTREE,
   INDEX `idx_category`(`category_id`) USING BTREE,
-  INDEX `idx_user_id`(`user_id`) USING BTREE
+  INDEX `idx_user_id`(`user_id`) USING BTREE,
+  INDEX `idx_trendy`(`section_id`) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 10 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '品牌表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
@@ -596,7 +599,7 @@ CREATE TABLE `shop_consumer_address`  (
   PRIMARY KEY (`id`) USING BTREE,
   INDEX `idx_user`(`user_id`) USING BTREE,
   INDEX `idx_user_default`(`user_id`, `is_default`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 6 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '消费者收货地址表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 10 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '消费者收货地址表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for shop_consumer_browse
@@ -629,17 +632,20 @@ CREATE TABLE `shop_consumer_cart`  (
   `brand_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '品牌ID(shop_brand.id)，加购时从商品冗余，不关联品牌时为 NULL',
   `store_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '门店ID(shop_store.id)，NULL=不限定门店',
   `quantity` int(0) NOT NULL DEFAULT 1 COMMENT '数量',
+  `price` decimal(10, 2) NULL DEFAULT NULL COMMENT '消费单价：这一行按这个价算钱；NULL=按这条规格的现价',
   `selected` tinyint(0) NOT NULL DEFAULT 1 COMMENT '是否选中：1选中 0未选中',
+  `source_type` tinyint(0) NOT NULL DEFAULT 0 COMMENT '来源：0普通商品（自己加购） 1盲盒商品（抽中入车），字典 cart_source_type',
+  `source_id` bigint(0) UNSIGNED NOT NULL DEFAULT 0 COMMENT '来源ID：盲盒商品=抽中它的那台盒(shop_trendy_box.id)；普通商品（自己加购）为0',
   `create_by` bigint(0) NULL DEFAULT NULL COMMENT '创建人用户ID',
   `update_by` bigint(0) NULL DEFAULT NULL COMMENT '修改人用户ID',
   `create_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) COMMENT '创建时间（加入购物车时间）',
   `update_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) ON UPDATE CURRENT_TIMESTAMP(0) COMMENT '修改时间',
   `is_deleted` tinyint(0) NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
   PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE INDEX `uk_user_sku`(`user_id`, `sku_id`) USING BTREE,
+  UNIQUE INDEX `uk_user_sku_source`(`user_id`, `sku_id`, `source_type`, `source_id`) USING BTREE,
   INDEX `idx_user`(`user_id`) USING BTREE,
   INDEX `idx_store`(`store_id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 14 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '购物车表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 42 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '购物车表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for shop_consumer_favorite
@@ -659,7 +665,7 @@ CREATE TABLE `shop_consumer_favorite`  (
   PRIMARY KEY (`id`) USING BTREE,
   UNIQUE INDEX `uk_user_target`(`user_id`, `target_type`, `target_id`) USING BTREE,
   INDEX `idx_target`(`target_type`, `target_id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 7 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '用户收藏表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 9 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '用户收藏表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for shop_consumer_wallet
@@ -683,7 +689,7 @@ CREATE TABLE `shop_consumer_wallet`  (
   PRIMARY KEY (`id`) USING BTREE,
   UNIQUE INDEX `uk_user`(`user_id`) USING BTREE,
   INDEX `idx_status`(`status`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '用户钱包账户表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 4 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '用户钱包账户表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for shop_consumer_wallet_log
@@ -707,7 +713,7 @@ CREATE TABLE `shop_consumer_wallet_log`  (
   INDEX `idx_user`(`user_id`) USING BTREE,
   INDEX `idx_user_time`(`user_id`, `create_time`) USING BTREE,
   INDEX `idx_biz`(`biz_type`, `biz_id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 10 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '用户钱包流水表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 11 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '用户钱包流水表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for shop_delivery
@@ -757,7 +763,7 @@ CREATE TABLE `shop_delivery`  (
   INDEX `idx_status`(`status`) USING BTREE,
   INDEX `idx_create_time`(`create_time`) USING BTREE,
   INDEX `idx_outbound_id_no`(`outbound_id`, `outbound_no`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 17 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '配送单表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 22 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '配送单表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for shop_delivery_company
@@ -1252,7 +1258,7 @@ CREATE TABLE `shop_erp_sale_outbound_item`  (
   INDEX `idx_order_item`(`order_item_id`) USING BTREE,
   INDEX `idx_warehouse`(`warehouse_id`) USING BTREE,
   INDEX `idx_sku`(`sku_id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 30 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '销售出库明细表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 29 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '销售出库明细表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for shop_erp_supplier
@@ -1318,35 +1324,6 @@ CREATE TABLE `shop_erp_warehouse`  (
 ) ENGINE = InnoDB AUTO_INCREMENT = 5 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '仓库表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
--- Table structure for sys_icon
--- ----------------------------
-DROP TABLE IF EXISTS `sys_icon`;
-CREATE TABLE `sys_icon`  (
-  `id` bigint(0) UNSIGNED NOT NULL AUTO_INCREMENT,
-  `user_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '创建人用户ID(sys_user.id)',
-  `icon_name` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '图标名称',
-  `icon_code` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '图标编码，唯一',
-  `icon_type` tinyint(0) NOT NULL DEFAULT 1 COMMENT '1 SVG 2 图片URL 3 字体类名',
-  `icon_value` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '图标内容',
-  `icon_category` tinyint(0) NOT NULL DEFAULT 2 COMMENT '图标分类：1系统图标 2商品分类 3其他',
-  `category_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '商品分类ID',
-  `sort` int(0) NOT NULL DEFAULT 0 COMMENT '排序',
-  `status` tinyint(0) NOT NULL DEFAULT 1 COMMENT '1启用 0禁用',
-  `remark` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '备注',
-  `create_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0),
-  `update_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) ON UPDATE CURRENT_TIMESTAMP(0),
-  `is_deleted` tinyint(0) NOT NULL DEFAULT 0 COMMENT '是否删除 0否 1是',
-  `create_by` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '创建人用户ID(sys_user.id)',
-  `update_by` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '修改人用户ID(sys_user.id)',
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE INDEX `uk_icon_code`(`icon_code`) USING BTREE,
-  INDEX `idx_category`(`category_id`) USING BTREE,
-  INDEX `idx_status_sort`(`status`, `sort`) USING BTREE,
-  INDEX `idx_category_status_sort`(`icon_category`, `status`, `sort`) USING BTREE,
-  INDEX `idx_user_id`(`user_id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 22 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '图标库表' ROW_FORMAT = Dynamic;
-
--- ----------------------------
 -- Table structure for shop_order_item
 -- ----------------------------
 DROP TABLE IF EXISTS `shop_order_item`;
@@ -1358,6 +1335,8 @@ CREATE TABLE `shop_order_item`  (
   `warehouse_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '发货仓库ID',
   `order_no` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '订单号（冗余 sys_order.order_no，便于直接按单号查明细）',
   `sku_id` bigint(0) UNSIGNED NOT NULL COMMENT '商品SKU ID(shop_product_sku.id)，无物理外键',
+  `source_type` tinyint(0) NOT NULL DEFAULT 0 COMMENT '来源：0普通商品 1盲盒商品（端盒/抽中入车拆出来的行），口径同 shop_consumer_cart.source_type，字典 cart_source_type',
+  `source_id` bigint(0) UNSIGNED NOT NULL DEFAULT 0 COMMENT '来源ID：盲盒商品那几行=拆它们之前躺在车里的那台盒(shop_trendy_box.id)，页面按它把同一盒的几行收拢成一张卡、退货按它整组退；普通商品行为0',
   `product_name` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '商品名称（下单时快照，商品改名不回刷）',
   `spec_text` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '规格文本（下单时抄 shop_product_sku.spec_text 的快照），NULL=无规格',
   `image` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '商品主图（下单时快照）',
@@ -1378,7 +1357,81 @@ CREATE TABLE `shop_order_item`  (
   INDEX `idx_order`(`order_id`) USING BTREE,
   INDEX `idx_user`(`user_id`) USING BTREE,
   INDEX `idx_sku`(`sku_id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 22 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '订单明细表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 49 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '订单明细表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for shop_plaza_like
+-- ----------------------------
+DROP TABLE IF EXISTS `shop_plaza_like`;
+CREATE TABLE `shop_plaza_like`  (
+  `id` bigint(0) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `message_id` bigint(0) UNSIGNED NOT NULL COMMENT '消息ID(shop_plaza_message.id)',
+  `user_id` bigint(0) UNSIGNED NOT NULL COMMENT '点赞用户ID(sys_user.id)',
+  `create_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) COMMENT '点赞时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_message_user`(`message_id`, `user_id`) USING BTREE,
+  INDEX `idx_user`(`user_id`) USING BTREE,
+  INDEX `idx_message_time`(`message_id`, `create_time`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 12 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '广场消息点赞表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for shop_plaza_message
+-- ----------------------------
+DROP TABLE IF EXISTS `shop_plaza_message`;
+CREATE TABLE `shop_plaza_message`  (
+  `id` bigint(0) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `user_id` bigint(0) UNSIGNED NOT NULL COMMENT '发布用户ID(sys_user.id)；服务端按登录账号钉，表单不传，实体钉 NEVER 所以改不动',
+  `relation_type` tinyint(0) NOT NULL DEFAULT 0 COMMENT '关联类型：0无关联 1商品 2门店 3品牌 4活动（字典 plaza_relation_type）',
+  `relation_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '关联对象ID：relation_type=1时商品ID，=2时门店ID，=3时品牌ID，=4时活动ID',
+  `title` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '标题，可空',
+  `content` mediumtext CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '富文本内容（发布端富文本组件产出的 HTML，图片内嵌在标签里）',
+  `content_text` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL COMMENT '纯文本摘要（服务端从 content 剥标签算出来，给搜索和列表预览用，表单不收）',
+  `plaza_image` varchar(2000) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '广场消息图URL（发布人自己上传，多张用英文逗号拼在这一格里，可空；卡片配图取第一张，详情页正文下方整组铺开）',
+  `is_top` tinyint(0) NOT NULL DEFAULT 0 COMMENT '是否置顶：1是 0否（只有后台改得动）',
+  `is_recommend` tinyint(0) NOT NULL DEFAULT 0 COMMENT '是否推荐：1是 0否（只有后台改得动）',
+  `like_count` int(0) NOT NULL DEFAULT 0 COMMENT '点赞数（读的时候一律按 shop_plaza_like 现算覆盖，库里这一列不回写；口径同门店培训的 sign_count）',
+  `comment_count` int(0) NOT NULL DEFAULT 0 COMMENT '评论数（读的时候按 sys_comment 现算覆盖：business_id=id AND comment_type=4，同上）',
+  `share_count` int(0) NOT NULL DEFAULT 0 COMMENT '分享数（读的时候按 shop_plaza_share 现算覆盖，同上）',
+  `audit_status` tinyint(0) NOT NULL DEFAULT 0 COMMENT '审核状态：0待审核 1已发布 2已拒绝（字典 plaza_audit_status）',
+  `audit_remark` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '审核备注（拒绝时给发布者看的那一句）',
+  `status` tinyint(0) NOT NULL DEFAULT 1 COMMENT '状态：1正常 0已删除 2已隐藏（字典 plaza_status；2 是后台下架，和审核是两刀）',
+  `publish_time` datetime(0) NULL DEFAULT NULL COMMENT '发布时间（审核通过那一刻由服务端补，之后不覆盖；待审核的那几条这里是空）',
+  `create_by` bigint(0) NULL DEFAULT NULL COMMENT '创建人用户ID（留痕）',
+  `update_by` bigint(0) NULL DEFAULT NULL COMMENT '修改人用户ID',
+  `create_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) COMMENT '创建时间',
+  `update_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) ON UPDATE CURRENT_TIMESTAMP(0) COMMENT '修改时间',
+  `is_deleted` tinyint(0) NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_user`(`user_id`) USING BTREE,
+  INDEX `idx_relation`(`relation_id`) USING BTREE,
+  INDEX `idx_status_audit`(`status`, `audit_status`) USING BTREE,
+  INDEX `idx_publish_time`(`publish_time`) USING BTREE,
+  INDEX `idx_top_recommend`(`is_top`, `is_recommend`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 16 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '广场富文本消息表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for shop_plaza_share
+-- ----------------------------
+DROP TABLE IF EXISTS `shop_plaza_share`;
+CREATE TABLE `shop_plaza_share`  (
+  `id` bigint(0) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `message_id` bigint(0) UNSIGNED NOT NULL COMMENT '消息ID(shop_plaza_message.id)',
+  `user_id` bigint(0) UNSIGNED NOT NULL COMMENT '分享用户ID(sys_user.id)',
+  `share_channel` tinyint(0) NOT NULL DEFAULT 1 COMMENT '分享渠道：1微信好友 2朋友圈 3QQ 4微博 5复制链接 8其他（字典 share_channel）',
+  `share_content` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '分享附言',
+  `ip` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '分享IP',
+  `device_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '设备ID',
+  `create_by` bigint(0) NULL DEFAULT NULL COMMENT '创建人用户ID（留痕）',
+  `update_by` bigint(0) NULL DEFAULT NULL COMMENT '修改人用户ID',
+  `create_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) COMMENT '分享时间',
+  `update_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) ON UPDATE CURRENT_TIMESTAMP(0) COMMENT '修改时间',
+  `is_deleted` tinyint(0) NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_message`(`message_id`) USING BTREE,
+  INDEX `idx_user`(`user_id`) USING BTREE,
+  INDEX `idx_channel`(`share_channel`) USING BTREE,
+  INDEX `idx_create_time`(`create_time`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 40 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '广场消息分享表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for shop_product
@@ -1393,6 +1446,8 @@ CREATE TABLE `shop_product`  (
   `product_desc` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '商品描述',
   `category_id` bigint(0) UNSIGNED NOT NULL COMMENT '商品分类',
   `brand_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '品牌ID',
+  `section_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '专区id：section_type=1 时是潮玩系列id(shop_trendy.id)',
+  `section_type` tinyint(0) NOT NULL DEFAULT 0 COMMENT '专区类型：1 潮玩；0=不属于任何专区',
   `store_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '所属门店id(shop_store.id)，NULL=不限定门店',
   `main_image` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '主图URL',
   `product_specs` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '规格id数组(,分隔)',
@@ -1413,7 +1468,8 @@ CREATE TABLE `shop_product`  (
   INDEX `idx_category`(`category_id`) USING BTREE,
   INDEX `idx_brand`(`brand_id`) USING BTREE,
   INDEX `idx_user_id`(`user_id`) USING BTREE,
-  INDEX `idx_status`(`status`) USING BTREE
+  INDEX `idx_status`(`status`) USING BTREE,
+  INDEX `idx_trendy`(`section_id`) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 21 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '商品主表(SPU)，规格在 shop_product_sku' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
@@ -1486,6 +1542,8 @@ CREATE TABLE `shop_store`  (
   `store_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '门店名称',
   `store_type` tinyint(0) NOT NULL DEFAULT 1 COMMENT '门店类型：1直营 2加盟 3合作',
   `brand_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '绑定品牌ID(shop_brand.id)，NULL=不绑品牌',
+  `section_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '专区id：section_type=1 时是潮玩系列id(shop_trendy.id)',
+  `section_type` tinyint(0) NOT NULL DEFAULT 0 COMMENT '专区类型：1 潮玩；0=不属于任何专区',
   `contact_name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '联系人',
   `contact_phone` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '联系电话',
   `area_code` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '地区编码',
@@ -1513,7 +1571,8 @@ CREATE TABLE `shop_store`  (
   INDEX `idx_status_sort`(`status`, `sort`) USING BTREE,
   INDEX `idx_business_status`(`business_status`) USING BTREE,
   INDEX `idx_user_id`(`user_id`) USING BTREE,
-  INDEX `idx_brand`(`brand_id`) USING BTREE
+  INDEX `idx_brand`(`brand_id`) USING BTREE,
+  INDEX `idx_trendy`(`section_id`) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 9 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '门店表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
@@ -1647,30 +1706,335 @@ CREATE TABLE `shop_supplier_product`  (
 ) ENGINE = InnoDB AUTO_INCREMENT = 41 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '供应商商品(供货关系)' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
+-- Table structure for shop_trendy
+-- ----------------------------
+DROP TABLE IF EXISTS `shop_trendy`;
+CREATE TABLE `shop_trendy`  (
+  `id` bigint(0) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `trendy_name` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '潮玩名称',
+  `ip_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '所属潮玩IP(shop_trendy_ip.id)，NULL=未归属',
+  `cover_image` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '潮玩封面',
+  `description` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL COMMENT '说明',
+  `status` tinyint(0) NOT NULL DEFAULT 1 COMMENT '1启用 0禁用',
+  `reward_type` tinyint(0) NOT NULL DEFAULT 1 COMMENT '集齐奖励类型：1积分 2优惠券 3实物（字典 trendy_reward_type）',
+  `reward_value` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '集齐奖励值：积分数/券模板ID/实物商品ID',
+  `create_by` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '创建人用户ID(sys_user.id)',
+  `update_by` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '修改人用户ID(sys_user.id)',
+  `create_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) COMMENT '创建时间',
+  `update_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) ON UPDATE CURRENT_TIMESTAMP(0) COMMENT '修改时间',
+  `is_deleted` tinyint(0) NOT NULL DEFAULT 0 COMMENT '是否删除 0否 1是',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_trendy_name`(`trendy_name`) USING BTREE,
+  INDEX `idx_status`(`status`) USING BTREE,
+  INDEX `idx_ip`(`ip_id`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 8 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '潮玩系列表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for shop_trendy_box
+-- ----------------------------
+DROP TABLE IF EXISTS `shop_trendy_box`;
+CREATE TABLE `shop_trendy_box`  (
+  `id` bigint(0) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `box_no` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '盲盒编号，唯一；系统生成',
+  `box_name` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '盲盒名称',
+  `trendy_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '潮玩ID(shop_trendy.id)',
+  `store_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '所属门店ID，NULL=全平台',
+  `user_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '负责的运营(sys_user.id)',
+  `box_type` tinyint(0) NOT NULL DEFAULT 1 COMMENT '盲盒类型：1单抽 2端盒 3一番赏 4抽签（字典 trendy_box_type）',
+  `price` decimal(10, 2) NOT NULL COMMENT '单抽价格',
+  `end_box_price` decimal(10, 2) NULL DEFAULT NULL COMMENT '端盒价格（整盒买）',
+  `draw_count` int(0) NOT NULL DEFAULT 1 COMMENT '每次抽取数量，通常1',
+  `max_draw_count` int(0) NULL DEFAULT NULL COMMENT '最大抽取次数，NULL=不限',
+  `hidden_rate` decimal(8, 4) NULL DEFAULT NULL COMMENT '隐藏款概率（小数，0.0139=1.39%）',
+  `guarantee_count` int(0) NULL DEFAULT NULL COMMENT '保底次数，抽N次必出隐藏',
+  `is_probability_show` tinyint(0) NOT NULL DEFAULT 1 COMMENT '是否公示概率：1是 0否（合规要求）',
+  `total_count` int(0) NOT NULL DEFAULT 0 COMMENT '总可抽次数，0=不限',
+  `drawn_count` int(0) NOT NULL DEFAULT 0 COMMENT '已抽取次数',
+  `cover_image` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '盲盒封面',
+  `description` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL COMMENT '玩法/规则说明',
+  `start_time` datetime(0) NULL DEFAULT NULL COMMENT '开始时间',
+  `end_time` datetime(0) NULL DEFAULT NULL COMMENT '结束时间',
+  `status` tinyint(0) NOT NULL DEFAULT 1 COMMENT '状态：1未开始 2进行中 3已结束 4已取消（字典 trendy_box_status）',
+  `is_hot` tinyint(0) NOT NULL DEFAULT 0 COMMENT '是否热门：1是 0否（潮玩专区首页那台机器按这一格挑）',
+  `sort` int(0) NOT NULL DEFAULT 0 COMMENT '排序',
+  `create_by` bigint(0) NULL DEFAULT NULL COMMENT '创建人用户ID（留痕）',
+  `update_by` bigint(0) NULL DEFAULT NULL COMMENT '修改人用户ID',
+  `create_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) COMMENT '创建时间',
+  `update_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) ON UPDATE CURRENT_TIMESTAMP(0) COMMENT '修改时间',
+  `is_deleted` tinyint(0) NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_box_no`(`box_no`) USING BTREE,
+  INDEX `idx_trendy`(`trendy_id`) USING BTREE,
+  INDEX `idx_store`(`store_id`) USING BTREE,
+  INDEX `idx_status`(`status`) USING BTREE,
+  INDEX `idx_time`(`start_time`, `end_time`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 7 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '盲盒表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for shop_trendy_box_item
+-- ----------------------------
+DROP TABLE IF EXISTS `shop_trendy_box_item`;
+CREATE TABLE `shop_trendy_box_item`  (
+  `id` bigint(0) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `box_id` bigint(0) UNSIGNED NOT NULL COMMENT '盲盒ID(shop_trendy_box.id)',
+  `sku_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT 'SKU ID(shop_product_sku.id)',
+  `style_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '款式名称，如\"隐藏款-星空\"',
+  `style_image` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '款式图片',
+  `is_hidden` tinyint(0) NOT NULL DEFAULT 0 COMMENT '是否隐藏款：1是 0否',
+  `probability` decimal(8, 4) NOT NULL COMMENT '概率值（小数，0.0139=1.39%）',
+  `total_count` int(0) NOT NULL DEFAULT 0 COMMENT '总数量，0=不限',
+  `drawn_count` int(0) NOT NULL DEFAULT 0 COMMENT '已抽出数量',
+  `remain_count` int(0) NOT NULL DEFAULT 0 COMMENT '剩余数量（= total_count - drawn_count，服务层每次存款式都刷一遍）',
+  `sort` int(0) NOT NULL DEFAULT 0 COMMENT '排序',
+  `status` tinyint(0) NOT NULL DEFAULT 1 COMMENT '状态：1启用 0禁用',
+  `remark` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '备注',
+  `create_by` bigint(0) NULL DEFAULT NULL COMMENT '创建人用户ID（留痕）',
+  `update_by` bigint(0) NULL DEFAULT NULL COMMENT '修改人用户ID',
+  `create_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) COMMENT '创建时间',
+  `update_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) ON UPDATE CURRENT_TIMESTAMP(0) COMMENT '修改时间',
+  `is_deleted` tinyint(0) NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_box`(`box_id`) USING BTREE,
+  INDEX `idx_sku`(`sku_id`) USING BTREE,
+  INDEX `idx_box_hidden`(`box_id`, `is_hidden`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 30 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '盲盒商品表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for shop_trendy_box_user
+-- ----------------------------
+DROP TABLE IF EXISTS `shop_trendy_box_user`;
+CREATE TABLE `shop_trendy_box_user`  (
+  `id` bigint(0) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `box_id` bigint(0) UNSIGNED NOT NULL COMMENT '盲盒ID(shop_trendy_box.id)',
+  `item_id` bigint(0) UNSIGNED NOT NULL COMMENT '抽中的盲盒商品ID(shop_trendy_box_item.id)',
+  `sku_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT 'SKU ID(shop_product_sku.id)，NULL=这款没挂具体规格（空奖/只展示）',
+  `user_id` bigint(0) UNSIGNED NOT NULL COMMENT '抽取用户ID(sys_user.id)',
+  `style_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '款式名称（快照）',
+  `style_image` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '款式图片（快照）',
+  `is_hidden` tinyint(0) NOT NULL DEFAULT 0 COMMENT '是否隐藏款：1是 0否',
+  `create_by` bigint(0) NULL DEFAULT NULL COMMENT '创建人用户ID（留痕，与 user_id 同值）',
+  `update_by` bigint(0) NULL DEFAULT NULL COMMENT '修改人用户ID',
+  `create_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) COMMENT '抽取时间',
+  `update_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) ON UPDATE CURRENT_TIMESTAMP(0) COMMENT '修改时间（流水不改，这列只是形状要求）',
+  `is_deleted` tinyint(0) NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_box`(`box_id`) USING BTREE,
+  INDEX `idx_user`(`user_id`) USING BTREE,
+  INDEX `idx_box_user`(`box_id`, `user_id`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 123 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '盲盒抽取记录表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for shop_trendy_collect_record
+-- ----------------------------
+DROP TABLE IF EXISTS `shop_trendy_collect_record`;
+CREATE TABLE `shop_trendy_collect_record`  (
+  `id` bigint(0) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `trendy_id` bigint(0) UNSIGNED NOT NULL COMMENT '潮玩系列ID(shop_trendy.id)',
+  `user_id` bigint(0) UNSIGNED NOT NULL COMMENT '集齐的用户ID(sys_user.id)',
+  `sku_count` int(0) NOT NULL DEFAULT 0 COMMENT '集齐那一刻该系列下的规格数（快照，之后系列加了新规格也不回头改这一行）',
+  `collect_time` datetime(0) NOT NULL COMMENT '集齐判定通过的时间（也就是这一行落库的时刻）',
+  `reward_type` tinyint(0) NOT NULL DEFAULT 1 COMMENT '奖励类型（发放那一刻从 shop_trendy.reward_type 抄的快照，字典 trendy_reward_type）',
+  `reward_value` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '奖励值（同样是从系列上抄的快照，之后改了奖励不回头刷已经发出去的那一批）',
+  `coupon_user_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '兑现出来的用户券ID(shop_activity_coupon_user.id)；积分那一档是 NULL',
+  `reward_desc` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '兑现说明：发出去的是什么，或者为什么没发出去（发不出去只留这一句，不打断整轮任务）',
+  `create_by` bigint(0) NULL DEFAULT NULL COMMENT '创建人用户ID（留痕；定时任务那一跑没登录人，是 NULL）',
+  `update_by` bigint(0) NULL DEFAULT NULL COMMENT '修改人用户ID',
+  `create_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) COMMENT '创建时间',
+  `update_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) ON UPDATE CURRENT_TIMESTAMP(0) COMMENT '修改时间',
+  `is_deleted` tinyint(0) NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_trendy_user`(`trendy_id`, `user_id`) USING BTREE,
+  INDEX `idx_user`(`user_id`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 5 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '潮玩系列集齐领取记录（一人一条系列一行，兼奖励发放的幂等闸）' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for shop_trendy_ip
+-- ----------------------------
+DROP TABLE IF EXISTS `shop_trendy_ip`;
+CREATE TABLE `shop_trendy_ip`  (
+  `id` bigint(0) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `ip_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT 'IP名称，如\"Molly\"、\"Dimoo\"',
+  `ip_en_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT 'IP英文名',
+  `ip_logo` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT 'IP Logo',
+  `ip_cover` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT 'IP封面图',
+  `ip_banner` json NULL COMMENT 'IP轮播图数组（实体按 JSON 字符串映射）',
+  `ip_desc` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL COMMENT 'IP介绍',
+  `ip_story` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL COMMENT 'IP故事背景',
+  `copyright_no` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '版权登记号',
+  `user_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '版权人/授权人(sys_user.id)',
+  `license_type` tinyint(0) NOT NULL DEFAULT 1 COMMENT '授权类型：1原创 2独家授权 3非独家授权 4联名（字典 license_type）',
+  `license_start` date NULL DEFAULT NULL COMMENT '授权开始日期',
+  `license_end` date NULL DEFAULT NULL COMMENT '授权结束日期',
+  `is_hot` tinyint(0) NOT NULL DEFAULT 0 COMMENT '是否热门IP：1是 0否',
+  `is_recommend` tinyint(0) NOT NULL DEFAULT 0 COMMENT '是否推荐：1是 0否',
+  `sort` int(0) NOT NULL DEFAULT 0 COMMENT '排序',
+  `status` tinyint(0) NOT NULL DEFAULT 1 COMMENT '状态：1启用 0禁用（字典 trendy_ip_status）',
+  `create_by` bigint(0) NULL DEFAULT NULL COMMENT '创建人用户ID（留痕）',
+  `update_by` bigint(0) NULL DEFAULT NULL COMMENT '修改人用户ID',
+  `create_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) COMMENT '创建时间',
+  `update_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) ON UPDATE CURRENT_TIMESTAMP(0) COMMENT '修改时间',
+  `is_deleted` tinyint(0) NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_ip_name`(`ip_name`) USING BTREE,
+  INDEX `idx_hot`(`is_hot`) USING BTREE,
+  INDEX `idx_status`(`status`) USING BTREE,
+  INDEX `idx_sort`(`sort`) USING BTREE,
+  INDEX `idx_license_end`(`license_end`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '潮玩IP表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for shop_trendy_park
+-- ----------------------------
+DROP TABLE IF EXISTS `shop_trendy_park`;
+CREATE TABLE `shop_trendy_park`  (
+  `id` bigint(0) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `park_no` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '园区编号，唯一；新增时不传由服务端生成（PARK_+时间戳）',
+  `park_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '园区名称',
+  `ip_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '关联IP ID(shop_trendy_ip.id)，潮玩主题公园必填',
+  `area_code` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '地区编码，逗号分隔的行政区划代码：110000,110100,110101',
+  `area_zh` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '地区中文，如 北京市 市辖区 东城区',
+  `address` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '详细地址',
+  `longitude` decimal(10, 6) NULL DEFAULT NULL COMMENT '经度',
+  `latitude` decimal(10, 6) NULL DEFAULT NULL COMMENT '纬度',
+  `open_time` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '营业时间，如\"09:00-21:00\"',
+  `cover_image` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '园区封面',
+  `description` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL COMMENT '园区介绍',
+  `status` tinyint(0) NOT NULL DEFAULT 1 COMMENT '状态：1营业中 0停业（字典 park_status）',
+  `is_hot` tinyint(0) NOT NULL DEFAULT 0 COMMENT '是否热门：1是 0否（潮玩专区首页那圈轮播按这一格挑）',
+  `create_by` bigint(0) NULL DEFAULT NULL COMMENT '创建人用户ID（留痕）',
+  `update_by` bigint(0) NULL DEFAULT NULL COMMENT '修改人用户ID',
+  `create_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) COMMENT '创建时间',
+  `update_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) ON UPDATE CURRENT_TIMESTAMP(0) COMMENT '修改时间',
+  `is_deleted` tinyint(0) NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_park_no`(`park_no`) USING BTREE,
+  INDEX `idx_ip`(`ip_id`) USING BTREE,
+  INDEX `idx_status`(`status`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 6 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '潮玩主题公园园区表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for shop_trendy_park_photo
+-- ----------------------------
+DROP TABLE IF EXISTS `shop_trendy_park_photo`;
+CREATE TABLE `shop_trendy_park_photo`  (
+  `id` bigint(0) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `park_id` bigint(0) UNSIGNED NOT NULL COMMENT '园区ID(shop_trendy_park.id)',
+  `ip_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '关联IP ID(shop_trendy_ip.id)，服务层按园区带过来，NULL=园区本身不归属某个IP',
+  `source_type` tinyint(0) NOT NULL DEFAULT 1 COMMENT '来源类型：1官方上传 2用户上传（字典 source_type）',
+  `user_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '上传用户ID(sys_user.id)，官方上传为NULL',
+  `image_url` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '图片URL',
+  `tags` json NULL COMMENT '标签数组，如[\"打卡\",\"夜景\",\"Molly\"]',
+  `status` tinyint(0) NOT NULL DEFAULT 0 COMMENT '审核状态：0待审核 1通过 2拒绝 3已隐藏（字典 audit_status）',
+  `audit_msg` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '审核意见（随审核结论一起发给上传人，NULL=没写过）',
+  `is_featured` tinyint(0) NOT NULL DEFAULT 0 COMMENT '是否精选：1是 0否',
+  `sort` int(0) NOT NULL DEFAULT 0 COMMENT '排序',
+  `description` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '照片描述',
+  `create_by` bigint(0) NULL DEFAULT NULL COMMENT '创建人用户ID（留痕）',
+  `update_by` bigint(0) NULL DEFAULT NULL COMMENT '修改人用户ID',
+  `create_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) COMMENT '创建时间',
+  `update_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) ON UPDATE CURRENT_TIMESTAMP(0) COMMENT '修改时间',
+  `is_deleted` tinyint(0) NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_park`(`park_id`) USING BTREE,
+  INDEX `idx_ip`(`ip_id`) USING BTREE,
+  INDEX `idx_user`(`user_id`) USING BTREE,
+  INDEX `idx_source`(`source_type`) USING BTREE,
+  INDEX `idx_status`(`status`) USING BTREE,
+  INDEX `idx_featured`(`is_featured`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 40 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '园区照片表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for shop_trendy_park_ticket
+-- ----------------------------
+DROP TABLE IF EXISTS `shop_trendy_park_ticket`;
+CREATE TABLE `shop_trendy_park_ticket`  (
+  `id` bigint(0) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `ticket_no` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '票种编号，唯一；新增时不传由服务端生成（TICKET_+时间戳）',
+  `ticket_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '票种名称',
+  `ticket_type` tinyint(0) NOT NULL DEFAULT 1 COMMENT '票种类型：1日票 2年卡 3套票 4快速通行 5限定款购买资格（字典 ticket_type）',
+  `park_id` bigint(0) UNSIGNED NOT NULL COMMENT '园区ID(shop_trendy_park.id)',
+  `price` decimal(10, 2) NOT NULL COMMENT '售价',
+  `time_slot` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '0' COMMENT '入园时段（多选，逗号分隔：0全天 1上午 2下午 3夜场，字典 ticket_time_slot）',
+  `valid_days` int(0) NULL DEFAULT NULL COMMENT '有效天数',
+  `max_per_order` int(0) NULL DEFAULT NULL COMMENT '每单限购数量',
+  `description` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL COMMENT '票种说明',
+  `status` tinyint(0) NOT NULL DEFAULT 1 COMMENT '状态：1上架 0下架',
+  `sort` int(0) NOT NULL DEFAULT 0 COMMENT '排序',
+  `create_by` bigint(0) NULL DEFAULT NULL COMMENT '创建人用户ID（留痕）',
+  `update_by` bigint(0) NULL DEFAULT NULL COMMENT '修改人用户ID',
+  `create_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) COMMENT '创建时间',
+  `update_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) ON UPDATE CURRENT_TIMESTAMP(0) COMMENT '修改时间',
+  `is_deleted` tinyint(0) NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_ticket_no`(`ticket_no`) USING BTREE,
+  INDEX `idx_park`(`park_id`) USING BTREE,
+  INDEX `idx_type`(`ticket_type`) USING BTREE,
+  INDEX `idx_status`(`status`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 16 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '潮玩主题公园票种表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for shop_trendy_park_user_ticket
+-- ----------------------------
+DROP TABLE IF EXISTS `shop_trendy_park_user_ticket`;
+CREATE TABLE `shop_trendy_park_user_ticket`  (
+  `id` bigint(0) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `ticket_code` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '票码/入园码，唯一；系统生成（TK_+时间戳+随机数）',
+  `user_id` bigint(0) UNSIGNED NOT NULL COMMENT '购买用户ID(sys_user.id)',
+  `ticket_id` bigint(0) UNSIGNED NOT NULL COMMENT '票种ID(shop_trendy_park_ticket.id)',
+  `park_id` bigint(0) UNSIGNED NOT NULL COMMENT '园区ID(shop_trendy_park.id)',
+  `qr_img` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '票面二维码',
+  `ticket_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '票种名称（快照）',
+  `ticket_type` tinyint(0) NOT NULL DEFAULT 1 COMMENT '票种类型（快照）：1日票 2年卡 3套票 4快速通行 5限定款购买资格',
+  `price` decimal(10, 2) NOT NULL COMMENT '票价（快照）',
+  `visit_date` date NOT NULL COMMENT '游玩日期',
+  `time_slot` tinyint(0) NOT NULL DEFAULT 0 COMMENT '入园时段：0全天 1上午 2下午 3夜场（出票时从票种允许的那几档里挑一个）',
+  `holder_name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '持票人姓名',
+  `holder_phone` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '持票人电话',
+  `holder_id_card` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '持票人身份证号',
+  `status` tinyint(0) NOT NULL DEFAULT 0 COMMENT '状态：0未使用 1已核销 2已过期 3已退款（字典 user_ticket_status）',
+  `used_time` datetime(0) NULL DEFAULT NULL COMMENT '核销时间（状态推到 1 那一刻盖，和下面的 refund_time 对称）',
+  `refund_time` datetime(0) NULL DEFAULT NULL COMMENT '退款时间',
+  `remark` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '备注',
+  `create_by` bigint(0) NULL DEFAULT NULL COMMENT '创建人用户ID（留痕）',
+  `update_by` bigint(0) NULL DEFAULT NULL COMMENT '修改人用户ID',
+  `create_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) COMMENT '创建时间',
+  `update_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) ON UPDATE CURRENT_TIMESTAMP(0) COMMENT '修改时间',
+  `is_deleted` tinyint(0) NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_ticket_code`(`ticket_code`) USING BTREE,
+  INDEX `idx_user`(`user_id`) USING BTREE,
+  INDEX `idx_ticket`(`ticket_id`) USING BTREE,
+  INDEX `idx_park`(`park_id`) USING BTREE,
+  INDEX `idx_visit_date`(`visit_date`) USING BTREE,
+  INDEX `idx_status`(`status`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 29 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '用户票种关联表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
 -- Table structure for sys_comment
 -- ----------------------------
 DROP TABLE IF EXISTS `sys_comment`;
 CREATE TABLE `sys_comment`  (
   `id` int(0) NOT NULL AUTO_INCREMENT COMMENT '评论主键ID，自增唯一标识',
-  `business_id` int(0) NOT NULL COMMENT '关联的业务ID（文章/动态ID），表明该评论所属的业务',
-  `user_id` int(0) NOT NULL COMMENT '发表评论的用户ID',
-  `reply_user_id` int(0) NULL DEFAULT NULL COMMENT '回复人id',
-  `parent_id` int(0) NULL DEFAULT NULL COMMENT '父评论ID，用于实现回复评论的层级结构，若为顶级评论则为NULL',
-  `comment_type` tinyint(1) NULL DEFAULT 1 COMMENT '评论类型 1-文章 2-动态',
-  `content` mediumtext CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '评论内容，使用utf8mb4字符集以支持更多字符类型',
-  `like_count` int(0) NULL DEFAULT 0 COMMENT '点赞数，记录该评论获得的点赞数量',
-  `is_stick` int(0) NULL DEFAULT 0 COMMENT '是否置顶',
+  `business_id` bigint(0) UNSIGNED NOT NULL COMMENT '关联对象ID：按 comment_type 分叉 —— 1商品→shop_product.id(SPU)、2门店→shop_store.id、3品牌→shop_brand.id。一列指三张表所以建不了外键，名称也不在这儿冗余，后台列表按 comment_type 现联表带出（口径同 shop_consumer_favorite.target_id）',
+  `user_id` bigint(0) UNSIGNED NOT NULL COMMENT '发表评论的用户ID(sys_user.id)，写入方由服务端按登录态钉，不收前端传的值',
+  `reply_user_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '被回复人用户ID(sys_user.id)：只有回复别人时填，NULL=不是对着某个人说话（顶层评论和「对这个对象说一句」都是 NULL）',
+  `parent_id` int(0) NULL DEFAULT NULL COMMENT '父评论ID(sys_comment.id)：NULL=顶层评论。本期只做一层 —— 回复挂在子评论上时，服务端把这一格写成它所属的顶层那一行，被回复的人记进 reply_user_id',
+  `comment_type` tinyint(1) NULL DEFAULT 1 COMMENT '评论类型 1-商品 2-门店 3-品牌 4-广场（字典 comment_type；4 指向 shop_plaza_message.id）',
+  `content` mediumtext CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '评论内容（纯文本，可含 emoji —— utf8mb4 存得住 4 字节字符；页面一律按文本画、不走 v-html，理由见后台评论管理那一列的注释）。非空判据和 500 字上限都在服务端，不在列上限；长度按 UTF-16 单元数算，一个 emoji 前后端都是 2 字',
+  `like_count` int(0) NOT NULL DEFAULT 0 COMMENT '点赞数：**存数**不是现算（口径同积分账户那五个数）。只有「点赞/取消点赞」那一条链路会改它，走带 GREATEST 的原子加减，所以它和 sys_comment_like 里这一行的行数是一致的；后台编辑弹窗里可以直接改这一格',
+  `is_stick` tinyint(0) NOT NULL DEFAULT 0 COMMENT '是否置顶：1置顶 0不置顶。只有顶层评论用得着（子评论跟着父行排），列表排序把它打头：ORDER BY is_stick DESC',
   `ip` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT 'ip',
   `browser` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '浏览器',
   `system_os` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '系统',
   `ip_source` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT 'ip来源',
   `create_time` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP(0) COMMENT '创建时间',
   `update_time` datetime(0) NULL DEFAULT NULL COMMENT '修改时间',
+  `is_deleted` tinyint(0) NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除。实体上有这一格 ⇒ MyBatis-Plus 按字段名接管（BaseMapper 自动带 = 0、删除改 UPDATE），但 XML 里那几条自定义 SQL 要手写谓词',
   PRIMARY KEY (`id`) USING BTREE,
-  INDEX `idx_business_id`(`business_id`) USING BTREE,
   INDEX `idx_user_id`(`user_id`) USING BTREE,
-  INDEX `idx_parent_id`(`parent_id`) USING BTREE
-) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '评论' ROW_FORMAT = Dynamic;
+  INDEX `idx_parent_id`(`parent_id`) USING BTREE,
+  INDEX `idx_business_type`(`business_id`, `comment_type`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 80 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '评论' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for sys_comment_like
@@ -1678,14 +2042,14 @@ CREATE TABLE `sys_comment`  (
 DROP TABLE IF EXISTS `sys_comment_like`;
 CREATE TABLE `sys_comment_like`  (
   `id` bigint(0) NOT NULL AUTO_INCREMENT COMMENT '主键',
-  `comment_id` int(0) NOT NULL COMMENT '评论ID',
-  `user_id` int(0) NOT NULL COMMENT '用户ID',
-  `comment_type` tinyint(1) NULL DEFAULT 1 COMMENT '评论类型 1-文章 2-动态',
+  `comment_id` int(0) NOT NULL COMMENT '被点赞的评论ID(sys_comment.id)。符号跟着 sys_comment.id 走（那边是 int 有符号，这里不能改成 UNSIGNED，否则 join 比不中）',
+  `user_id` bigint(0) UNSIGNED NOT NULL COMMENT '点赞人用户ID(sys_user.id)，由服务端按登录态钉',
+  `comment_type` tinyint(0) NOT NULL DEFAULT 1 COMMENT '评论类型：1商品 2门店 3品牌（字典 comment_type）。跟着那条评论冗余一份，只为后台按类型筛点赞行时不用再回 sys_comment 联一趟',
   `create_time` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP(0) COMMENT '创建时间',
   PRIMARY KEY (`id`) USING BTREE,
-  INDEX `idx_comment_id`(`comment_id`) USING BTREE,
+  UNIQUE INDEX `uk_comment_user`(`comment_id`, `user_id`) USING BTREE,
   INDEX `idx_user_id`(`user_id`) USING BTREE
-) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '评论点赞' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 22 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '评论点赞' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for sys_config
@@ -1752,7 +2116,7 @@ CREATE TABLE `sys_dict`  (
   `update_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) COMMENT '修改时间',
   `sort` int(0) NULL DEFAULT 0 COMMENT '排序',
   PRIMARY KEY (`id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 117 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '字典表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 139 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '字典表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for sys_dict_data
@@ -1769,7 +2133,7 @@ CREATE TABLE `sys_dict_data`  (
   `remark` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '备注',
   `status` int(0) NULL DEFAULT 1,
   PRIMARY KEY (`id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 419 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '字典数据表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 531 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '字典数据表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for sys_file_center
@@ -1796,7 +2160,7 @@ CREATE TABLE `sys_file_center`  (
   INDEX `idx_user_id`(`user_id`) USING BTREE,
   INDEX `idx_create_time`(`create_time`) USING BTREE,
   INDEX `idx_status_expire`(`file_status`, `expire_time`) USING BTREE COMMENT '用于定时任务清理过期文件'
-) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '文件中心记录表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '文件中心记录表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for sys_file_oss
@@ -1821,6 +2185,35 @@ CREATE TABLE `sys_file_oss`  (
 ) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '存储平台' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
+-- Table structure for sys_icon
+-- ----------------------------
+DROP TABLE IF EXISTS `sys_icon`;
+CREATE TABLE `sys_icon`  (
+  `id` bigint(0) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `user_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '创建人用户ID(sys_user.id)',
+  `icon_name` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '图标名称',
+  `icon_code` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '图标编码，唯一',
+  `icon_type` tinyint(0) NOT NULL DEFAULT 1 COMMENT '1 SVG 2 图片URL 3 字体类名',
+  `icon_value` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '图标内容',
+  `icon_category` tinyint(0) NOT NULL DEFAULT 2 COMMENT '图标分类：1系统图标 2商品分类 3其他',
+  `category_id` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '商品分类ID',
+  `sort` int(0) NOT NULL DEFAULT 0 COMMENT '排序',
+  `status` tinyint(0) NOT NULL DEFAULT 1 COMMENT '1启用 0禁用',
+  `remark` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '备注',
+  `create_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0),
+  `update_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0) ON UPDATE CURRENT_TIMESTAMP(0),
+  `is_deleted` tinyint(0) NOT NULL DEFAULT 0 COMMENT '是否删除 0否 1是',
+  `create_by` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '创建人用户ID(sys_user.id)',
+  `update_by` bigint(0) UNSIGNED NULL DEFAULT NULL COMMENT '修改人用户ID(sys_user.id)',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_icon_code`(`icon_code`) USING BTREE,
+  INDEX `idx_category`(`category_id`) USING BTREE,
+  INDEX `idx_status_sort`(`status`, `sort`) USING BTREE,
+  INDEX `idx_user_id`(`user_id`) USING BTREE,
+  INDEX `idx_category_status_sort`(`icon_category`, `status`, `sort`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 28 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '图标库表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
 -- Table structure for sys_job
 -- ----------------------------
 DROP TABLE IF EXISTS `sys_job`;
@@ -1837,7 +2230,7 @@ CREATE TABLE `sys_job`  (
   `update_time` datetime(0) NULL DEFAULT NULL COMMENT '更新时间',
   `remark` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '备注信息',
   PRIMARY KEY (`job_id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 5 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '定时任务调度表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 13 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '定时任务调度表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for sys_job_log
@@ -1856,7 +2249,7 @@ CREATE TABLE `sys_job_log`  (
   `start_time` datetime(0) NULL DEFAULT NULL COMMENT '开始时间',
   `stop_time` datetime(0) NULL DEFAULT NULL COMMENT '结束时间',
   PRIMARY KEY (`id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 12 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '定时任务调度日志表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 59 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '定时任务调度日志表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for sys_menu
@@ -1869,7 +2262,7 @@ CREATE TABLE `sys_menu`  (
   `component` varchar(255) CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci NULL DEFAULT NULL COMMENT '组件路径',
   `title` varchar(100) CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci NULL DEFAULT NULL COMMENT '菜单名称',
   `sort` int(0) NULL DEFAULT 0 COMMENT '排序',
-  `icon` varchar(32) CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci NULL DEFAULT NULL COMMENT '资源图标：存 sys_icon.id，或历史遗留的 el-icon 组件名（如 Setting）',
+  `icon` varchar(32) CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci NULL DEFAULT NULL COMMENT '资源图标',
   `type` varchar(32) CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci NULL DEFAULT NULL COMMENT '类型 menu、button',
   `create_time` datetime(0) NULL DEFAULT NULL COMMENT '创建时间',
   `update_time` datetime(0) NULL DEFAULT NULL COMMENT '更新时间',
@@ -1879,7 +2272,7 @@ CREATE TABLE `sys_menu`  (
   `perm` varchar(255) CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci NULL DEFAULT NULL COMMENT '权限标识',
   `is_external` int(0) NULL DEFAULT 0 COMMENT '是否外链 0:否  1:是',
   PRIMARY KEY (`id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 375 CHARACTER SET = utf8mb3 COLLATE = utf8mb3_general_ci COMMENT = '权限资源表 ' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 419 CHARACTER SET = utf8mb3 COLLATE = utf8mb3_general_ci COMMENT = '权限资源表 ' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for sys_message
@@ -1910,7 +2303,7 @@ CREATE TABLE `sys_notice`  (
   `position` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '显示位置 （top：顶部，right:右侧）',
   `create_time` datetime(0) NULL DEFAULT NULL COMMENT '创建时间',
   PRIMARY KEY (`id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 6 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '公告' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 9 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '公告' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for sys_notifications
@@ -1920,16 +2313,21 @@ CREATE TABLE `sys_notifications`  (
   `id` bigint(0) NOT NULL AUTO_INCREMENT COMMENT '通知的唯一标识，自增主键',
   `send_code` varchar(65) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '发送标识（用于再次发送）',
   `notice_push` json NULL COMMENT '推送对象\r\n{\r\n	\"user\":[],\r\n	\"dept\":[],\r\n	\"role\":[]\r\n}',
+  `is_broadcast` tinyint(1) NOT NULL DEFAULT 0 COMMENT '1-全员可见，发送时不展开接收人；0-定向，接收人已展开进 sys_notifications_receiver',
   `from_user_id` bigint(0) NULL DEFAULT NULL COMMENT '来自用户id,如评论就存评论的用户id',
-  `business_type` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '通知的类型，如 system、comment、like 等',
+  `business_type` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '业务类型（字典 notification_business_type）system-后台通知 notice-公告 comment-评论 like-点赞 activity-活动开始 training-培训开始 receive-订单签收 badge-获取徽章',
+  `category` tinyint(1) NOT NULL DEFAULT 1 COMMENT '消息分类 1-系统消息 2-互动消息（字典 notification_category，由 business_type 派生）',
   `title` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '通知的标题',
   `message` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '通知的具体内容',
   `business_id` bigint(0) NULL DEFAULT NULL COMMENT '文章id',
   `link` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '跳转链接',
+  `fail_count` int(0) NOT NULL DEFAULT 0 COMMENT '通知消费失败次数：每次失败 +1、发送成功归零；>0 即还没发出去',
   `create_time` datetime(0) NOT NULL COMMENT '通知的创建时间',
-  `del_flag` tinyint(0) NULL DEFAULT 0 COMMENT '删除标记 0 未删除 1 已删除',
-  PRIMARY KEY (`id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 62 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '消息通知表' ROW_FORMAT = Dynamic;
+  `del_flag` tinyint(1) NOT NULL DEFAULT 0 COMMENT '删除标记 0 未删除 1 已删除',
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_type_business`(`business_type`, `business_id`) USING BTREE,
+  INDEX `idx_category_time`(`category`, `create_time`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 115 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '消息通知表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for sys_notifications_receiver
@@ -1940,14 +2338,14 @@ CREATE TABLE `sys_notifications_receiver`  (
   `notification_id` bigint(0) NOT NULL COMMENT '消息主表ID',
   `send_code` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '发送标识',
   `user_id` bigint(0) NOT NULL COMMENT '接收人用户ID',
-  `is_read` tinyint(1) NULL DEFAULT 0 COMMENT '0-未读 1-已读',
+  `is_read` tinyint(1) NOT NULL DEFAULT 0 COMMENT '0-未读 1-已读',
   `read_time` datetime(0) NULL DEFAULT NULL COMMENT '首次点击阅读的时间',
   `is_deleted` tinyint(1) NOT NULL DEFAULT 0 COMMENT '接收者自己是否删除了这条消息',
   `create_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0),
   PRIMARY KEY (`id`) USING BTREE,
   UNIQUE INDEX `uk_message_user`(`notification_id`, `user_id`) USING BTREE,
-  INDEX `idx_receiver_read`(`user_id`, `create_time`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 15 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic;
+  INDEX `idx_receiver_list`(`user_id`, `is_deleted`, `is_read`, `create_time`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 122 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for sys_operate_log
@@ -1967,7 +2365,7 @@ CREATE TABLE `sys_operate_log`  (
   `class_path` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '类地址',
   `method_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '方法名',
   PRIMARY KEY (`id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 876 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 1206 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for sys_order
@@ -1976,7 +2374,7 @@ DROP TABLE IF EXISTS `sys_order`;
 CREATE TABLE `sys_order`  (
   `id` bigint(0) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '订单ID（主键，自增）',
   `order_no` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '订单编号（业务唯一，对外展示）',
-  `order_type` tinyint(0) UNSIGNED NOT NULL COMMENT '订单类型：1-普通订单 2-秒杀订单 3-拼团订单  4-充值订单',
+  `order_type` tinyint(0) UNSIGNED NOT NULL COMMENT '订单类型：1-普通订单 2-充值/提现订单 3-盲盒订单',
   `user_id` bigint(0) UNSIGNED NOT NULL COMMENT '用户ID',
   `user_name` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '用户名称',
   `mobile` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '手机号',
@@ -2004,7 +2402,7 @@ CREATE TABLE `sys_order`  (
   INDEX `idx_biz_id`(`biz_id`) USING BTREE,
   INDEX `idx_status_create_time`(`status`, `create_time`) USING BTREE,
   INDEX `idx_create_time`(`create_time`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 19 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '订单主表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 24 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '订单主表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for sys_refund
@@ -2072,7 +2470,7 @@ CREATE TABLE `sys_role_menu`  (
   `menu_id` int(0) NULL DEFAULT NULL COMMENT '菜单ID',
   PRIMARY KEY (`id`) USING BTREE,
   UNIQUE INDEX `role_id`(`role_id`, `menu_id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 1210 CHARACTER SET = utf8mb3 COLLATE = utf8mb3_general_ci COMMENT = '角色-权限资源关联表 ' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 1246 CHARACTER SET = utf8mb3 COLLATE = utf8mb3_general_ci COMMENT = '角色-权限资源关联表 ' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for sys_user
@@ -2109,7 +2507,7 @@ CREATE TABLE `sys_user`  (
   `address` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '详细地址（街道、门牌号），地图选点时由高德逆地理自动回填',
   PRIMARY KEY (`id`) USING BTREE,
   UNIQUE INDEX `username`(`username`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 29 CHARACTER SET = utf8mb3 COLLATE = utf8mb3_general_ci COMMENT = '用户信息表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 31 CHARACTER SET = utf8mb3 COLLATE = utf8mb3_general_ci COMMENT = '用户信息表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for sys_user_role

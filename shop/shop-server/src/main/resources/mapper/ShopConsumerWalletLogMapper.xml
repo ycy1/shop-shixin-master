@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopConsumerWalletLogMapper">
+
+    <!-- 公共查询列（表加了列只改这一处，别名固定是 l，和下面的 FROM 对应）。
+         这张表**有** is_deleted 那一列（这份 DDL 带了留痕四件套 + 逻辑删除，和积分流水那张表相反 ——
+         那一本自己没声明、这一本继承了 BaseEntity），所以自定义 SQL 里要手写那一刀；
+         实体继承了 BaseEntity，MP 的自动谓词只管自己的 CRUD，管不到这一条自定义 SQL -->
+    <sql id="logColumns">
+        l.id,
+        l.user_id,
+        l.amount,
+        l.balance,
+        l.biz_type,
+        l.biz_id,
+        l.biz_no,
+        l.description,
+        l.create_by,
+        l.update_by,
+        l.create_time,
+        l.update_time
+    </sql>
+
+    <!-- 昵称联 sys_user：sys_* 表没有 is_deleted 那一列，联表不带那一刀。
+         这一页只看一个人的流水，弹窗顶上要说得出"这是谁的钱包" -->
+    <sql id="logJoins">
+        FROM shop_consumer_wallet_log l
+        LEFT JOIN sys_user u ON u.id = l.user_id
+    </sql>
+
+    <select id="selectRecordPage" resultType="com.shop.entity.ShopConsumerWalletLog">
+        SELECT
+            <include refid="logColumns"/>,
+            u.nickname AS userName
+        <include refid="logJoins"/>
+        <where>
+            l.is_deleted = 0
+            <!-- 弹窗是从某一行账户点进来的，userId 恒有值；这一格留空就当"看全部人的钱包流水" -->
+            <if test="q.userId != null">
+                AND l.user_id = #{q.userId}
+            </if>
+            <if test="q.bizType != null">
+                AND l.biz_type = #{q.bizType}
+            </if>
+        </where>
+        <!-- id DESC 就是时间倒序，同一秒记两笔（一笔退款同时退券和退余额）时它也稳定 -->
+        ORDER BY l.id DESC
+    </select>
+
+</mapper>

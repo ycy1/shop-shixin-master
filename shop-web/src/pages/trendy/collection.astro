@@ -1,0 +1,15 @@
+---
+/**
+ * 图鉴那一页（/trendy/collection）：所有潮玩系列 × 我的收集进度 × 集齐奖励，10 条一页。
+ * 排序（我抽过的整排在前）在后端那条 SQL 里做，页面不重排 —— 一重排就会把「再看 N 条」的页界打乱。
+ */
+import Trendy from '@/layouts/Trendy.astro';
+import TrendyCollection from '@/views/trendy/TrendyCollection.vue';
+import { useDict } from '@/i18n';
+
+const { d, locale } = useDict(Astro.locals.locale);
+---
+
+<Trendy title={d.page.trendyCollection.title} description={d.page.trendyCollection.desc} active="collection">
+  <TrendyCollection client:load locale={locale} />
+</Trendy>

@@ -1,0 +1,12 @@
+---
+import Base from '@/layouts/Base.astro';
+import CartPage from '@/views/cart/CartPage.vue';
+import { useDict } from '@/i18n';
+
+const { d, fill, locale } = useDict(Astro.locals.locale);
+---
+
+<Base title={fill(d.page.cart.title, { brand: d.site.brand })} description={d.page.cart.desc}>
+  <!-- 这一页整块是岛：登录态读 localStorage，车上那些行要带 token 才捞得动，服务端那一趟两样都没有 -->
+  <CartPage client:load locale={locale} />
+</Base>

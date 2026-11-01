@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopTrendyParkPhotoMapper">
+
+    <!-- 公共查询列：表加了列只改这一处（别名固定是 t，和下面的 FROM 对应） -->
+    <sql id="photoColumns">
+        t.id,
+        t.park_id,
+        t.ip_id,
+        t.source_type,
+        t.user_id,
+        t.image_url,
+        t.tags,
+        t.status,
+        t.audit_msg,
+        t.is_featured,
+        t.sort,
+        t.description,
+        t.create_by,
+        t.update_by,
+        t.create_time,
+        t.update_time
+    </sql>
+
+    <!-- 自定义 SQL 不走全局逻辑删除，t.is_deleted = 0 必须手写。
+         园区名、上传人昵称不在这里联：服务层按当页 id 一次查回来（形状同票种列表回填园区名），
+         园区后来改了名，这一列跟着新名走 —— 它只是给人看这张图挂在哪一家，不是凭证。 -->
+    <select id="selectPhotoPage" resultType="com.shop.entity.ShopTrendyParkPhoto">
+        SELECT
+            <include refid="photoColumns"/>
+        FROM shop_trendy_park_photo t
+        <where>
+            t.is_deleted = 0
+            <if test="q.parkId != null">
+                AND t.park_id = #{q.parkId}
+            </if>
+            <if test="q.ipId != null">
+                AND t.ip_id = #{q.ipId}
+            </if>
+            <if test="q.sourceType != null">
+                AND t.source_type = #{q.sourceType}
+            </if>
+            <if test="q.status != null">
+                AND t.status = #{q.status}
+            </if>
+            <if test="q.isFeatured != null">
+                AND t.is_featured = #{q.isFeatured}
+            </if>
+            <!-- 一个输入框搜照片描述和标签。tags 是 json 列，直接 LIKE 要先转成字符（CAST 一下，
+                 不然 MySQL 拿 JSON 类型比 LIKE 会报 illegal operation on a JSON value 那一类错） -->
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (t.description LIKE CONCAT('%', #{q.keyword}, '%')
+                OR CAST(t.tags AS CHAR) LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+        </where>
+        <!-- 后台这一列按审核档排，档内一律按上传时间倒序（他 2026-10-29 说的）：
+             status 的档位号就是这一顺序 —— 0 待审核、1 已通过、2 已拒绝、3 已隐藏，
+             升序排出来的第一条正是「还没看过的图」，运营进来第一屏就是待办，不用自己挑筛选。
+             同档内 create_time 倒序（新上传的在上面），一秒内多条再按 id 倒序收口，保证翻页顺序稳定。
+
+             精选只在「已通过」那一档里往前插队（他补的那一句：所有通过的、精选放前面）——
+             CASE 把别的档的 is_featured 一律压成 0，所以待审核 / 已拒绝 / 已隐藏 那三档还是纯按上传时间倒序，
+             不会出现「一张还没看过的图因为被勾了精选就顶到本档最上面」。
+             运营排的 sort 不参与这一列的先后：它和精选一起只管前台照片墙的顺序
+             （走 /api/web 那两条读，各自有自己的 photoOrder），两件事各说各的。 -->
+        ORDER BY t.status ASC,
+                 CASE WHEN t.status = 1 THEN t.is_featured ELSE 0 END DESC,
+                 t.create_time DESC,
+                 t.id DESC
+    </select>
+
+    <!--
+      审核那一句专用 UPDATE（为什么不走实体修改见 Mapper 接口上那段注释）：
+      status 和 audit_msg 两格一起写，audit_msg 传 NULL 就是真把那句清掉（不靠实体的 null-skip 策略）。
+      update_by 手写：这里是绕过 MP 的直接 UPDATE，MyMetaObjectHandler 不插手（口径同购物车那两条写）；
+      update_time 用 NOW()，审核时间就跟着这一拍走。
+      WHERE 带 is_deleted = 0：已逻辑删的行不该再被审核（前台后台都不该看见它，被点到就是脏请求）。
+    -->
+    <update id="auditPhoto">
+        UPDATE shop_trendy_park_photo
+        SET status      = #{status},
+            audit_msg   = #{auditMsg},
+            update_by   = #{updateBy},
+            update_time = NOW()
+        WHERE id = #{id}
+          AND is_deleted = 0
+    </update>
+
+</mapper>

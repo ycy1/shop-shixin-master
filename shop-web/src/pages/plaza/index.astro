@@ -1,0 +1,11 @@
+---
+import Base from '@/layouts/Base.astro';
+import PlazaList from '@/views/plaza/PlazaList.vue';
+import { useDict } from '@/i18n';
+
+const { d, locale } = useDict(Astro.locals.locale);
+---
+
+<Base title={d.page.plaza.title} description={d.page.plaza.desc}>
+  <PlazaList client:load locale={locale} />
+</Base>

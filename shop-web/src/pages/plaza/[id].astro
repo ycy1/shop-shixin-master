@@ -1,0 +1,19 @@
+---
+import Base from '@/layouts/Base.astro';
+import PlazaDetail from '@/views/plaza/PlazaDetail.vue';
+import { useDict } from '@/i18n';
+
+const { d, href, locale } = useDict(Astro.locals.locale);
+
+// 路径里进来的是字符串，非数（/plaza/abc）直接打发回广场列表，不带着 NaN 去请求接口
+const id = Number(Astro.params.id);
+if (!Number.isInteger(id) || id <= 0) return Astro.redirect(href('/plaza'));
+// 消息中心那条点赞/评论点进来时多带一格 highlight=<那条评论的 id>：要滚到它、给它挂一下底色；漏了就当正常进这一页
+const highlight = Number(Astro.url.searchParams.get('highlight'));
+---
+
+<Base title={d.page.plazaDetail.title} description={d.page.plazaDetail.desc}>
+  <div class="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+    <PlazaDetail client:load locale={locale} messageId={id} highlightId={Number.isInteger(highlight) && highlight > 0 ? highlight : undefined} />
+  </div>
+</Base>

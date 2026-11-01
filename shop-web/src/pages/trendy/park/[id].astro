@@ -1,0 +1,18 @@
+---
+/**
+ * 潮玩专区 · 一家园区的详情（含名下在架的票）。非数路径打发回公园那一页，不带 NaN 去请求接口。
+ */
+import Trendy from '@/layouts/Trendy.astro';
+import TrendyParkDetail from '@/views/trendy/TrendyParkDetail.vue';
+import { useDict } from '@/i18n';
+
+const { d, href, locale } = useDict(Astro.locals.locale);
+const t = d.trendy;
+
+const id = Number(Astro.params.id);
+if (!Number.isInteger(id) || id <= 0) return Astro.redirect(href('/trendy/park'));
+---
+
+<Trendy title={d.trendy.park.title} description={d.trendy.park.sub} active="park" back={{ path: '/trendy/park', label: t.back.park }}>
+  <TrendyParkDetail client:load locale={locale} parkId={id} />
+</Trendy>

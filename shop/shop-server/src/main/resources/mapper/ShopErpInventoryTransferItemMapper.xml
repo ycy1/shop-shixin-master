@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopErpInventoryTransferItemMapper">
+
+    <!-- 明细只跟着单走：一单的明细最多几十行，不分页。
+         名称/编码要两跳才够得着：明细行上只有 sku_id，所属商品挂在 shop_product_sku 那一行，
+         所以每条查询都是先联 sk 再联 pr（口径同入库单明细/库存列表）。
+         再联一跳 ai 只为带出"这条规格在调出仓还剩几件可用"：warehouseId 是主表那家调出仓，
+         没给（仓被删了、或调用方不关心这一格）就联不出行，那一格是 null —— 用 LEFT 不用 INNER，
+         仓没了也该看得见这张单的明细，不然整张单在页面上直接空掉 -->
+    <select id="selectItemsByTransferId" resultType="com.shop.entity.ShopErpInventoryTransferItem">
+        SELECT i.id,
+               i.transfer_id,
+               i.product_id,
+               i.sku_id,
+               i.quantity,
+               i.out_quantity,
+               i.receive_quantity,
+               i.cost_price,
+               i.amount,
+               pr.product_name AS productName,
+               pr.product_code AS productCode,
+               sk.spec_text AS specText,
+               (ai.stock - ai.locked_stock) AS availableStock
+        FROM shop_erp_inventory_transfer_item i
+                 LEFT JOIN shop_product_sku sk ON sk.id = i.sku_id AND sk.is_deleted = 0
+                 LEFT JOIN shop_product pr ON pr.id = sk.product_id AND pr.is_deleted = 0
+                 LEFT JOIN shop_erp_inventory ai ON ai.sku_id = i.sku_id
+            AND ai.warehouse_id = #{warehouseId}
+            AND ai.is_deleted = 0
+        WHERE i.transfer_id = #{transferId}
+          AND i.is_deleted = 0
+        ORDER BY i.id ASC
+    </select>
+
+</mapper>

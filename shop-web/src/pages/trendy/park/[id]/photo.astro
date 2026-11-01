@@ -1,0 +1,35 @@
+---
+/**
+ * 潮玩专区 · 一家园区的全部照片（20 张一页）。
+ * 路径里的 id 是字符串，非数（/trendy/park/abc/photo）打发回公园那一页，不带着 NaN 去请求接口
+ *（口径同 /trendy/park/[id]）。
+ *
+ * ?highlight= 是高亮定位那张的 id（消息中心那条园区照片审核结论的链接带的，判据见
+ * ShopTrendyParkPhotoServiceImpl#notifyAuditResult）：非数就当没带，页面正常出一面墙。
+ */
+import Trendy from '@/layouts/Trendy.astro';
+import TrendyParkPhotos from '@/views/trendy/TrendyParkPhotos.vue';
+import { useDict } from '@/i18n';
+
+const { d, href, locale } = useDict(Astro.locals.locale);
+const t = d.trendy;
+
+const id = Number(Astro.params.id);
+if (!Number.isInteger(id) || id <= 0) return Astro.redirect(href('/trendy/park'));
+
+const highlight = Number(Astro.url.searchParams.get('highlight'));
+---
+
+<Trendy
+  title={t.photos.title}
+  description={t.photos.sub}
+  active="park"
+  back={{ path: `/trendy/park/${id}`, label: t.photos.back }}
+>
+  <TrendyParkPhotos
+    client:load
+    locale={locale}
+    parkId={id}
+    {...(Number.isInteger(highlight) && highlight > 0 ? { highlightId: highlight } : {})}
+  />
+</Trendy>

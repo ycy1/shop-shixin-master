@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopConsumerWalletMapper">
+
+    <!-- 公共查询列（表加了列只改这一处，别名固定是 t，和下面的 FROM 对应）。
+         自定义 SQL 不走全局逻辑删除，下面 where 里那句 t.is_deleted = 0 必须手写。
+         账上那几个数读本表存的那几格，不做减法也不联流水现算 —— 这一本和积分那本是同一条规矩：
+         balance 要被占（下单选余额支付先冻进 frozen_balance），存着才占得住；
+         算出来的数和存着的数不一样，就说明有人改账没记流水（口径同优惠券的发行总量/已发放） -->
+    <sql id="walletColumns">
+        t.id,
+        t.user_id,
+        t.balance,
+        t.frozen_balance,
+        t.total_recharge,
+        t.total_consume,
+        t.total_withdraw,
+        t.gift_balance,
+        t.status,
+        t.create_by,
+        t.update_by,
+        t.create_time,
+        t.update_time
+    </sql>
+
+    <!-- 昵称和手机号联 sys_user：sys_* 表没有 is_deleted 那一列（和 shop_* 这套是相反的），联表不带那一刀。
+         不在这张表里冗余快照 —— 昵称改了不该回头刷账，但账本来就该认出这是哪个人（同积分账户、用户券） -->
+    <sql id="walletJoins">
+        FROM shop_consumer_wallet t
+        LEFT JOIN sys_user u ON u.id = t.user_id
+    </sql>
+
+    <select id="selectWalletPage" resultType="com.shop.entity.ShopConsumerWallet">
+        SELECT
+            <include refid="walletColumns"/>,
+            u.nickname AS userName,
+            u.mobile AS mobile
+        <include refid="walletJoins"/>
+        <where>
+            t.is_deleted = 0
+            <if test="q.userId != null">
+                AND t.user_id = #{q.userId}
+            </if>
+            <!-- 状态按传进来的值筛（1 正常 0 冻结）；不传就是全部，这一页默认不给状态 -->
+            <if test="q.status != null">
+                AND t.status = #{q.status}
+            </if>
+            <!-- 关键字三种写法都要能命中：后台的人手上通常只有手机号或登录账号 -->
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (u.nickname LIKE CONCAT('%', #{q.keyword}, '%')
+                OR u.username LIKE CONCAT('%', #{q.keyword}, '%')
+                OR u.mobile LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+        </where>
+        <!-- status 打头是本项目的老规矩（被冻住的账户是这一页要先看出来的一行），
+             再按可用余额多的排前面：这一页看的是谁手上有钱，idx_status 之后就是这一排；
+             同分时 id DESC 兜住（新开的账在后面），翻页才不会串 -->
+        ORDER BY t.status DESC, t.balance DESC, t.id DESC
+    </select>
+
+    <!-- ================= 钱包账户的六拍（下单冻结 / 取消解冻 / 支付结转 / 退款退回 / 充值 / 提现）。
+         都是条件增量，判据压在 WHERE 里，写法同积分账户那七条、库存 lockStock 那两条。
+         钱是 decimal，不读回来再 updateById：读-改-写之间正好有缝，两笔并发互相覆盖过一次，
+         账上就再也不知道这个人有多少钱了。
+         update_time 靠库的 ON UPDATE CURRENT_TIMESTAMP 自己走。每一笔都要和流水表那一行同事务写完。 ================= -->
+
+    <!-- 下单冻结（支付方式为余额）：可用余额 → 冻结余额。
+         balance >= 这一笔 是"同一笔钱不能占两回"那道闸（一个人同时下两单、钱只够一单时只有一趟改得动）；
+         status = 1 挡的是被冻住的账户 —— 这一本被冻就不该再能拿余额付钱。
+         抢不到的那一趟返回 0 行，由调用方报错让整单回滚 -->
+    <update id="freezeForPay">
+        UPDATE shop_consumer_wallet
+        SET balance = balance - #{amount},
+            frozen_balance = frozen_balance + #{amount}
+        WHERE user_id = #{userId}
+          AND is_deleted = 0
+          AND status = 1
+          AND balance >= #{amount}
+    </update>
+
+    <!-- 取消订单解冻：freezeForPay 的原路退回（冻结 → 可用），单没成交，钱该整个还回去。
+         这里**不判 status**：账户中途被冻住，之前占着的钱照样得还回来，不然那一笔就永远出不来了。
+         frozen_balance >= 这一笔 挡的是"这一笔冻结已经被谁处理过了"（重复回调、重复取消） -->
+    <update id="unfreezeForCancel">
+        UPDATE shop_consumer_wallet
+        SET frozen_balance = frozen_balance - #{amount},
+            balance = balance + #{amount}
+        WHERE user_id = #{userId}
+          AND is_deleted = 0
+          AND frozen_balance >= #{amount}
+    </update>
+
+    <!-- 支付结转：冻结的余额真扣走（冻结 → 累计消费）。
+         可用余额一分不动：下单冻结那一步已经从里面减掉了，这一条只是把"占着"改成"花掉了"，
+         所以这一拍不写流水 —— 流水页上"这一笔之后还有多少余额"接得上下一笔，靠的就是这个规矩
+        （口径同积分的 consumeFrozenPoints） -->
+    <update id="settleFrozen">
+        UPDATE shop_consumer_wallet
+        SET frozen_balance = frozen_balance - #{amount},
+            total_consume = total_consume + #{amount}
+        WHERE user_id = #{userId}
+          AND is_deleted = 0
+          AND frozen_balance >= #{amount}
+    </update>
+
+    <!-- 退款退回余额：累计消费 → 可用余额。退的是这一张退款单的实退金额，一张单分几批退就走几次。
+         刻意**没有** total_consume >= 这一笔 那道闸：这张表是这一轮才建起来的，钱包上线之前
+         支付掉的单子账上没有这笔消耗（甚至压根没有账户行），加了闸门老单就退不了款。
+         所以改成 GREATEST 夹住：累计消费最多减到 0，不退超也不留负数。
+         返回 0 行 = 这个人没有账户行（老单子），由调用方按"这一单没走余额付过钱"跳过、不报错 -->
+    <update id="refundToBalance">
+        UPDATE shop_consumer_wallet
+        SET balance = balance + #{amount},
+            total_consume = GREATEST(total_consume - #{amount}, 0)
+        WHERE user_id = #{userId}
+          AND is_deleted = 0
+    </update>
+
+    <!-- 充值入账：可用余额和累计充值一起加同一笔（恒等式两头同加，所以其余四格都不动；
+         赠送那一部分 gift_balance 不由这一条管，"充值送"那条链还没定口径）。
+         这里**不判 status**：账户被冻住说的是"这一本的钱不能被动用"，不是"钱不能进来" ——
+         拦掉充值，解冻之后该补的那一笔反而没地方补。
+         没有账户行时返回 0 行 = 这是这个人第一次真收钱，由调用方把第一行账建出来（这一本没有新增入口） -->
+    <update id="rechargeBalance">
+        UPDATE shop_consumer_wallet
+        SET balance = balance + #{amount},
+            total_recharge = total_recharge + #{amount}
+        WHERE user_id = #{userId}
+          AND is_deleted = 0
+    </update>
+
+    <!-- 提现：可用余额 → 累计提现（钱从这一本整个挪出去，恒等式还在）。
+         status = 1 挡的是被冻住的账户 —— 冻结就是不让把钱取走；
+         balance >= 这一笔 挡的是超提（同一刻另一趟提现、或者下单冻结抢同一笔钱时只有一趟改得动），
+         下单占着的那一部分在 frozen_balance 上，这一条本来也动不到它 -->
+    <update id="withdrawBalance">
+        UPDATE shop_consumer_wallet
+        SET balance = balance - #{amount},
+            total_withdraw = total_withdraw + #{amount}
+        WHERE user_id = #{userId}
+          AND is_deleted = 0
+          AND status = 1
+          AND balance >= #{amount}
+    </update>
+
+</mapper>

@@ -1,0 +1,17 @@
+---
+import Base from '@/layouts/Base.astro';
+import NoticeDetail from '@/views/notice/NoticeDetail.vue';
+import { useDict } from '@/i18n';
+
+const { d, fill, href, locale } = useDict(Astro.locals.locale);
+
+// 路径里进来的是字符串，非数（/notice/abc）直接打发回首页，不带着 NaN 去请求接口
+const id = Number(Astro.params.id);
+if (!Number.isInteger(id) || id <= 0) return Astro.redirect(href('/'));
+---
+
+<Base title={fill(d.page.notice.title, { brand: d.site.brand })} description={d.page.notice.desc}>
+  <div class="mx-auto max-w-3xl">
+    <NoticeDetail client:load locale={locale} noticeId={id} />
+  </div>
+</Base>

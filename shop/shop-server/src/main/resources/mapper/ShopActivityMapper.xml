@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopActivityMapper">
+
+    <!-- 公共查询列：表加了列只改这一处（别名固定是 t，和下面的 FROM 对应）。
+         曝光量/点击量/点击率不在这里 —— 库里没有这三列，它们全在下面的 activityComputed 里现算，
+         所以这张表上的计数永远是数出来的，不是存出来的（口径同门店培训的 sign_count） -->
+    <sql id="activityColumns">
+        t.id,
+        t.activity_name,
+        t.position_type,
+        t.activity_type,
+        t.store_id,
+        t.title,
+        t.image,
+        t.video_url,
+        t.content,
+        t.link_type,
+        t.link_value,
+        t.start_time,
+        t.end_time,
+        t.weight,
+        t.status,
+        t.launch_time,
+        t.remark,
+        t.create_by,
+        t.update_by,
+        t.create_time,
+        t.update_time
+    </sql>
+
+    <!-- 曝光量和点击量各按流水表的一档事件类型现数（那张表一次曝光/一次点击一行，也有 is_deleted，所以带这一刀），
+         点击率由这两个数相除，曝光为 0 时整格是 NULL（前端显示成 '-'，不显示 0% 骗人）。
+         三个数都走同一张表，所以列表那几格和「查看记录」弹窗的明细天然对得上；
+         走的是 shop_activity_click 的 idx_activity_event(activity_id, event_type)。
+         linkName 是跳转目标的名字：只有 1商品 / 2分类 这两档存的是 id，才有名字可带，
+         外链/小程序页面/无跳转那三档这一格是 NULL（那一格本来就手填的 URL 或空的，名字无从联）。 -->
+    <sql id="activityComputed">
+        (SELECT COUNT(*) FROM shop_activity_click c
+            WHERE c.activity_id = t.id AND c.event_type = 1 AND c.is_deleted = 0) AS viewCount,
+        (SELECT COUNT(*) FROM shop_activity_click c
+            WHERE c.activity_id = t.id AND c.event_type = 2 AND c.is_deleted = 0) AS clickCount,
+        ROUND((SELECT COUNT(*) FROM shop_activity_click c
+            WHERE c.activity_id = t.id AND c.event_type = 2 AND c.is_deleted = 0)
+            / NULLIF((SELECT COUNT(*) FROM shop_activity_click c
+                WHERE c.activity_id = t.id AND c.event_type = 1 AND c.is_deleted = 0), 0), 4) AS clickRate,
+        CASE t.link_type WHEN 1 THEN sp.product_name WHEN 2 THEN sc.category_name END AS linkName,
+        st.store_name AS storeName
+    </sql>
+
+    <!-- 门店名联表现取，不冗余快照（同门店培训）；删掉的门店联不上，前端按 id 显示成「已删除门店 #id」。
+         store_id 为 NULL 的那一条是全平台活动，本来就没有门店名。
+         跳转目标那两条联表把类型钉在 ON 里（t.link_type = 1 才去联商品），所以一条活动只会联上其中一张；
+         比的是 sp.id/sc.id（bigint）对 t.link_value（varchar），MySQL 按数字比，
+         所以既用得上两张表的主键索引，也不会撞上跨字符集比字符串那个 1267 -->
+    <sql id="activityFrom">
+        FROM shop_activity t
+        LEFT JOIN shop_store st ON st.id = t.store_id AND st.is_deleted = 0
+        LEFT JOIN shop_product sp ON t.link_type = 1 AND sp.id = t.link_value AND sp.is_deleted = 0
+        LEFT JOIN shop_category sc ON t.link_type = 2 AND sc.id = t.link_value AND sc.is_deleted = 0
+    </sql>
+
+    <!-- 自定义 SQL 不走全局逻辑删除，t.is_deleted = 0 必须手写 -->
+    <select id="selectActivityPage" resultType="com.shop.entity.ShopActivity">
+        SELECT
+            <include refid="activityColumns"/>,
+            <include refid="activityComputed"/>
+        <include refid="activityFrom"/>
+        <where>
+            t.is_deleted = 0
+            <!-- 一个输入框搜名称和活动标题（这张表没有编号列），括号内 OR 不会串到上面的筛选 -->
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (t.activity_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR t.title LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+            <if test="q.positionType != null">
+                AND t.position_type = #{q.positionType}
+            </if>
+            <if test="q.activityType != null">
+                AND t.activity_type = #{q.activityType}
+            </if>
+            <if test="q.status != null">
+                AND t.status = #{q.status}
+            </if>
+            <!-- 刻意没有按 store_id 收窄这一刀（同门店培训、门店招商那两页定的"平台看全部"口径）：
+                 活动是平台排期给各家店看的，按门店档账号一收窄就只能看见自己家那几条。
+                 行上那一格「适用门店」是这条活动的投放范围，不是它的可见范围 -->
+            <!-- 日期区间筛的是 start_time（投放开始时间），表上有 idx_time(start_time, end_time) 可用；
+                 查询条件那两个字段不叫 beginTime/endTime，是因为 endTime 在本表是"投放结束时间"那一列 -->
+            <if test="q.startFrom != null and q.startFrom != ''">
+                AND t.start_time &gt;= #{q.startFrom}
+            </if>
+            <if test="q.startTo != null and q.startTo != ''">
+                AND t.start_time &lt;= #{q.startTo}
+            </if>
+        </where>
+        <!-- status 这里是投放流转状态（1未开始…4已取消）不是启用/禁用，所以不打头排序；
+             权重那一列的注释写的是"数字越大越靠前"，前台投放照这个顺序取，后台这一页就按同一个顺序列 -->
+        ORDER BY t.weight DESC, t.id DESC
+    </select>
+
+    <select id="selectActivityById" resultType="com.shop.entity.ShopActivity">
+        SELECT
+            <include refid="activityColumns"/>,
+            <include refid="activityComputed"/>
+        <include refid="activityFrom"/>
+        WHERE t.id = #{id}
+          AND t.is_deleted = 0
+    </select>
+
+</mapper>

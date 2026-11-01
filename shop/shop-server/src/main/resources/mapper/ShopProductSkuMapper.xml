@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopProductSkuMapper">
+
+    <!--
+      注意：自定义 XML SQL 不会被 MyBatis-Plus 的全局逻辑删除自动接管，
+      所以下面每个查询都必须手写 is_deleted = 0，否则会把已删除数据查出来。
+
+      shop_product_sku 与 shop_product 是 1:N，商品那一侧的信息（编码、名称、主图、上下架、分类/品牌/门店名）
+      都由这里联表带出 —— SKU 表上不冗余这些列，改商品名不用回来刷 N 行。
+      join shop_product 用内连接：一件已删除商品名下的规格不该在后台任何列表里出现。
+      数据范围（账号类型=门店）也落在 p.user_id 上：一条规格跟着它所属的那件商品走，SKU 自己不另立归属。
+    -->
+    <sql id="skuColumns">
+        s.id,
+        s.product_id,
+        s.sku_code,
+        s.spec_ids,
+        s.spec_text,
+        s.sku_image,
+        s.sku_images,
+        s.detail_images,
+        s.product_price,
+        s.sales_count,
+        s.weight,
+        s.safety_stock,
+        s.max_stock,
+        s.stock_warn_enable,
+        s.gain_points,
+        s.exchange_points,
+        s.sale_enable,
+        s.sort,
+        s.create_by,
+        s.update_by,
+        s.create_time,
+        s.update_time,
+        p.product_code,
+        p.product_name,
+        p.main_image,
+        p.status AS product_status,
+        <!-- 可用库存不在 SKU 表上：库存是「一个 SKU × 一个仓一行」存在 shop_erp_inventory，
+             这一条 SKU 的可用库存是它在所有仓库的 (库存 - 锁定) 之和（没建过库存行就是 0）。
+             EXISTS 那一档只算 1 启用 的仓：2 盘点中 / 3 调拨中 的仓账已冻结、0 禁用 的仓不发货，
+             这一格要等于"下单真能拿到几件"，口径同统一下单复核库存的 selectAvailableStock -->
+        (SELECT IFNULL(SUM(i.stock - i.locked_stock), 0)
+        FROM shop_erp_inventory i
+        WHERE i.sku_id = s.id AND i.is_deleted = 0
+        AND EXISTS (SELECT 1 FROM shop_erp_warehouse w
+        WHERE w.id = i.warehouse_id AND w.is_deleted = 0 AND w.status = 1)) AS available_stock,
+        <!-- 成本价同样是每个仓一行（入库动作各自按加权平均刷），这里按库存量加权汇总成一个数：
+             SUM(成本价 × 库存) ÷ SUM(库存)。一件都没入过时除不出来 → NULL，前端显示 '-'，别兜成 0 -->
+        (SELECT ROUND(SUM(i.cost_price * i.stock) / NULLIF(SUM(i.stock), 0), 2)
+        FROM shop_erp_inventory i
+        WHERE i.sku_id = s.id AND i.is_deleted = 0) AS cost_price,
+        c.category_name,
+        b.brand_name,
+        st.store_name
+    </sql>
+
+    <sql id="skuJoins">
+        FROM shop_product_sku s
+        JOIN shop_product p ON p.id = s.product_id AND p.is_deleted = 0
+        LEFT JOIN shop_category c ON c.id = p.category_id AND c.is_deleted = 0
+        LEFT JOIN shop_brand b ON b.id = p.brand_id AND b.is_deleted = 0
+        LEFT JOIN shop_store st ON st.id = p.store_id AND st.is_deleted = 0
+    </sql>
+
+    <!-- 商品页那颗「SKU管理」按钮：一次列出这件商品名下所有规格，不分页（一件商品就那几行）。
+         排法和弹窗里新增后的回显保持一致：先运营排的 sort，再按录入先后。 -->
+    <select id="selectByProductId" resultType="com.shop.vo.product.ShopProductSkuVo">
+        SELECT
+        <include refid="skuColumns"/>
+        <include refid="skuJoins"/>
+        WHERE s.is_deleted = 0 AND s.product_id = #{productId}
+        ORDER BY s.sort ASC, s.id ASC
+    </select>
+
+    <select id="selectSkuPage" resultType="com.shop.vo.product.ShopProductSkuVo">
+        SELECT
+        <include refid="skuColumns"/>
+        <include refid="skuJoins"/>
+        <where>
+            s.is_deleted = 0
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (p.product_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR p.product_code LIKE CONCAT('%', #{q.keyword}, '%')
+                OR s.sku_code LIKE CONCAT('%', #{q.keyword}, '%')
+                OR s.spec_text LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+            <if test="q.productId != null">
+                AND s.product_id = #{q.productId}
+            </if>
+            <if test="q.categoryId != null">
+                AND p.category_id = #{q.categoryId}
+            </if>
+            <if test="q.storeId != null">
+                AND p.store_id = #{q.storeId}
+            </if>
+            <!-- 盲盒挂了潮玩系列时用它：这一格筛的是商品所属的专区（p.section_id，现只有潮玩系列），不是 SKU 自己的 -->
+            <if test="q.sectionId != null">
+                AND p.section_id = #{q.sectionId}
+            </if>
+            <!-- 这两档都是「照字面等值筛」，不传就是全量：
+                 选择器只要候选规格时传 saleEnable=1 / productStatus=1，管理列表两种都要看得见 -->
+            <if test="q.saleEnable != null">
+                AND s.sale_enable = #{q.saleEnable}
+            </if>
+            <if test="q.productStatus != null">
+                AND p.status = #{q.productStatus}
+            </if>
+            <!-- 数据范围（账号类型=门店）由服务层决定：要收窄就强制置成自己的用户ID，否则置空。这里只认字段、不认角色 -->
+            <if test="q.currentUserId != null">
+                AND p.user_id = #{q.currentUserId}
+            </if>
+        </where>
+        <!-- 可销售的规格在前（同「启用打头」那一档排法），同一件商品的几行挨着，组内按 sort、id -->
+        ORDER BY s.sale_enable DESC, s.product_id DESC, s.sort ASC, s.id ASC
+    </select>
+
+    <!--
+      前台详情页规格选择器那一份：列清单和上面有意分成两份，理由同 ShopProductMapper 里的 webColumns ——
+      不带登录态也能读，成本价、安全/最大库存、预警开关、兑换积分和留痕字段一律不出现
+      （gain_points 要发，前台那句「购买送 N 积分」在读它；exchange_points 这一版前台没有积分兑换那条道，不发）。
+      sales_count 发：「已售」这个数记在规格上，前台就按当前选中的那一档读它，商品（SPU）那一份不给汇总。
+      不加 join shop_product：调用方（ShopProductReadServiceImpl#detail）已经按「上架」把这件商品筛过一遍了，
+      下架的在这里根本不会有 productId。
+      sale_enable 不在这里筛，跟着这一格一起给出去（它是 ERP 那边「这一条规格能不能建销售单」的开关，
+      前台买不买只认上面那句「上架」，页面不再拿它置灰那颗「加入购物车」）。
+      spec_ids（后台拼规格文本用的内部 id 串）和 sort（已经由上面这条 ORDER BY 用掉了）不再往下发。
+      sku_images 是 json 列，和商品的 images 一样原样给回一段 JSON 文本，由页面自己拆成那组图；
+      sku_image 仍单独给着 —— 它是这一组的组首（服务层刷的），老数据只有这一格有值。
+      detail_images 跟着一起发：前台详情页「商品详情」那一块铺的就是它，按当前选中的那条规格取。
+    -->
+    <select id="selectWebSkusByProductId" resultType="com.shop.vo.product.ShopProductSkuWebVo">
+        SELECT
+        s.id,
+        s.spec_text,
+        s.sku_image,
+        s.sku_images,
+        s.detail_images,
+        s.product_price,
+        s.gain_points,
+        s.sale_enable,
+        s.sales_count,
+        <!-- 口径同上面 skuColumns 那一格：只算 1 启用 的仓，盘点中/调拨中/禁用 的仓里的货不接下单，
+             前台详情页和结算页拿的就是这个数当「能买几件」 -->
+        (SELECT IFNULL(SUM(i.stock - i.locked_stock), 0)
+        FROM shop_erp_inventory i
+        WHERE i.sku_id = s.id AND i.is_deleted = 0
+        AND EXISTS (SELECT 1 FROM shop_erp_warehouse w
+        WHERE w.id = i.warehouse_id AND w.is_deleted = 0 AND w.status = 1)) AS available_stock
+        FROM shop_product_sku s
+        WHERE s.is_deleted = 0 AND s.product_id = #{productId}
+        ORDER BY s.sort ASC, s.id ASC
+    </select>
+
+    <!--
+      其余读写都由服务层通过 BaseMapper 走，只有销量这一条自定义 SQL：
+      它是支付回调要累加的冗余列，读旧值再写回会在两个买家同时付款时互相盖掉，所以写成条件增量。
+      退款/退货这一版不冲减它（退款回调只建退货入库单，没碰这一列）。
+      按 s.id 命中：订单明细那一行本来就是一个具体规格，不用像 1:1 时代那样先按商品合并。
+    -->
+    <update id="increaseSalesCount">
+        UPDATE shop_product_sku
+        SET sales_count = sales_count + #{quantity}
+        WHERE id = #{skuId}
+          AND is_deleted = 0
+    </update>
+
+</mapper>

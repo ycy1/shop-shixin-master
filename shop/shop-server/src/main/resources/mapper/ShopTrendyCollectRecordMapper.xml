@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopTrendyCollectRecordMapper">
+
+    <!-- 领取那一步的判定：这一条系列上、这个人的集齐奖励该不该发。
+         带回来的五格（系列/人/规格数/奖励类型/奖励值）正好是 shop_trendy_collect_record 要插的那一行。
+
+         「集齐」两头都在规格（SKU）这一层比：
+         分子 = 这个人名下抽取记录里出现过的**这条系列商品的规格**去重后的种类数（COUNT DISTINCT ——
+               同一种规格抽到三次也只算一种，空奖那几行 sku_id 是 NULL，WHERE 那一刀直接挡掉）；
+         分母 = 这条系列当前有几个规格（派生表 tt，按商品的 section_id 分组数 shop_product_sku）。
+         抽的记录跨所有盲盒、跨多轮都算，所以判定不看 box_id：一个人把三条盒里的规格凑一凑也能凑齐整套，
+         这才是"集齐这条系列"的字面意思。
+
+         几条谓词各挡一件事：
+         · t.id = #{trendyId} AND u.user_id = #{userId} —— 只比这一（人，系列）组合：
+           领奖是页面上一个人点一次，不需要像原来那样一轮扫全平台（那条定时任务已经撤了）；
+         · t.status = 1 —— 禁用中的系列不再发奖励（口径同徽章的自动那两条）；
+         · t.reward_type IN (1, 2, 3) AND t.reward_value &lt;&gt; '' —— 奖励没配齐的系列领不到：
+           库里那两格 NOT NULL 有默认值，一条从没配过奖励的系列默认就是"1 积分 + 空值"，
+           放它进来的话这个人会留下一行"兑现失败：积分奖励那一格还没填"，
+           而那一行还占着 uk_trendy_user —— 运营后来把奖励配上，他就再也领不到了；
+         · tt.total_sku &gt; 0 —— 一条规格都没绑的系列永远集不齐，也就不会因为"0 &gt;= 0"把抽过的人发一遍；
+         · 三个 is_deleted = 0 —— 自定义 SQL 不走全局逻辑删除，联的每张表都要自己带这一刀，
+           已删除的规格既不进分子也不进分母（删掉一个规格等于把门槛降一格，这是想要的行为）；
+         · NOT EXISTS —— 已经领过这一条系列的人直接出局，这一刀是幂等的第一道，
+           uk_trendy_user 是第二道（两个人同时点、或者页面重复提交时挡下来的）。
+
+         分母算的是"现在的规格总数"，所以有个口径要说明：一个人领完奖励之后运营又给这条系列绑了新商品，
+         下一次他就"不算集齐"了 —— 但记录行已经在，NOT EXISTS 把他挡住，奖励不会收回也不会重发。
+         反过来先抽满、后加规格的那批人照样能在下一趟补齐。这一格是存量比较，本来就跟着系列配置动。
+
+         GROUP BY 带上 t 的那三格和 tt.total_sku 是给 ONLY_FULL_GROUP_BY 留的：t.id 是被联表的唯一键，
+         MySQL 认得同一条 t 上的其它列由它决定，但 SELECT/HAVING 里用到了就一起写进 GROUP BY 最省事。
+         末了 LIMIT 1 不是随手加的兜底：GROUP BY 里 u.user_id 是常数、t.id 也是常数，本来就只能出一行。 -->
+    <select id="selectCollectHitOne" resultType="com.shop.entity.ShopTrendyCollectRecord">
+        SELECT t.id                            AS trendyId,
+               u.user_id                       AS userId,
+               COUNT(DISTINCT u.sku_id)        AS skuCount,
+               t.reward_type                   AS rewardType,
+               t.reward_value                  AS rewardValue,
+               t.trendy_name                   AS trendyName
+        FROM shop_trendy_box_user u
+        JOIN shop_product_sku s ON s.id = u.sku_id AND s.is_deleted = 0
+        JOIN shop_product p ON p.id = s.product_id AND p.is_deleted = 0
+        JOIN shop_trendy t ON t.id = p.section_id AND t.is_deleted = 0
+            AND t.status = 1 AND t.reward_type IN (1, 2, 3) AND t.reward_value &lt;&gt; ''
+        JOIN (
+            SELECT p2.section_id AS section_id, COUNT(*) AS total_sku
+            FROM shop_product_sku s2
+            JOIN shop_product p2 ON p2.id = s2.product_id AND p2.is_deleted = 0
+            WHERE s2.is_deleted = 0
+              AND p2.section_id = #{trendyId}
+            GROUP BY p2.section_id
+        ) tt ON tt.section_id = t.id
+        WHERE u.is_deleted = 0
+          AND u.sku_id IS NOT NULL
+          AND u.user_id = #{userId}
+          AND t.id = #{trendyId}
+          AND NOT EXISTS (SELECT 1 FROM shop_trendy_collect_record r
+                          WHERE r.trendy_id = t.id
+                            AND r.user_id = u.user_id
+                            AND r.is_deleted = 0)
+        GROUP BY t.id, t.trendy_name, t.reward_type, t.reward_value, u.user_id, tt.total_sku
+        HAVING COUNT(DISTINCT u.sku_id) &gt;= tt.total_sku
+           AND tt.total_sku &gt; 0
+        LIMIT 1
+    </select>
+
+    <!-- 图鉴那一页（前台 /trendy/collection）：一行一条潮玩系列，报的是「这套一共几格、我凑到几格、
+         集齐给什么、那一笔领过没有」。
+
+         打头的是 shop_trendy 而不是抽取记录 —— 这一页要看的是<b>整套</b>图鉴：一条没抽过的系列也得在场，
+         否则「还差哪几条系列」根本数不出来。所以三条 LEFT JOIN 各贴一格：
+         · tt —— 分母：这条系列当前绑了几个规格（和上面判定、后台进度同一个数）；
+         · x  —— 分子：登录人在这条系列下凑到的规格种类数（DISTINCT、空奖不算，口径照抄判定那一条，
+                  两边不一样的话页面会说"你还差一格"、领取那一步却判他够了）；
+                  没登录时 #{userId} 是 NULL，那句 u.user_id = NULL 永远不命中，x 整列为空，
+                  页面念成「0 / N」，图鉴照样能逛（这一条读接口本来不要登录态）；
+         · r  —— 那一笔领取记录：(trendy_id, user_id) 在表上是唯一键，所以一人最多乘出一行，不会翻倍。
+         领过的那一行上带着定格时的兑现说明，页面直接读，不回系列配置重算 —— 那个数早就不是领那一刻的数了。
+
+         三条 is_deleted = 0 自己写（同上），t.status = 1 是禁用中的系列不上前台。
+
+         排序按「他抽过的系列整排在前」（CASE 那一刀），同一种情况里按凑到的格数倒序（离集齐近的在前），
+         再按 t.id 兜住翻页不串页 —— 二级键用进度而不是系列本身的顺序，是照后台「集齐进度」那页的口径；
+         要改成"收集过的在前、其余按后台排的 sort/id"只需要换掉中间那一段。 -->
+    <select id="selectCollectionPage" resultType="com.shop.vo.trendy.ShopTrendyCollectionViewVo">
+        SELECT t.id                                  AS trendyId,
+               t.trendy_name                         AS trendyName,
+               t.cover_image                         AS coverImage,
+               t.description                         AS description,
+               t.reward_type                         AS rewardType,
+               t.reward_value                        AS rewardValue,
+               COALESCE(tt.total_sku, 0)             AS totalSku,
+               COALESCE(x.collected_sku, 0)          AS collectedSku,
+               r.id                                  AS recordId,
+               r.collect_time                        AS collectTime,
+               r.reward_desc                         AS rewardDesc
+        FROM shop_trendy t
+        LEFT JOIN (
+            SELECT p.section_id AS section_id, COUNT(*) AS total_sku
+            FROM shop_product_sku s
+            JOIN shop_product p ON p.id = s.product_id AND p.is_deleted = 0
+            WHERE s.is_deleted = 0
+              AND p.section_id IS NOT NULL
+            GROUP BY p.section_id
+        ) tt ON tt.section_id = t.id
+        LEFT JOIN (
+            SELECT p.section_id AS section_id, COUNT(DISTINCT u.sku_id) AS collected_sku
+            FROM shop_trendy_box_user u
+            JOIN shop_product_sku s ON s.id = u.sku_id AND s.is_deleted = 0
+            JOIN shop_product p ON p.id = s.product_id AND p.is_deleted = 0
+            WHERE u.is_deleted = 0
+              AND u.sku_id IS NOT NULL
+              AND u.user_id = #{userId}
+            GROUP BY p.section_id
+        ) x ON x.section_id = t.id
+        LEFT JOIN shop_trendy_collect_record r ON r.trendy_id = t.id
+            AND r.user_id = #{userId} AND r.is_deleted = 0
+        WHERE t.is_deleted = 0
+          AND t.status = 1
+        ORDER BY CASE WHEN COALESCE(x.collected_sku, 0) > 0 THEN 0 ELSE 1 END ASC,
+                 COALESCE(x.collected_sku, 0) DESC,
+                 t.id ASC
+    </select>
+
+    <!-- 后台「集齐进度」那一弹窗：一条系列上，抽过它名下商品规格的人一人一行。
+
+         里外两层各干一件事，别把它读成一句多余的嵌套：
+         · 里面那一层按 user_id 分组数「凑到几个规格」（DISTINCT —— 同一种抽三次算一种；
+           sku_id 为 NULL 的空奖行不进统计），口径和上面判定那一条<b>完全一致</b>，
+           两条不一样的话页面会说"你还差一个"、领取那一步却判他够了，那种对不上没法解释；
+         · 外面这一层只贴一个 totalSku（这条系列当前的规格总数，一人一行都同一个值）。
+           它不能和 COUNT(DISTINCT) 写在同一层：不是分组列、又被 SELECT 选了出来，
+           库里开着 ONLY_FULL_GROUP_BY（本机实测 sql_mode 带这一条），那种写法直接 1055；
+           所以套一层，里面专心分组数分子、外面把分母贴到每一行上，一趟查询两头都拿到。
+           分页那一条 COUNT(*) 由 MyBatis-Plus 3.5.2 把整条查询套成 SELECT COUNT(*) FROM (原SQL) TOTAL，
+           这里的嵌套正合它的胃口（本机拿 5 行用例试过，count 和取数各跑通一次）。
+
+         两条 LEFT JOIN 各带一件事：
+         · sys_user —— 昵称和手机号（sys_* 表没有 is_deleted 那一列，所以联表不带那一刀，同「用户签到」那页）；
+           用 LEFT 是防着一个账号被删了、他的抽取记录还在：那种行也要能在这页上看出来，
+           昵称空着比整行不见了好解释；
+         · shop_trendy_collect_record —— 那一笔奖励领过没有。它是 (trendy_id, user_id) 唯一键，
+           所以一人最多乘出一行，COUNT(DISTINCT) 不会被它翻倍。领过的那一行上带着定格时的
+           类型和兑现说明，页面直接读，不用回系列配置重算 —— 那个数早就不是发出去那一刻的数了。
+
+         排序按"离集齐最近的人在前面"（collectedSku DESC），同个数按 userId 兜住翻页不串；
+         已领过的那批不单独排前面 —— 这一页要看的是进度，不是发放结果。 -->
+    <select id="selectCollectProgress" resultType="com.shop.vo.trendy.ShopTrendyCollectProgressVo">
+        SELECT x.*,
+               COALESCE(tt.total_sku, 0) AS totalSku
+        FROM (
+            SELECT u.user_id                     AS userId,
+                   su.nickname                   AS userName,
+                   su.mobile                     AS mobile,
+                   COUNT(DISTINCT u.sku_id)      AS collectedSku,
+                   MAX(r.id)                     AS recordId,
+                   MAX(r.collect_time)           AS collectTime,
+                   MAX(r.reward_type)            AS rewardType,
+                   MAX(r.reward_desc)            AS rewardDesc
+            FROM shop_trendy_box_user u
+            JOIN shop_product_sku s ON s.id = u.sku_id AND s.is_deleted = 0
+            JOIN shop_product p ON p.id = s.product_id AND p.is_deleted = 0
+            LEFT JOIN sys_user su ON su.id = u.user_id
+            LEFT JOIN shop_trendy_collect_record r ON r.trendy_id = #{trendyId}
+                AND r.user_id = u.user_id AND r.is_deleted = 0
+            <where>
+                u.is_deleted = 0
+                AND u.sku_id IS NOT NULL
+                AND p.section_id = #{trendyId}
+                <if test="keyword != null and keyword != ''">
+                    AND (su.nickname LIKE CONCAT('%', #{keyword}, '%')
+                    OR su.username LIKE CONCAT('%', #{keyword}, '%')
+                    OR su.mobile LIKE CONCAT('%', #{keyword}, '%'))
+                </if>
+            </where>
+            GROUP BY u.user_id, su.nickname, su.mobile
+        ) x
+        <!-- 分母那一格单独一层：COUNT(*) 没有 GROUP BY 就永远出一行（这套一个规格都没绑就是 0），
+             所以这条 LEFT JOIN ON 1=1 是「给每一行贴同一个常数」，不是「联一张可能不存在的外键」 -->
+        LEFT JOIN (
+            SELECT COUNT(*) AS total_sku
+            FROM shop_product_sku s2
+            JOIN shop_product p2 ON p2.id = s2.product_id AND p2.is_deleted = 0
+            WHERE s2.is_deleted = 0
+              AND p2.section_id = #{trendyId}
+        ) tt ON 1 = 1
+        ORDER BY x.collectedSku DESC, x.userId ASC
+    </select>
+
+    <!-- 弹窗里点开某一个人：这条系列下的全部规格一人一行铺成一排格子，抽到过的那格标出来、没抽到的那格就是"还缺它"。
+
+         打头的是 shop_product_sku（整套），抽取记录 LEFT JOIN 上来贴「他抽到过没有」——
+         反过来以抽取记录打头只能列出他抽过的那几格，页面上「3 / 5」那个分母就得再发一趟查询去数，
+         而"差哪几个"本来就是这一屏要回答的问题。
+         drawnTime 取 MIN：同一种规格抽到三次也只占一格，给人看的是第一次凑上的那一天。
+         没有 GROUP BY 之外的聚合，所以每格就是它自己（按 s.id 分组是把 u 那几行乘出来的记录收成一格一行）。
+
+         排序按商品、再按商品内的规格排序（跟款式弹窗、商品详情页看到的顺序一致），
+         不把他缺的那几格排前面 —— 一排格子按着一套的固有顺序摆，人才看得出少了哪一格。 -->
+    <select id="selectCollectItems" resultType="com.shop.vo.trendy.ShopTrendyCollectItemVo">
+        SELECT s.id            AS skuId,
+               p.id            AS productId,
+               p.product_name  AS productName,
+               s.spec_text     AS specText,
+               s.sku_image     AS skuImage,
+               MIN(u.create_time) AS drawnTime
+        FROM shop_product_sku s
+        JOIN shop_product p ON p.id = s.product_id AND p.is_deleted = 0
+        LEFT JOIN shop_trendy_box_user u ON u.sku_id = s.id
+            AND u.user_id = #{userId} AND u.is_deleted = 0
+        WHERE s.is_deleted = 0
+          AND p.section_id = #{trendyId}
+        GROUP BY s.id, p.id, p.product_name, s.spec_text, s.sku_image
+        ORDER BY p.id ASC, s.sort ASC, s.id ASC
+    </select>
+
+</mapper>

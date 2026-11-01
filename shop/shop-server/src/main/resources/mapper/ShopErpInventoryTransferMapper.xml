@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopErpInventoryTransferMapper">
+
+    <!-- 公共查询列：表加了列只改这一处（别名固定是 t，和下面的 FROM 对应） -->
+    <sql id="transferColumns">
+        t.id,
+        t.transfer_no,
+        t.from_warehouse_id,
+        t.to_warehouse_id,
+        t.user_id,
+        t.total_quantity,
+        t.total_amount,
+        t.transfer_type,
+        t.status,
+        t.reason,
+        t.audit_time,
+        t.out_time,
+        t.receive_time,
+        t.remark,
+        t.create_by,
+        t.update_by,
+        t.create_time,
+        t.update_time
+    </sql>
+
+    <!-- 两家仓的名称/状态、操作员昵称一律联表现取，不在调拨单里冗余快照：改了名不用回头刷单子
+         （同入库单联供应商/仓库/操作员）。两家仓要各联一次，所以别名分 fw / tw -->
+    <sql id="transferJoins">
+        FROM shop_erp_inventory_transfer t
+        LEFT JOIN shop_erp_warehouse fw ON fw.id = t.from_warehouse_id AND fw.is_deleted = 0
+        LEFT JOIN shop_erp_warehouse tw ON tw.id = t.to_warehouse_id AND tw.is_deleted = 0
+        LEFT JOIN sys_user eu ON eu.id = t.user_id
+    </sql>
+
+    <!-- 明细的已调出/已调入总数：列表不返回明细，但那一列要显示"已调出 / 计划"、
+         还要判断「调拨」「取消」按钮能不能点，所以用关联子查询汇总
+         （一页十条、一张单撑死几十行明细，走 idx_transfer，没有代价）。
+         两个数一起摊出来是因为调拨两侧一次记完、它们必然相等 —— 相等这件事摆在列上比写在注释里管用 -->
+    <sql id="transferMovedSum">
+        (SELECT IFNULL(SUM(ti.out_quantity), 0)
+        FROM shop_erp_inventory_transfer_item ti
+        WHERE ti.transfer_id = t.id AND ti.is_deleted = 0) AS totalOut,
+        (SELECT IFNULL(SUM(ti.receive_quantity), 0)
+        FROM shop_erp_inventory_transfer_item ti
+        WHERE ti.transfer_id = t.id AND ti.is_deleted = 0) AS totalReceive
+    </sql>
+
+    <!-- 自定义 SQL 不走全局逻辑删除，t.is_deleted = 0 必须手写 -->
+    <select id="selectTransferPage" resultType="com.shop.entity.ShopErpInventoryTransfer">
+        SELECT
+            <include refid="transferColumns"/>,
+            <include refid="transferMovedSum"/>,
+            fw.warehouse_name AS fromWarehouseName,
+            tw.warehouse_name AS toWarehouseName,
+            fw.status AS fromWarehouseStatus,
+            tw.status AS toWarehouseStatus,
+            eu.nickname AS userName
+        <include refid="transferJoins"/>
+        <where>
+            t.is_deleted = 0
+            <!-- 一个输入框搜单号、原因、备注和两家仓名/操作员名，括号内 OR 不会串到上面的筛选 -->
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (t.transfer_no LIKE CONCAT('%', #{q.keyword}, '%')
+                OR t.reason LIKE CONCAT('%', #{q.keyword}, '%')
+                OR t.remark LIKE CONCAT('%', #{q.keyword}, '%')
+                OR fw.warehouse_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR tw.warehouse_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR eu.nickname LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+            <if test="q.fromWarehouseId != null">
+                AND t.from_warehouse_id = #{q.fromWarehouseId}
+            </if>
+            <if test="q.toWarehouseId != null">
+                AND t.to_warehouse_id = #{q.toWarehouseId}
+            </if>
+            <!-- 这一格是筛选项「仓库」：一张单有两家仓，所以哪一头命中都算（前端那一格只给一个下拉） -->
+            <if test="q.warehouseId != null">
+                AND (t.from_warehouse_id = #{q.warehouseId} OR t.to_warehouse_id = #{q.warehouseId})
+            </if>
+            <if test="q.transferType != null">
+                AND t.transfer_type = #{q.transferType}
+            </if>
+            <if test="q.status != null">
+                AND t.status = #{q.status}
+            </if>
+            <!-- 数据范围：ERP 账号（account_type=5）只看自己操作的那几张，由服务层覆盖 userId 后走到这里 -->
+            <if test="q.userId != null">
+                AND t.user_id = #{q.userId}
+            </if>
+            <if test="q.beginTime != null and q.beginTime != ''">
+                AND t.create_time &gt;= #{q.beginTime}
+            </if>
+            <if test="q.endTime != null and q.endTime != ''">
+                AND t.create_time &lt;= #{q.endTime}
+            </if>
+        </where>
+        <!-- 不按 status 排：这里的 status 是单据流转状态（0待审核→1已审核→2调出中→3已完成），
+             不是启用/禁用，按它排会把"待审核"顶到第一页。新单在前就够了 -->
+        ORDER BY t.id DESC
+    </select>
+
+    <select id="selectTransferById" resultType="com.shop.entity.ShopErpInventoryTransfer">
+        SELECT
+            <include refid="transferColumns"/>,
+            <include refid="transferMovedSum"/>,
+            fw.warehouse_name AS fromWarehouseName,
+            tw.warehouse_name AS toWarehouseName,
+            fw.status AS fromWarehouseStatus,
+            tw.status AS toWarehouseStatus,
+            eu.nickname AS userName
+        <include refid="transferJoins"/>
+        WHERE t.id = #{id}
+          AND t.is_deleted = 0
+    </select>
+
+    <!--
+      调拨明细的规格候选：一行是调出仓里的一条库存行，所以候选就是"这个仓现在有哪些货可挪"。
+      判据三档，全在这一条 SQL 里：
+        ① 这一行库存属于这家仓（i.warehouse_id）；
+        ② 这一行还有可用库存（stock - locked_stock > 0）—— 锁定那份是下单占着的，挪走就把订单坑填了，
+           所以仓里"总共还有货"不够，得是"还能动的货"有；
+        ③ 这条规格和它所属的商品都还在（两边 INNER JOIN + is_deleted = 0）：
+           规格被删过的库存行不该再开进新单子。
+      shop_erp_inventory 是主表：候选要的正是"有没有货"，商品那一头缺了就整行不出（INNER），
+      所以不会出现"有商品名、没数量"的半截行。
+      不带 sale_enable / 商品上下架：那两档管的是能不能卖，货在仓里就该调得动（口径同商品库存那页）。
+      成本价带这一行库存上的当前值（加权平均后的数），建单时就按它记 cost_price，
+      调拨时给调入仓做加权也用同一个数，两边对得上账。
+      关键字跨商品名/编码/规格：一行是一个规格，只搜商品名会把同一商品名下所有规格都捞出来，
+      想挑具体那一行只能靠规格文本收窄。
+      LIMIT 卡的是候选行数（一行是一个规格），同商品几个规格会连着占几行 —— 逐行挑规格本来就要这个效果。
+    -->
+    <select id="selectSkuOptions" resultType="com.shop.entity.ShopErpInventory">
+        SELECT i.id,
+               i.sku_id,
+               i.warehouse_id,
+               i.stock,
+               i.locked_stock,
+               i.cost_price,
+               (i.stock - i.locked_stock) AS availableStock,
+               p.id AS productId,
+               p.product_name AS productName,
+               p.product_code AS productCode,
+               sk.spec_text AS specText
+        FROM shop_erp_inventory i
+                 INNER JOIN shop_product_sku sk ON sk.id = i.sku_id AND sk.is_deleted = 0
+                 INNER JOIN shop_product p ON p.id = sk.product_id AND p.is_deleted = 0
+        WHERE i.is_deleted = 0
+          AND i.warehouse_id = #{warehouseId}
+          AND i.stock - i.locked_stock &gt; 0
+        <if test="keyword != null and keyword != ''">
+            AND (p.product_name LIKE CONCAT('%', #{keyword}, '%')
+            OR p.product_code LIKE CONCAT('%', #{keyword}, '%')
+            OR sk.spec_text LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <!-- 先按商品新在前、同一商品内再按库存行新在前：一仓里同一商品几个规格的行不该散开 -->
+        ORDER BY p.id DESC, i.id DESC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

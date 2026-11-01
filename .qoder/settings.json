@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__browser-use",
+      "mcp__browser-use__click",
+      "mcp__browser-use__fill",
+      "mcp__browser-use__navigate_page",
+      "mcp__browser-use__press_key",
+      "mcp__browser-use__take_snapshot",
+      "mcp__browser-use__take_screenshot",
+      "mcp__browser-use__list_pages",
+      "mcp__browser-use__select_page",
+      "mcp__browser-use__wait_for",
+      "mcp__browser-use__hover",
+      "mcp__browser-use__upload_file",
+      "mcp__browser-use__handle_dialog",
+      "mcp__browser-use__list_console_messages",
+      "mcp__browser-use__list_network_requests"
+    ]
+  }
+}

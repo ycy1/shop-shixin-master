@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopTrendyParkMapper">
+
+    <!-- 公共查询列：表加了列只改这一处（别名固定是 p，和下面的 FROM 对应） -->
+    <sql id="parkColumns">
+        p.id,
+        p.park_no,
+        p.park_name,
+        p.ip_id,
+        p.area_code,
+        p.area_zh,
+        p.address,
+        p.longitude,
+        p.latitude,
+        p.open_time,
+        p.cover_image,
+        p.description,
+        p.status,
+        p.is_hot,
+        p.create_by,
+        p.update_by,
+        p.create_time,
+        p.update_time
+    </sql>
+
+    <!-- 自定义 SQL 不走全局逻辑删除，p.is_deleted = 0 必须手写 -->
+    <select id="selectParkPage" resultType="com.shop.entity.ShopTrendyPark">
+        SELECT
+            <include refid="parkColumns"/>
+        FROM shop_trendy_park p
+        <where>
+            p.is_deleted = 0
+            <if test="q.ipId != null">
+                AND p.ip_id = #{q.ipId}
+            </if>
+            <if test="q.status != null">
+                AND p.status = #{q.status}
+            </if>
+            <!-- 一个输入框搜名称和编号，括号内 OR 不会串到上面的筛选（口径同门店列表） -->
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (p.park_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR p.park_no LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+        </where>
+        <!-- 营业中在前（status：1营业中 0停业），同状态内按 id 倒序看新建的（园区表没有 sort 列） -->
+        ORDER BY p.status DESC, p.id DESC
+    </select>
+
+</mapper>

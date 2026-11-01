@@ -1,0 +1,11 @@
+---
+import Base from '@/layouts/Base.astro';
+import ActivityList from '@/views/activity/ActivityList.vue';
+import { useDict } from '@/i18n';
+
+const { d, locale } = useDict(Astro.locals.locale);
+---
+
+<Base title={d.page.activity.title} description={d.page.activity.desc}>
+  <ActivityList client:load locale={locale} />
+</Base>

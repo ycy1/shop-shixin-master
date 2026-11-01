@@ -1,0 +1,25 @@
+---
+/**
+ * 潮玩专区里那两排商品的落点：整块详情复用通用商品详情那一颗岛（规格、加购、评论都在里面），
+ * 外面套的是专区的壳 —— 为的是从潮玩货架点进来，左侧那条导航还在，顶上有一颗回货架的返回。
+ * 非数路径打发回专区首页，不带着 NaN 去请求接口。
+ */
+import Trendy from '@/layouts/Trendy.astro';
+import ProductDetail from '@/views/product/ProductDetail.vue';
+import { useDict } from '@/i18n';
+
+const { d, href, locale } = useDict(Astro.locals.locale);
+const t = d.trendy;
+
+const id = Number(Astro.params.id);
+if (!Number.isInteger(id) || id <= 0) return Astro.redirect(href('/trendy'));
+---
+
+<Trendy
+  title={d.page.product.title}
+  description={d.page.product.desc}
+  active="home"
+  back={{ path: '/trendy', label: t.back.product }}
+>
+  <ProductDetail client:load locale={locale} productId={id} />
+</Trendy>

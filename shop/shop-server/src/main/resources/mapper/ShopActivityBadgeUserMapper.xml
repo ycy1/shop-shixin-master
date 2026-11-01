@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopActivityBadgeUserMapper">
+
+    <!-- 自定义 SQL 不走全局逻辑删除，c.is_deleted = 0 必须手写。
+         名称/文字/图标这三格读本表自己的快照，不联 shop_activity_badge ——
+         联了就会把徽章后来改过的名字显示到已经拿到徽章的人身上，而这一张表本来就是"当时那枚徽章长什么样"的凭证
+         （同用户券那六格快照、同库存流水的变动前后数）。
+         只有 badge_type 是联定义表带出来的：那一格不参与快照（它说的是"这枚徽章按什么规则判定"，
+         不是给人看的样子），而且定义表被删的行联不上就是 NULL，前端按空显示。
+         sys_user 没有 is_deleted 那一列（sys_* 表和 shop_* 表这套是相反的），所以那一条联表不带这一刀 -->
+    <select id="selectRecordPage" resultType="com.shop.entity.ShopActivityBadgeUser">
+        SELECT
+            c.id,
+            c.badge_id,
+            c.user_id,
+            c.badge_name,
+            c.badge_text,
+            c.badge_icon,
+            c.source,
+            c.source_id,
+            c.start_time,
+            c.end_time,
+            c.status,
+            c.is_show,
+            c.sort,
+            c.create_by,
+            c.update_by,
+            c.create_time,
+            c.update_time,
+            u.nickname AS userName,
+            u.mobile AS mobile,
+            b.badge_type AS badgeType
+        FROM shop_activity_badge_user c
+        LEFT JOIN sys_user u ON u.id = c.user_id
+        LEFT JOIN shop_activity_badge b ON b.id = c.badge_id AND b.is_deleted = 0
+        <where>
+            c.is_deleted = 0
+            <!-- 弹窗是从某一枚徽章点进来的，badgeId 恒有值；这一格留空就当"看全部徽章的获取记录"。
+                 数据范围分账号类型两档（由服务层往 q.userId 上压，这里只认字段）：平台/门店/ERP 账号看全部 ——
+                 谁拿到了这枚徽章是运营和系统动作，一收窄就会出现"别人发出去的那些在这份明细里凭空消失"；
+                 消费者账号只看自己名下那几枚（前台「我的徽章」那一档走的就是这条） -->
+            <if test="q.badgeId != null">
+                AND c.badge_id = #{q.badgeId}
+            </if>
+            <if test="q.source != null">
+                AND c.source = #{q.source}
+            </if>
+            <if test="q.status != null">
+                AND c.status = #{q.status}
+            </if>
+            <if test="q.userId != null">
+                AND c.user_id = #{q.userId}
+            </if>
+            <!-- 一个输入框搜持有人的昵称和手机号（这一张表上给人看的那几格都是徽章自己的，按徽章筛靠 badgeId） -->
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (u.nickname LIKE CONCAT('%', #{q.keyword}, '%')
+                OR u.mobile LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+        </where>
+        <!-- id DESC 就是时间倒序（一批发放是连着插进来的，按 id 排比按秒级的 start_time 排稳定） -->
+        ORDER BY c.id DESC
+    </select>
+
+    <!-- 这一枚现在都在谁手上（那颗「下发」一次给一批人，先一次把已经有的人捞出来直接跳过）：
+         只 select user_id 一列，这一列 NOT NULL 所以不会有空元素；
+         is_deleted = 0 手写在这一条里（自定义 SQL 不走全局逻辑删除）—— 这一张表上唯一的删除动作
+         （下面那条「删除获取记录」）是物理删除，所以正常情况下不会有软删行；留着这一刀是给历史脏数据兜底：
+         一行 is_deleted = 1 的旧记录还占着 uk_badge_user，插进去照样撞键，按"还在手上"处理才不会报出假话 -->
+    <select id="selectUserIdsByBadge" resultType="java.lang.Long">
+        SELECT c.user_id
+        FROM shop_activity_badge_user c
+        WHERE c.badge_id = #{badgeId}
+          AND c.is_deleted = 0
+    </select>
+
+    <!-- 删除获取记录（后台「获取记录」弹窗里那颗「删除」和「批量删除」）：物理删除，不走 is_deleted = 1 那一档。
+         判据在 uk_badge_user (badge_id, user_id) —— 这一道唯一键不含 is_deleted，
+         软删留下的那一行还占着这两个格，于是两边都会歪：
+         自动判定那条 NOT EXISTS 按 is_deleted = 0 判"还没拿到"，会把这一枚重新列进候选，
+         insert 撞唯一键被发放那一步静默吞掉（分券不再发第二次，但徽章也永远回不到他手上）；
+         「下发」那一路先按 is_deleted = 0 筛已持有，筛不到这一行就会去插，同样白撞一次，
+         全批都被吞掉时报的是「这几个用户都已经持有这一枚徽章」——一句假话。
+         真删掉才是"这一枚不在他手上了"：以后重新达标还能再拿一枚，奖励跟着重新兑现一次
+         （当初那一笔兑现不收回，是这张表上删除动作定的口径，见服务层）。
+         这一条故意不带 is_deleted 谓词：库里万一有历史软删行，顺手一并清掉，正好把上面那个坑填平 -->
+    <delete id="deletePhysicallyByIds">
+        DELETE FROM shop_activity_badge_user
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+</mapper>

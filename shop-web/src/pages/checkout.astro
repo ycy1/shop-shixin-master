@@ -1,0 +1,27 @@
+---
+import Base from '@/layouts/Base.astro';
+import CheckoutPage from '@/views/checkout/CheckoutPage.vue';
+import { useDict } from '@/i18n';
+
+const { d, fill, locale } = useDict(Astro.locals.locale);
+
+// 两种进来法，落在同一条路径上：
+// - /checkout：购物车那颗「去结算」，没有参数，这一页自己重拉一次购物车、取勾着的那几行；
+// - /checkout?p=5&sku=42&qty=2：详情页那颗「立即购买」，只把这一条规格开单，不动车里的东西。
+// 非数（?sku=abc）按没参数处理，别带着 NaN 去请求接口。
+const skuId = Number(Astro.url.searchParams.get('sku'));
+const productId = Number(Astro.url.searchParams.get('p'));
+const qty = Number(Astro.url.searchParams.get('qty'));
+const buyNow = Number.isInteger(skuId) && skuId > 0 && Number.isInteger(productId) && productId > 0;
+---
+
+<Base title={fill(d.page.checkout.title, { brand: d.site.brand })} description={d.page.checkout.desc}>
+  <!-- 整页是岛：登录态、车上的行、地址、券、积分都要带 token，服务端那一趟一样都没有 -->
+  <CheckoutPage
+    client:load
+    locale={locale}
+    productId={buyNow ? productId : 0}
+    skuId={buyNow ? skuId : 0}
+    qty={Number.isInteger(qty) && qty > 0 ? qty : 1}
+  />
+</Base>

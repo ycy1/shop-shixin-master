@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopErpInventoryCheckMapper">
+
+    <!-- 公共查询列：表加了列只改这一处（别名固定是 t，和下面的 FROM 对应） -->
+    <sql id="checkColumns">
+        t.id,
+        t.check_no,
+        t.warehouse_id,
+        t.user_id,
+        t.check_type,
+        t.total_sku_count,
+        t.diff_sku_count,
+        t.profit_quantity,
+        t.loss_quantity,
+        t.profit_amount,
+        t.loss_amount,
+        t.status,
+        t.start_time,
+        t.end_time,
+        t.remark,
+        t.create_by,
+        t.update_by,
+        t.create_time,
+        t.update_time
+    </sql>
+
+    <!-- 仓库的名称/现在的状态、操作员昵称一律联表现取，不在盘点单里冗余快照：改了名不用回头刷单子
+         （同调拨单联两家仓/操作员） -->
+    <sql id="checkJoins">
+        FROM shop_erp_inventory_check t
+        LEFT JOIN shop_erp_warehouse w ON w.id = t.warehouse_id AND w.is_deleted = 0
+        LEFT JOIN sys_user eu ON eu.id = t.user_id
+    </sql>
+
+    <!-- 已调整的行数：列表不返回明细，但「进度」那一格要显示"已调整几行 / 共几行"，
+         还要判断「调整」「取消」按钮能不能点（差最后一行就没走完、有一行调过账就不许取消），
+         所以用关联子查询汇总（一页十条、一张单撑死几百行明细，走 idx_check，没有代价） -->
+    <sql id="checkAdjustedSum">
+        (SELECT COUNT(1)
+        FROM shop_erp_inventory_check_item ci
+        WHERE ci.check_id = t.id AND ci.is_deleted = 0 AND ci.status = 2) AS adjustedCount
+    </sql>
+
+    <!-- 自定义 SQL 不走全局逻辑删除，t.is_deleted = 0 必须手写 -->
+    <select id="selectCheckPage" resultType="com.shop.entity.ShopErpInventoryCheck">
+        SELECT
+            <include refid="checkColumns"/>,
+            <include refid="checkAdjustedSum"/>,
+            w.warehouse_name AS warehouseName,
+            w.status AS warehouseStatus,
+            eu.nickname AS userName
+        <include refid="checkJoins"/>
+        <where>
+            t.is_deleted = 0
+            <!-- 一个输入框搜单号、仓库名、备注和操作员名，括号内 OR 不会串到上面的筛选 -->
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (t.check_no LIKE CONCAT('%', #{q.keyword}, '%')
+                OR w.warehouse_name LIKE CONCAT('%', #{q.keyword}, '%')
+                OR t.remark LIKE CONCAT('%', #{q.keyword}, '%')
+                OR eu.nickname LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+            <!-- 这一格是筛选项「仓库」：一张单只盘一家仓，所以直接比真列（调拨那页要 OR 两家，这里不用） -->
+            <if test="q.warehouseId != null">
+                AND t.warehouse_id = #{q.warehouseId}
+            </if>
+            <if test="q.checkType != null">
+                AND t.check_type = #{q.checkType}
+            </if>
+            <if test="q.status != null">
+                AND t.status = #{q.status}
+            </if>
+            <!-- 数据范围：ERP 账号（account_type=5）只看自己盘的这几张，由服务层覆盖 userId 后走到这里 -->
+            <if test="q.userId != null">
+                AND t.user_id = #{q.userId}
+            </if>
+            <!-- 时间筛的是创建时间，所以参数名是 createBeginTime/createEndTime：
+                 beginTime/endTime 在这一张表上是盘点起止两个真列（本查询已经把它们当结果列带出来了） -->
+            <if test="q.createBeginTime != null and q.createBeginTime != ''">
+                AND t.create_time &gt;= #{q.createBeginTime}
+            </if>
+            <if test="q.createEndTime != null and q.createEndTime != ''">
+                AND t.create_time &lt;= #{q.createEndTime}
+            </if>
+        </where>
+        <!-- 不按 status 排：这里的 status 是单据流转状态（0待审核→1盘点中→2已完成），
+             不是启用/禁用，按它排会把"待审核"顶到第一页。新单在前就够了 -->
+        ORDER BY t.id DESC
+    </select>
+
+    <select id="selectCheckById" resultType="com.shop.entity.ShopErpInventoryCheck">
+        SELECT
+            <include refid="checkColumns"/>,
+            <include refid="checkAdjustedSum"/>,
+            w.warehouse_name AS warehouseName,
+            w.status AS warehouseStatus,
+            eu.nickname AS userName
+        <include refid="checkJoins"/>
+        WHERE t.id = #{id}
+          AND t.is_deleted = 0
+    </select>
+
+    <!--
+      盘点明细的规格候选：一行是这家仓里的一条库存行，所以候选就是"这家仓登记在册的规格有哪些"。
+      和调拨的 skuOptions 只有一处不同：这里不筛可用库存（那边要"还能挪得走的货"，这边要"全都得盘"）——
+      账面剩 0 件的那一行恰恰是最该盘的一行（实物却在就是盘盈），把它筛掉就等于永远盘不出这一笔。
+      两个 JOIN 仍然是 INNER：这条规格和它所属的商品都被删过的库存行不该再开进新单子。
+      带 sale_enable / 商品上下架：都不带，那两档管的是能不能卖，货在仓里就该盘得到（口径同商品库存那页）。
+      stock 就是这一行的账面数（建单时原样落进 book_quantity），cost_price 带这一行库存上的当前值
+      （加权平均后的数），差异金额和流水都按它算，两边对得上账。
+      关键字跨商品名/编码/规格：一行是一个规格，只搜商品名会把同一商品名下所有规格都捞出来，
+      抽盘想挑具体那一行只能靠规格文本收窄。
+      LIMIT 卡的是候选行数（一行是一个规格），同商品几个规格会连着占几行 —— 逐行挑规格本来就要这个效果。
+    -->
+    <select id="selectSkuOptions" resultType="com.shop.entity.ShopErpInventory">
+        SELECT i.id,
+               i.sku_id,
+               i.warehouse_id,
+               i.stock,
+               i.locked_stock,
+               i.cost_price,
+               (i.stock - i.locked_stock) AS availableStock,
+               p.id AS productId,
+               p.product_name AS productName,
+               p.product_code AS productCode,
+               sk.spec_text AS specText
+        FROM shop_erp_inventory i
+                 INNER JOIN shop_product_sku sk ON sk.id = i.sku_id AND sk.is_deleted = 0
+                 INNER JOIN shop_product p ON p.id = sk.product_id AND p.is_deleted = 0
+        WHERE i.is_deleted = 0
+          AND i.warehouse_id = #{warehouseId}
+        <if test="keyword != null and keyword != ''">
+            AND (p.product_name LIKE CONCAT('%', #{keyword}, '%')
+            OR p.product_code LIKE CONCAT('%', #{keyword}, '%')
+            OR sk.spec_text LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <!-- 先按商品新在前、同一商品内再按库存行新在前：一仓里同一商品几个规格的行不该散开 -->
+        ORDER BY p.id DESC, i.id DESC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

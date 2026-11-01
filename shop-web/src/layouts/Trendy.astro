@@ -1,0 +1,219 @@
+---
+/**
+ * 潮玩专区的壳：Base 那一层页头页脚不动，正文里加一条左侧垂直导航（首页/盲盒/图鉴/公园）。
+ *
+ * 窄屏（md 以下）那条导航收成一行横滑 —— 竖排在 375px 上会把正文挤没，横滑是这类分区导航的通用退路。
+ * 高亮由页面壳显式传 active（三档路径都是站内写死的，不从 URL 猜），当前那一档带 aria-current。
+ *
+ * md 及以上这条导航吸在页头下面（往下滚它跟着）：钉的几何和现量页头那一套见文件末尾那段脚本 +
+ * global.css 的 .trendy-pin；窄屏那一行横滑不吸（它本来就在最上面，吸住反而吃掉一屏高度）。
+ */
+import Base from '@/layouts/Base.astro';
+import { useDict } from '@/i18n';
+
+interface Props {
+  title: string;
+  description?: string;
+  active: 'home' | 'box' | 'collection' | 'park';
+  /** 详情页顶上那颗返回：路径不带语种前缀（下面自己过 href），label 是四档文案里的那一句 */
+  back?: { path: string; label: string };
+}
+
+const { title, description = '', active, back } = Astro.props;
+const { d, href } = useDict(Astro.locals.locale);
+const t = d.trendy;
+
+const items = [
+  { key: 'home', label: t.nav.home, path: '/trendy' },
+  { key: 'box', label: t.nav.box, path: '/trendy/box' },
+  { key: 'collection', label: t.nav.collection, path: '/trendy/collection' },
+  { key: 'park', label: t.nav.park, path: '/trendy/park' },
+] as const;
+---
+
+<Base title={title} description={description}>
+  <div class="flex flex-col gap-6 md:flex-row md:gap-8">
+    <aside class="shrink-0 md:w-44">
+      <nav
+        aria-label={t.nav.aria}
+        class="trendy-pin rounded-xl border border-gray-200 bg-white p-2 dark:border-gray-700 dark:bg-gray-800"
+      >
+        <p class="px-2 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">{t.nav.title}</p>
+        <ul
+          data-trendy-nav
+          data-active={active}
+          class="relative -mx-1 flex gap-1 overflow-x-auto px-1 pb-1 md:flex-col md:overflow-visible md:pb-0"
+        >
+          <!-- 水滴（形状和过渡在 global.css 的 .trendy-drop，位置由本页末尾那段脚本量出来） -->
+          <span class="trendy-drop" aria-hidden="true"></span>
+          {
+            items.map((item) => {
+              const on = item.key === active;
+              return (
+                <li class="shrink-0">
+                  <a
+                    href={href(item.path)}
+                    aria-current={on ? 'page' : undefined}
+                    data-trendy-item={item.key}
+                    class:list={[
+                      'relative z-10 block whitespace-nowrap rounded-lg px-3 py-2 text-sm transition-colors',
+                      on
+                        ? 'font-medium text-blue-700 dark:text-blue-300'
+                        : 'text-gray-600 hover:text-blue-600 dark:text-gray-300 dark:hover:text-blue-400',
+                    ]}
+                  >
+                    {item.label}
+                  </a>
+                </li>
+              );
+            })
+          }
+        </ul>
+      </nav>
+    </aside>
+
+    <div class="min-w-0 flex-1">
+      {
+        back && (
+          <a
+            href={href(back.path)}
+            class="mb-3 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-blue-600 hover:underline dark:text-gray-400 dark:hover:text-blue-400"
+          >
+            <span aria-hidden="true">‹</span>
+            {back.label}
+          </a>
+        )
+      }
+      <slot />
+    </div>
+  </div>
+</Base>
+
+<script>
+  /**
+   * 这条导航要钉在页头下面 ⇒ 现量页头实高，写成内联变量递给 .trendy-pin
+   *（页头是 sticky + z-40 + 实心底，窄屏菜单展开会撑成两行，写死的数对不上；口径同广场那两块吸顶）。
+   *
+   * 每次现查节点、不在开头存引用：astro 换页是把 <body> 整条换掉，这条导航跟着重建；
+   * 而模块脚本不会被重新执行，所以换页那一趟靠 astro:page-load 再跑一次。
+   */
+  let pinResize: ResizeObserver | undefined;
+
+  function syncPinTop() {
+    const header = document.querySelector('header');
+    const nav = document.querySelector<HTMLElement>('.trendy-pin');
+    if (!(header instanceof HTMLElement) || !nav) return;
+
+    const write = () => nav.style.setProperty('--trendy-pin-top', `${header.offsetHeight}px`);
+    write();
+    pinResize?.disconnect();
+    pinResize = new ResizeObserver(write);
+    pinResize.observe(header);
+  }
+
+  syncPinTop();
+  document.addEventListener('astro:page-load', syncPinTop);
+
+  /**
+   * 导航那一颗水滴：换页时从旧那一档滑到新那一档。
+   *
+   * 换页会把整条 nav 重建（这一块没挂 transition:persist），所以「从哪一档来」只能存在
+   * sessionStorage 里：点链接那一刻把当前 aria-current 那一档写进去，新页面上先瞬间摆到旧那一档、
+   * 逼一次布局、再滑到新那一档 —— 少了「瞬间摆过去 + 逼布局」这两步，浏览器没有起点可插值，
+   * 看着就是新那一档凭空亮起来（和 useDroplet 里 stretch 那段的道理一样）。
+   *
+   * 量的是 li 里那颗 a 的盒子：竖排（md 以上）动 Y，窄屏那排横滑动 X，各档不必等宽。
+   * 定时器而不是 rAF：这一页在后台标签里时 rAF 不推进，水滴会卡在旧位置。
+   */
+  const DROP_FROM_KEY = 'trendy-nav-from';
+
+  function dropTargets(nav: HTMLElement) {
+    const pill = nav.querySelector<HTMLElement>('.trendy-drop');
+    const anchors = [...nav.querySelectorAll<HTMLElement>('[data-trendy-item]')];
+    if (!pill || !anchors.length) return null;
+    const base = nav.getBoundingClientRect();
+    const vertical = getComputedStyle(nav).flexDirection.startsWith('column');
+    return {
+      pill,
+      anchors,
+      cells: anchors.map((el) => {
+        const r = el.getBoundingClientRect();
+        const x = r.left - base.left - nav.clientLeft;
+        const y = r.top - base.top - nav.clientTop;
+        return vertical
+          ? { pos: y, size: r.height, cross: x, crossSize: r.width, vertical }
+          : { pos: x, size: r.width, cross: y, crossSize: r.height, vertical };
+      }),
+    };
+  }
+
+  /** 把水滴摆到某一格：主轴上的位置交给 transform，长短和另一轴直接写（过渡在 .trendy-drop 上） */
+  function putDrop(pill: HTMLElement, cell: { pos: number, size: number, cross: number, crossSize: number, vertical: boolean }) {
+    if (cell.vertical) {
+      pill.style.left = `${cell.cross}px`;
+      pill.style.width = `${cell.crossSize}px`;
+      pill.style.height = `${cell.size}px`;
+      pill.style.top = '0px';
+      pill.style.transform = `translateY(${cell.pos}px)`;
+    } else {
+      pill.style.top = `${cell.cross}px`;
+      pill.style.height = `${cell.crossSize}px`;
+      pill.style.width = `${cell.size}px`;
+      pill.style.left = '0px';
+      pill.style.transform = `translateX(${cell.pos}px)`;
+    }
+  }
+
+  /** 不算一次切换的落位（首屏、窗口尺寸变了）：先关过渡写完，下一拍再把过渡开回来 */
+  function placeDrop(pill: HTMLElement, cell: Parameters<typeof putDrop>[1]) {
+    pill.classList.add('trendy-drop--instant');
+    putDrop(pill, cell);
+    void pill.offsetWidth;
+    window.setTimeout(() => pill.classList.remove('trendy-drop--instant'), 30);
+  }
+
+  function syncDrop() {
+    const nav = document.querySelector<HTMLElement>('[data-trendy-nav]');
+    if (!nav) return;
+    const found = dropTargets(nav);
+    if (!found) return;
+    const { pill, anchors, cells } = found;
+    const toIndex = anchors.findIndex((el) => el.dataset.trendyItem === (nav.dataset.active ?? ''));
+    if (toIndex < 0) return;
+
+    const fromKey = sessionStorage.getItem(DROP_FROM_KEY);
+    sessionStorage.removeItem(DROP_FROM_KEY);
+    const fromIndex = fromKey ? anchors.findIndex((el) => el.dataset.trendyItem === fromKey) : -1;
+    if (fromIndex < 0 || fromIndex === toIndex) {
+      placeDrop(pill, cells[toIndex]!);
+      return;
+    }
+
+    // 先把水滴瞬间摆到旧那一档并逼一次布局（这就是过渡的起点），下一拍再滑到新那一档
+    pill.classList.add('trendy-drop--instant');
+    putDrop(pill, cells[fromIndex]!);
+    void pill.offsetWidth;
+    pill.classList.remove('trendy-drop--instant');
+    window.setTimeout(() => putDrop(pill, cells[toIndex]!), 20);
+  }
+
+  syncDrop();
+  document.addEventListener('astro:page-load', syncDrop);
+
+  // 点导航的那一刻记下「现在停在哪一档」；换页后由 syncDrop 取走（取完即删，只服务紧挨着的那一次换页）
+  document.addEventListener('click', (event) => {
+    const target = event.target;
+    const link = target instanceof Element ? target.closest('[data-trendy-item]') : null;
+    const nav = link instanceof Element ? link.closest<HTMLElement>('[data-trendy-nav]') : null;
+    if (nav?.dataset.active) sessionStorage.setItem(DROP_FROM_KEY, nav.dataset.active);
+  });
+
+  // 窗口尺寸一变，量到的盒子就作废：原地重贴一次（不播动画，那不算一次切换）
+  window.addEventListener('resize', () => {
+    const nav = document.querySelector<HTMLElement>('[data-trendy-nav]');
+    if (!nav) return;
+    const found = dropTargets(nav);
+    const at = found ? found.anchors.findIndex((el) => el.dataset.trendyItem === (nav.dataset.active ?? '')) : -1;
+    if (found && at >= 0) placeDrop(found.pill, found.cells[at]!);
+  });
+</script>

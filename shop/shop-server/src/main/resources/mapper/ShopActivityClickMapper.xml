@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopActivityClickMapper">
+
+    <!-- 自定义 SQL 不走全局逻辑删除，c.is_deleted = 0 必须手写（和 ShopActivityMapper.xml 里那两个
+         现算统计的子查询同一刀，两边口径不一致的话列表那格数和对不上弹窗明细） -->
+    <select id="selectRecordPage" resultType="com.shop.entity.ShopActivityClick">
+        SELECT
+            c.id,
+            c.activity_id,
+            c.event_type,
+            c.user_id,
+            c.ip,
+            c.ip_location,
+            c.os,
+            c.create_by,
+            c.update_by,
+            c.create_time,
+            c.update_time,
+            u.nickname AS userName
+        FROM shop_activity_click c
+        <!-- 昵称联表现取，不冗余快照（同库存流水那页的操作人）：改过名的账号在明细里显示现在这个名，
+             这一张表本来就是"谁在什么时候碰过这张活动"的凭证，不是历史档案 -->
+        LEFT JOIN sys_user u ON u.id = c.user_id
+        <where>
+            c.is_deleted = 0
+            <!-- 弹窗是从某一条活动点进来的，activityId 恒有值；这一格留空就当"看全部活动的流水"，
+                 前台埋点那条路不认参数里的 user_id，这一条读接口也不按账号收窄（平台看全部，同活动列表） -->
+            <if test="q.activityId != null">
+                AND c.activity_id = #{q.activityId}
+            </if>
+            <if test="q.eventType != null">
+                AND c.event_type = #{q.eventType}
+            </if>
+            <if test="q.userId != null">
+                AND c.user_id = #{q.userId}
+            </if>
+        </where>
+        <!-- id DESC 就是时间倒序（同一毫秒插进来的多行它也稳定），和那张表的 idx_create_time 无关，
+             按活动筛时走的是 idx_activity_event -->
+        ORDER BY c.id DESC
+    </select>
+
+</mapper>

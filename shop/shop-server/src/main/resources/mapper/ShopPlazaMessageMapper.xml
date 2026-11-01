@@ -1,0 +1,239 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopPlazaMessageMapper">
+
+    <!-- 公共查询列：表加了列只改这一处（别名固定是 t，和下面的 FROM 对应）。
+         刻意不含 content —— 正文是 mediumtext 的富文本 HTML，一屏十条拖着它既没地方显示又把响应撑肥，
+         列表卡片预览读的是 content_text；正文只在 selectPlazaById 那一条里取（多列一个 <sql> 片段拼上去）。
+         三个计数库里那三列一概不读，见下面 plazaComputed。 -->
+    <sql id="plazaColumns">
+        t.id,
+        t.user_id,
+        t.relation_type,
+        t.relation_id,
+        t.title,
+        t.content_text,
+        t.plaza_image,
+        t.is_top,
+        t.is_recommend,
+        t.audit_status,
+        t.audit_remark,
+        t.status,
+        t.publish_time,
+        t.is_deleted,
+        t.create_by,
+        t.update_by,
+        t.create_time,
+        t.update_time
+    </sql>
+
+    <!-- 计数一律按明细表现算覆盖（口径同门店培训的 sign_count）：
+         点赞是插一行/硬删一行、评论是软删、分享只插，三个动作散在三个 service 里，
+         靠回写迟早和明细对不上；现算只是多三个走索引的子查询（uk_message_user / idx_message / idx_message 都吃得到）。
+         评论那一档判据是 business_id + comment_type=4 成对（comment_type 4 = 广场，见 SysComment.TYPE_PLAZA）。
+         门店名/品牌名…和发布者昵称同理都是联表现取，这张表不冗余快照（同采购单主表）。 -->
+    <sql id="plazaComputed">
+        (SELECT COUNT(*) FROM shop_plaza_like lk
+          WHERE lk.message_id = t.id) AS likeCount,
+        (SELECT COUNT(*) FROM sys_comment c
+          WHERE c.business_id = t.id AND c.comment_type = 4 AND c.is_deleted = 0) AS commentCount,
+        (SELECT COUNT(*) FROM shop_plaza_share sh
+          WHERE sh.message_id = t.id AND sh.is_deleted = 0) AS shareCount,
+        su.nickname AS userName
+    </sql>
+
+    <!-- 关联对象那张表按 relation_type 才联（四档各一条 LEFT JOIN，条件里钉死 relation_type，
+         否则 relation_id 撞上另一张表的 id 就会串名）；对象删掉了联不上，前端按 id 显示成「已删除商品 #id」 -->
+    <sql id="plazaFrom">
+        FROM shop_plaza_message t
+        LEFT JOIN sys_user su ON su.id = t.user_id
+        LEFT JOIN shop_product p ON p.id = t.relation_id AND t.relation_type = 1 AND p.is_deleted = 0
+        LEFT JOIN shop_store st ON st.id = t.relation_id AND t.relation_type = 2 AND st.is_deleted = 0
+        LEFT JOIN shop_brand b ON b.id = t.relation_id AND t.relation_type = 3 AND b.is_deleted = 0
+        LEFT JOIN shop_activity act ON act.id = t.relation_id AND t.relation_type = 4 AND act.is_deleted = 0
+    </sql>
+
+    <sql id="plazaRelationName">
+        CASE t.relation_type
+            WHEN 1 THEN p.product_name
+            WHEN 2 THEN st.store_name
+            WHEN 3 THEN b.brand_name
+            WHEN 4 THEN act.activity_name
+            ELSE NULL
+        END AS relationName
+    </sql>
+
+    <!-- 带着 userId 时才要再联一层：把"当前登录账号赞过这一条没有"捎回来，
+         前台那颗点赞按钮靠它决定显示「赞」还是「已赞」（不带着就只能点了才知道）。
+         uk_message_user(message_id, user_id) 是唯一键，一个人对一条最多一行，所以 LEFT JOIN 不会把消息行复制一遍。
+         游客（前台未登录）和后台那一页传的是 null —— 这时候整段不拼：
+         既省掉一次注定联不上的 JOIN，也避开给驱动塞一个无类型的 NULL 参数（selfLiked 不出现，前端按 false 处理） -->
+    <sql id="plazaSelfJoin">
+        LEFT JOIN shop_plaza_like me ON me.message_id = t.id AND me.user_id = #{userId}
+    </sql>
+
+    <sql id="plazaSelfColumns">
+        (me.id IS NOT NULL) AS selfLiked
+    </sql>
+
+    <!-- 自定义 SQL 不走全局逻辑删除，is_deleted 那一刀必须手写；
+         这一格现在是「递了才拦」：后台广场管理页不填，未删除和已删除混在一页上（他点名的口径：删除的也要看得到，
+         靠列表「状态」那一格印「已删除」认）—— 实体那格有默认值 0，所以后台 service 要显式钉成 null 才真是不填；
+         前台那条读法在 service 里钉死 0（ShopPlazaReadServiceImpl.page），游客和消费者都翻不到软删行 -->
+    <select id="selectPlazaPage" resultType="com.shop.entity.ShopPlazaMessage">
+        SELECT
+            <include refid="plazaColumns"/>,
+            <include refid="plazaComputed"/>,
+            <include refid="plazaRelationName"/>
+            <if test="userId != null">
+                ,<include refid="plazaSelfColumns"/>
+            </if>
+        <include refid="plazaFrom"/>
+        <if test="userId != null">
+            <include refid="plazaSelfJoin"/>
+        </if>
+        <where>
+            <if test="q.isDeleted != null">
+                AND t.is_deleted = #{q.isDeleted}
+            </if>
+            <!-- 一个输入框搜标题、正文摘要和发布者昵称，括号内 OR 不会串到上面的筛选 -->
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (t.title LIKE CONCAT('%', #{q.keyword}, '%')
+                OR t.content_text LIKE CONCAT('%', #{q.keyword}, '%')
+                OR su.nickname LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+            <!-- 按某一名下收：后台「个人信息 → 广场消息」那一档要吃这一刀（userId 由前端在查询串里递，
+                 controller 绑到实体上再传下来）。广场管理页和前台两条列表都不带这一格，行为一字不变 -->
+            <if test="q.userId != null">
+                AND t.user_id = #{q.userId}
+            </if>
+            <if test="q.relationType != null">
+                AND t.relation_type = #{q.relationType}
+            </if>
+            <if test="q.auditStatus != null">
+                AND t.audit_status = #{q.auditStatus}
+            </if>
+            <if test="q.status != null">
+                AND t.status = #{q.status}
+            </if>
+            <!-- 只捞推荐的那一些：广场页右侧那一块推荐位走这一格（前台传 isRecommend=1）。
+                 这一格不影响可见性 —— onlyPublic 那一刀在后面照样 AND 上，
+                 所以「推荐 + 待审核」在广场上仍是空的一页 -->
+            <if test="q.isRecommend != null">
+                AND t.is_recommend = #{q.isRecommend}
+            </if>
+            <!-- 前台那一刀：没审核过的、后台下架的都不该出现在广场上。
+                 这里不用 q.status/q.auditStatus，是刻意让前端传不进这一档 —— 只有服务层传 onlyPublic=true 才收窄 -->
+            <if test="onlyPublic">
+                AND t.status = 1
+                AND t.audit_status = 1
+            </if>
+        </where>
+        <!-- 三档序，各自认自己的读者：
+             orderByAuditTier（只给后台那一屏）：先按状态分档 —— 待审核最前（这一屏的活儿就是把它们判掉）、
+               再已发布、再已拒绝，已删除和已隐藏的钉到最后（它们不参与任何比较，只等着被翻出来）；
+               档内再按置顶、点赞、时间走（已发布档里点赞才是热度，其余档没人能赞，那一格恒空、自然退成时间序）。
+             orderByLike（搜索结果页那一块）：点赞最多的排最前，认的是 plazaComputed 现算那个别名，
+               库里那列从不回写、读了也不准；置顶只在点赞数打平时说话。
+             默认（广场那一页的流，三端同一个）：置顶的排最前（只有后台改得动），其余一律按发布时间倒序。
+               publish_time 是审核通过那一刻才写的，前台那条读法有 onlyPublic 兜住 ⇒ 到这里的行都有值，
+               所以这一档不用 COALESCE 兜空，别照着后台那一档给它补。 -->
+        <choose>
+            <when test="orderByAuditTier">
+                ORDER BY
+                    CASE
+                        WHEN t.is_deleted = 1 OR t.status &lt;&gt; 1 THEN 3
+                        WHEN t.audit_status = 0 THEN 0
+                        WHEN t.audit_status = 1 THEN 1
+                        ELSE 2
+                    END,
+                    t.is_top DESC,
+                    CASE WHEN t.audit_status = 1 THEN likeCount END DESC,
+                    COALESCE(t.publish_time, t.create_time) DESC,
+                    t.id DESC
+            </when>
+            <when test="orderByLike">
+                ORDER BY likeCount DESC, t.is_top DESC, t.publish_time DESC, t.id DESC
+            </when>
+            <otherwise>
+                ORDER BY t.is_top DESC, t.publish_time DESC, t.id DESC
+            </otherwise>
+        </choose>
+    </select>
+
+    <!-- 「我发的」那一页（个人中心「广场消息」那一档）：只按 user_id 收，上下架一概不拦，
+         审核状态由这一页自己点名（q.auditStatus，不填就是全都看）——
+         待审核和已拒绝的正是这一页要给人看的（要看审到哪一步、要改要删），所以不套 onlyPublic 那一刀。
+         排序另走一路：广场那一页按发布时间排，而没通过审核的 publish_time 是空的、
+         在 DESC 下永远沉底，人在这一页要找的恰恰是自己刚发出去那一条，所以按创建时间倒序。
+         userId 一趟两用：既是归属谓词，也是自联点赞表带 selfLiked 的那一格（这一页必须登录才查得到）。 -->
+    <select id="selectMyPlazaPage" resultType="com.shop.entity.ShopPlazaMessage">
+        SELECT
+            <include refid="plazaColumns"/>,
+            <include refid="plazaComputed"/>,
+            <include refid="plazaRelationName"/>,
+            <include refid="plazaSelfColumns"/>
+        <include refid="plazaFrom"/>
+        <include refid="plazaSelfJoin"/>
+        <where>
+            t.is_deleted = 0
+            AND t.user_id = #{userId}
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (t.title LIKE CONCAT('%', #{q.keyword}, '%')
+                OR t.content_text LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+            <if test="q.relationType != null">
+                AND t.relation_type = #{q.relationType}
+            </if>
+            <if test="q.auditStatus != null">
+                AND t.audit_status = #{q.auditStatus}
+            </if>
+        </where>
+        ORDER BY t.create_time DESC, t.id DESC
+    </select>
+
+    <select id="selectPlazaById" resultType="com.shop.entity.ShopPlazaMessage">
+        SELECT
+            <include refid="plazaColumns"/>,
+            t.content,
+            <include refid="plazaComputed"/>,
+            <include refid="plazaRelationName"/>
+            <if test="userId != null">
+                ,<include refid="plazaSelfColumns"/>
+            </if>
+        <include refid="plazaFrom"/>
+        <if test="userId != null">
+            <include refid="plazaSelfJoin"/>
+        </if>
+        WHERE t.id = #{id}
+        <!-- 软删的那一条只有后台读得回来（includeDeleted 由调用方钉）：
+             前台那一路传 false，行为一字不变（服务层还要再判「广场上的 / 自己发的」那一刀） -->
+        <if test="!includeDeleted">
+            AND t.is_deleted = 0
+        </if>
+    </select>
+
+    <!-- 后台专用的一条 UPDATE：只按 id 认，不带 is_deleted = 0 那一刀。
+         不用 updateById 的原因见 Mapper 接口注释：全局逻辑删除会给 MP 的 get/update 都补那一刀，
+         已删除的那一条在后台就既读不到也改不动，而这一屏两头都要能碰。
+         SET 里只有后台改得动的那几格（正文一改，由它算出来的摘要那一格跟着重算）；
+         publish_time / audit_status / user_id 一个都不碰 ——
+         前者是审核「头一次通过才给分」的闸门，清掉它就等于改一次正文多领 10 分。
+         留痕那一格自定义 SQL 不触发 MyMetaObjectHandler，所以 update_by 由服务层递进来、时间用 NOW()。
+         其余列（关联那两格、审核备注、三个计数）一个都不在 SET 里 ⇒ 这一趟改不动它们，
+         后台要换关联对象/写审核结论各自有入口。 -->
+    <update id="updateContentByAdmin">
+        UPDATE shop_plaza_message
+        SET title         = #{e.title},
+            content       = #{e.content},
+            content_text  = #{e.contentText},
+            plaza_image     = #{e.plazaImage},
+            is_top        = #{e.isTop},
+            is_recommend  = #{e.isRecommend},
+            status        = #{e.status},
+            update_by     = #{updateBy},
+            update_time   = NOW()
+        WHERE id = #{e.id}
+    </update>
+
+</mapper>

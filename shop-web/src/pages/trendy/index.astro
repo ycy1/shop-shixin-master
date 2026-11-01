@@ -1,0 +1,11 @@
+---
+import Trendy from '@/layouts/Trendy.astro';
+import TrendyHome from '@/views/trendy/TrendyHome.vue';
+import { useDict } from '@/i18n';
+
+const { d, locale } = useDict(Astro.locals.locale);
+---
+
+<Trendy title={d.page.trendy.title} description={d.page.trendy.desc} active="home">
+  <TrendyHome client:load locale={locale} />
+</Trendy>

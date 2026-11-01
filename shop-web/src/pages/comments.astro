@@ -1,0 +1,25 @@
+---
+import Base from '@/layouts/Base.astro';
+import CommentSection from '@/components/CommentSection.vue';
+import { useDict } from '@/i18n';
+
+const { d, fill, href, locale } = useDict(Astro.locals.locale);
+
+// 详情页那一颗「查看全部评论」把 type/id 带在查询串上进来。两个都得对得上：
+// type 认不出就没法告诉后端 business_id 指向哪张表、也找不到回去的那条路由，id 漏了就是一串空列表，一律打发回首屏。
+const type = Number(Astro.url.searchParams.get('type'));
+const id = Number(Astro.url.searchParams.get('id'));
+// 字典 comment_type 的五档，同时就是返回链接要拼的那条详情页路由（公园在潮玩专区下面，所以那一档带一层目录）
+const back = { 1: 'product', 2: 'store', 3: 'brand', 4: 'plaza', 5: 'trendy/park' }[type];
+if (!back || !Number.isInteger(id) || id <= 0) return Astro.redirect(href('/'));
+// 消息中心那条互动消息点进来时多带一格 highlight=<那条评论的 id>：要滚到它、给它挂一下底色；漏了就当正常进这一页
+const highlight = Number(Astro.url.searchParams.get('highlight'));
+---
+
+<Base title={fill(d.page.comments.title, { brand: d.site.brand })} description={d.page.comments.desc}>
+  <div class="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+    <a href={href(`/${back}/${id}`)} class="mb-4 inline-block text-sm text-blue-600 hover:underline dark:text-blue-400">{d.page.comments.back}</a>
+    <!-- 这一页要的就是评论本身：整块给 CommentSection（完整态，带排序、输入框和翻页） -->
+    <CommentSection client:load locale={locale} commentType={type} businessId={id} highlightId={Number.isInteger(highlight) && highlight > 0 ? highlight : undefined} />
+  </div>
+</Base>

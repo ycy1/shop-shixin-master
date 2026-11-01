@@ -1,0 +1,19 @@
+---
+/**
+ * 潮玩专区 · 一台盲盒的详情。路径里进来的是字符串，非数（/trendy/box/abc）直接打发回盲盒那一页，
+ * 不带着 NaN 去请求接口（口径同 /product/[id]）。
+ */
+import Trendy from '@/layouts/Trendy.astro';
+import TrendyBoxDetail from '@/views/trendy/TrendyBoxDetail.vue';
+import { useDict } from '@/i18n';
+
+const { d, href, locale } = useDict(Astro.locals.locale);
+const t = d.trendy;
+
+const id = Number(Astro.params.id);
+if (!Number.isInteger(id) || id <= 0) return Astro.redirect(href('/trendy/box'));
+---
+
+<Trendy title={d.trendy.box.title} description={d.trendy.box.sub} active="box" back={{ path: '/trendy/box', label: t.back.box }}>
+  <TrendyBoxDetail client:load locale={locale} boxId={id} />
+</Trendy>

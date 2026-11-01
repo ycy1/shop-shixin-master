@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.mapper.ShopErpInventoryCheckItemMapper">
+
+    <!-- 明细只跟着单走：一盘全仓可以几百行，但一次只展开一张单，仍不分页。
+         名称/编码要两跳才够得着：明细行上只有 sku_id，所属商品挂在 shop_product_sku 那一行，
+         所以每条查询都是先联 sk 再联 pr（口径同入库单明细/库存列表）。
+         再联一跳 ai 带两个数：这一条规格现在库存几件（currentStock）、还能动几件（availableStock），
+         warehouseId 是主表那家盘点仓，没给（仓被删了、或调用方不关心这两格）就联不出行，那两个数是 null ——
+         用 LEFT 不用 INNER，仓没了也该看得见这张单的明细，不然整张单在页面上直接空掉 -->
+    <select id="selectItemsByCheckId" resultType="com.shop.entity.ShopErpInventoryCheckItem">
+        SELECT i.id,
+               i.check_id,
+               i.product_id,
+               i.sku_id,
+               i.book_quantity,
+               i.actual_quantity,
+               i.diff_quantity,
+               i.cost_price,
+               i.diff_amount,
+               i.diff_reason,
+               i.status,
+               i.create_time,
+               i.update_time,
+               pr.product_name AS productName,
+               pr.product_code AS productCode,
+               sk.spec_text AS specText,
+               ai.stock AS currentStock,
+               (ai.stock - ai.locked_stock) AS availableStock
+        FROM shop_erp_inventory_check_item i
+                 LEFT JOIN shop_product_sku sk ON sk.id = i.sku_id AND sk.is_deleted = 0
+                 LEFT JOIN shop_product pr ON pr.id = sk.product_id AND pr.is_deleted = 0
+                 LEFT JOIN shop_erp_inventory ai ON ai.sku_id = i.sku_id
+            AND ai.warehouse_id = #{warehouseId}
+            AND ai.is_deleted = 0
+        WHERE i.check_id = #{checkId}
+          AND i.is_deleted = 0
+        ORDER BY i.id ASC
+    </select>
+
+    <!--
+      改单时把 (check_id, sku_id) 定住的那一行原行覆盖回去。三处刻意的写法：
+      ① WHERE 不带 is_deleted = 0：这一条 SQL 的意义就是把"上次软删掉的那一行"也捞回来一起改
+         （明细表有唯一键 uk_check_sku，删掉的行仍然占着这个键，重插同一条规格会撞 1062），
+         顺带把 is_deleted 拨回 0 —— 这就是"复活"。
+      ② book_quantity / cost_price 不在 SET 里：账面数和成本价是建单那一刻从库存行快照下来的，
+         盘点期间库存行可能被别人推进过（比如取消订单还锁），刷新它等于把盘点开始那一刻的账改掉。
+      ③ update_by 手写：这是自定义 SQL，MyMetaObjectHandler 那套自动填充不会过来。
+    -->
+    <update id="resetItem">
+        UPDATE shop_erp_inventory_check_item
+        SET product_id      = #{q.productId},
+            actual_quantity = #{q.actualQuantity},
+            diff_quantity   = #{q.diffQuantity},
+            diff_amount     = #{q.diffAmount},
+            diff_reason     = #{q.diffReason},
+            status          = #{q.status},
+            update_by       = #{q.updateBy},
+            update_time     = NOW(),
+            is_deleted      = 0
+        WHERE check_id = #{q.checkId}
+          AND sku_id = #{q.skuId}
+    </update>
+
+</mapper>
